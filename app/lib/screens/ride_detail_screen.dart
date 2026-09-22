@@ -61,11 +61,12 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
   }
 
   Future<void> _export() async {
-    final path = await GpxService.writeToFile(
+    final msg = await GpxService.share(
       'fahrt_${widget.ride.id}.gpx',
       GpxService.trackToGpx(widget.ride, _track),
+      subject: 'Fahrt ${fmtDate(widget.ride.start)}',
     );
-    if (mounted) toast(context, 'GPX gespeichert: $path');
+    if (msg != null && mounted) toast(context, msg);
   }
 
   @override

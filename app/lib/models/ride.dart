@@ -203,6 +203,11 @@ void _addCorner(
   ));
 }
 
+/// Rasterzelle fuer die Karte der eigenen Strecken (~110 x 70 m).
+/// Planer und Fahrtenspeicher muessen dieselbe Rechnung nutzen.
+String heatCellKey(double lat, double lon) =>
+    '${lat.toStringAsFixed(3)},${lon.toStringAsFixed(3)}';
+
 /// Entfernung zweier Koordinaten in Metern (Haversine).
 double distanceMeters(double lat1, double lon1, double lat2, double lon2) {
   const r = 6371000.0;

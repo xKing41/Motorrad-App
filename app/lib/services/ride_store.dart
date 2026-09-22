@@ -104,16 +104,13 @@ class RideStore {
     for (final r in rides.take(maxRides)) {
       final track = await loadTrack(r.id);
       for (final p in track) {
-        final key = _cellKey(p.lat, p.lon);
+        final key = heatCellKey(p.lat, p.lon);
         final v = p.lean.abs();
         if (v > (out[key] ?? 0)) out[key] = v;
       }
     }
     return out;
   }
-
-  static String _cellKey(double lat, double lon) =>
-      '${lat.toStringAsFixed(3)},${lon.toStringAsFixed(3)}';
 
   /// Gesamtstatistik ueber alle Fahrten.
   Future<Map<String, num>> totals() async {

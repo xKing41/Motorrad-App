@@ -58,25 +58,115 @@ Deine Aufgabe: Wandle den Wunsch des Fahrers in Planungsparameter um.
 STRIKTE REGELN:
 - Antworte AUSSCHLIESSLICH mit einem JSON-Objekt. Kein Text davor oder danach,
   keine Code-Bloecke, keine Erklaerung.
-- Erfinde NIEMALS Koordinaten, Ortsnamen, Tankstellen oder Adressen.
-  Du benennst nur die ART des Stopps, nicht den konkreten Ort.
-  Den echten Ort sucht die App anschliessend in den Kartendaten.
+- Erfinde NIEMALS Koordinaten, Tankstellen oder Adressen. Stopps benennst du
+  nur nach ihrer ART - den echten Ort sucht die App in den Kartendaten.
+- Ortsnamen gibst du nur weiter, wenn der Fahrer sie selbst nennt:
+  * "destination": Die Tour soll dort ENDEN (dann round_trip = false).
+  * "towards": Eine Rundtour soll ueber diesen Ort oder in diese Gegend
+    fuehren ("Runde ueber den Edersee", "Richtung Sauerland").
+  Sonst beide null. Die App sucht die Orte selbst in echten Kartendaten.
+- "direction" nur setzen, wenn eine Himmelsrichtung genannt wird
+  ("Richtung Norden" = "n"), sonst "any".
 - Wenn eine Angabe fehlt, waehle einen vernuenftigen Standardwert,
-  statt nachzufragen.
+  statt nachzufragen. Ohne Laengenangabe: 150 km. "after_km" nur, wenn der
+  Fahrer einen Zeitpunkt nennt (2 Stunden entsprechen etwa 120 km), sonst null.
 - Sicherheit geht vor: Wuensche nach Rekorden, Hoechstgeschwindigkeiten
   oder maximaler Schraeglage setzt du NICHT um. Plane in dem Fall eine
   normale kurvige Tour und setze "safety_note".
 
 Erlaubte Werte:
   curviness: "direct" | "balanced" | "curvy" | "very_curvy"
+  direction: "any" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw"
   stops[].kind: "fuel" | "viewpoint" | "food" | "rest" | "water" | "workshop"
 
 Antwortformat:
 $routeRequestSchema
-
-Zusaetzlich erlaubt: "safety_note" (kurzer Hinweistext) und
-"reply" (ein bis zwei Saetze, was du geplant hast).
 ''';
+
+  /// Technisch erzwungenes Antwortformat (Structured Outputs). Jedes Feld
+  /// ist Pflicht - "nicht angegeben" heisst null. Muss zu
+  /// [routeRequestSchema] passen.
+  static const Map<String, dynamic> outputSchema = {
+    'type': 'object',
+    'additionalProperties': false,
+    'properties': {
+      'round_trip': {'type': 'boolean'},
+      'distance_km': {'type': 'number'},
+      'curviness': {
+        'type': 'string',
+        'enum': ['direct', 'balanced', 'curvy', 'very_curvy'],
+      },
+      'direction': {
+        'type': 'string',
+        'enum': ['any', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'],
+      },
+      'towards': {
+        'anyOf': [
+          {'type': 'string'},
+          {'type': 'null'},
+        ],
+      },
+      'destination': {
+        'anyOf': [
+          {'type': 'string'},
+          {'type': 'null'},
+        ],
+      },
+      'avoid_motorways': {'type': 'boolean'},
+      'avoid_tolls': {'type': 'boolean'},
+      'avoid_unpaved': {'type': 'boolean'},
+      'prefer_known_good_roads': {'type': 'boolean'},
+      'title': {'type': 'string'},
+      'stops': {
+        'type': 'array',
+        'items': {
+          'type': 'object',
+          'additionalProperties': false,
+          'properties': {
+            'kind': {
+              'type': 'string',
+              'enum': ['fuel', 'viewpoint', 'food', 'rest', 'water', 'workshop'],
+            },
+            'after_km': {
+              'anyOf': [
+                {'type': 'number'},
+                {'type': 'null'},
+              ],
+            },
+            'reason': {'type': 'string'},
+          },
+          'required': ['kind', 'after_km', 'reason'],
+        },
+      },
+      'reply': {'type': 'string'},
+      'safety_note': {
+        'anyOf': [
+          {'type': 'string'},
+          {'type': 'null'},
+        ],
+      },
+    },
+    'required': [
+      'round_trip',
+      'distance_km',
+      'curviness',
+      'direction',
+      'towards',
+      'destination',
+      'avoid_motorways',
+      'avoid_tolls',
+      'avoid_unpaved',
+      'prefer_known_good_roads',
+      'title',
+      'stops',
+      'reply',
+      'safety_note',
+    ],
+  };
+
+  /// Haiku 4.5 kennt keinen "effort"-Wert - dort wuerde er die Anfrage
+  /// ablehnen.
+  bool get _supportsEffort => !model.contains('haiku');
 
   /// Schritt 1: Freitext -> strukturierte Anfrage.
   ///
@@ -94,24 +184,27 @@ Zusaetzlich erlaubt: "safety_note" (kurzer Hinweistext) und
       {'role': 'user', 'content': userText},
     ];
 
-    final headers = _headers();
+    Map<String, dynamic> body({required bool structured}) => {
+          'model': model,
+          // Genug Luft: Sonnet 5 denkt standardmaessig kurz nach, und das
+          // zaehlt mit. Mit 1200 wurde die Antwort sonst abgeschnitten.
+          'max_tokens': structured ? 2048 : 4096,
+          'system': _systemPrompt,
+          'messages': messages,
+          if (structured)
+            'output_config': {
+              // Erzwingt gueltiges JSON nach dem Schema oben.
+              'format': {'type': 'json_schema', 'schema': outputSchema},
+              // Einfache Uebersetzungsaufgabe - wenig Nachdenken reicht.
+              if (_supportsEffort) 'effort': 'low',
+            },
+        };
 
-    http.Response res;
-    try {
-      res = await http
-          .post(
-            Uri.parse(baseUrl),
-            headers: headers,
-            body: jsonEncode({
-              'model': model,
-              'max_tokens': 1200,
-              'system': _systemPrompt,
-              'messages': messages,
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
-    } catch (_) {
-      throw AiException('KI nicht erreichbar. Internetverbindung pruefen.');
+    // Erst mit erzwungenem Format. Lehnt der Server das ab (aelteres
+    // Modell, eigener Server ohne Unterstuetzung), einmal ohne.
+    var res = await _post(body(structured: true), const Duration(seconds: 40));
+    if (res.statusCode == 400) {
+      res = await _post(body(structured: false), const Duration(seconds: 40));
     }
 
     if (res.statusCode != 200) {
@@ -120,6 +213,10 @@ Zusaetzlich erlaubt: "safety_note" (kurzer Hinweistext) und
     }
 
     final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    if (data['stop_reason'] == 'refusal') {
+      throw AiException('Die KI hat diesen Wunsch abgelehnt. '
+          'Bitte die Tour anders beschreiben.');
+    }
     final text = _extractText(data);
     final json = _extractJson(text);
     if (json == null) {
@@ -127,16 +224,34 @@ Zusaetzlich erlaubt: "safety_note" (kurzer Hinweistext) und
           'Bitte den Wunsch etwas anders formulieren.');
     }
 
+    String? str(String k) {
+      final v = json[k];
+      return (v is String && v.trim().isNotEmpty) ? v.trim() : null;
+    }
+
     return AiInterpretation(
       request: RouteRequest.fromModelJson(
         json,
-        fallbackLat: startLat,
-        fallbackLon: startLon,
+        startLat: startLat,
+        startLon: startLon,
       ),
-      reply: json['reply'] as String?,
-      safetyNote: json['safety_note'] as String?,
+      reply: str('reply'),
+      safetyNote: str('safety_note'),
       raw: text,
     );
+  }
+
+  Future<http.Response> _post(Map<String, dynamic> body, Duration timeout) async {
+    try {
+      return await http
+          .post(Uri.parse(baseUrl), headers: _headers(), body: jsonEncode(body))
+          .timeout(timeout);
+    } on TimeoutException {
+      throw AiException('Die KI antwortet nicht (Zeitüberschreitung). '
+          'Bitte erneut versuchen.');
+    } catch (_) {
+      throw AiException('KI nicht erreichbar. Internetverbindung prüfen.');
+    }
   }
 
   /// Schritt 2: fertige Route + ECHTE Orte -> Beschreibungstext.
@@ -148,38 +263,45 @@ Zusaetzlich erlaubt: "safety_note" (kurzer Hinweistext) und
     final facts = {
       'distance_km': plan.distanceKm.round(),
       'duration_min': (plan.durationSec / 60).round(),
+      if (plan.stats != null) 'kurvigkeit': plan.stats!.curvLabel,
+      if (plan.stats != null)
+        'kurven_je_km': double.parse(plan.stats!.bendsPerKm.toStringAsFixed(1)),
       'stops': plan.pois
-          .map((p) => {'kind': p.kind.label, 'name': p.displayName})
+          .map((p) => {
+                'kind': p.kind.label,
+                'name': p.displayName,
+                if (p.detail != null) 'detail': p.detail,
+              })
           .toList(),
     };
 
-    final headers = _headers();
+    Map<String, dynamic> body({required bool withEffort}) => {
+          'model': model,
+          'max_tokens': 1024,
+          if (withEffort && _supportsEffort) 'output_config': {'effort': 'low'},
+          'system': 'Du beschreibst Motorradtouren kurz und sachlich auf '
+              'Deutsch, hoechstens drei Saetze. Nutze AUSSCHLIESSLICH die '
+              'uebergebenen Fakten. Erfinde keine Orte, Strassennamen oder '
+              'Sehenswuerdigkeiten. Keine Aufforderung zu schnellem Fahren.',
+          'messages': [
+            {
+              'role': 'user',
+              'content': 'Wunsch war: "$userText"\n'
+                  'Geplante Route (Fakten): ${jsonEncode(facts)}',
+            }
+          ],
+        };
 
     try {
-      final res = await http
-          .post(
-            Uri.parse(baseUrl),
-            headers: headers,
-            body: jsonEncode({
-              'model': model,
-              'max_tokens': 500,
-              'system': 'Du beschreibst Motorradtouren kurz und sachlich auf '
-                  'Deutsch, hoechstens drei Saetze. Nutze AUSSCHLIESSLICH die '
-                  'uebergebenen Fakten. Erfinde keine Orte, Strassennamen oder '
-                  'Sehenswuerdigkeiten. Keine Aufforderung zu schnellem Fahren.',
-              'messages': [
-                {
-                  'role': 'user',
-                  'content': 'Wunsch war: "$userText"\n'
-                      'Geplante Route (Fakten): ${jsonEncode(facts)}',
-                }
-              ],
-            }),
-          )
-          .timeout(const Duration(seconds: 25));
+      var res = await _post(body(withEffort: true), const Duration(seconds: 25));
+      if (res.statusCode == 400) {
+        res = await _post(body(withEffort: false), const Duration(seconds: 25));
+      }
       if (res.statusCode != 200) return null;
-      return _extractText(
-          jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
+      final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+      if (data['stop_reason'] == 'refusal') return null;
+      final t = _extractText(data);
+      return t.isEmpty ? null : t;
     } catch (_) {
       return null;
     }

@@ -1,7 +1,7 @@
 name: schraeglage
 description: Schraeglage - Telemetrie, Karte und Navigation fuers Motorrad
 publish_to: 'none'
-version: 4.1.0+9
+version: 4.2.0+10
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -24,8 +24,14 @@ dependencies:
   url_launcher: ^6.3.0
   path_provider: ^2.1.4
   http: ^1.2.2
+  # Teilen-Dialog fuer den GPX-Export (WhatsApp, Drive, Navi-App ...).
+  # Breiter Bereich, damit es auch mit einer aelteren Flutter-Version auf
+  # dem PC noch baut.
+  share_plus: '>=11.0.0 <14.0.0'
 
 dev_dependencies:
+  flutter_test:
+    sdk: flutter
   flutter_lints: ^4.0.0
 
 flutter:

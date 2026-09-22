@@ -4,14 +4,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/route_plan.dart';
 import '../services/ai_config.dart';
 import '../services/ai_planner.dart';
-import 'ai_connect_screen.dart';
+import '../services/geocoder.dart';
+import '../services/ride_store.dart';
 import '../services/route_planner.dart';
+import '../services/routing_engine.dart' show ValhallaEngine;
+import '../services/routing_settings.dart';
 import '../theme.dart';
+import 'ai_connect_screen.dart';
 
 /// Routenplanung: entweder per Reglern oder per Freitext an die KI.
 ///
 /// Beides landet im selben [RouteRequest] - die KI ist nur ein
-/// bequemerer Weg, die gleichen Parameter zu setzen.
+/// bequemerer Weg, die gleichen Regler zu setzen. Geplant wird immer
+/// aus dem, was auf dem Bildschirm steht. So sieht der Fahrer genau,
+/// was die KI verstanden hat.
 class RoutePlannerScreen extends StatefulWidget {
   const RoutePlannerScreen({super.key, this.startLat, this.startLon});
 
@@ -25,10 +31,18 @@ class RoutePlannerScreen extends StatefulWidget {
 class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
   double _distanceKm = 150;
   Curviness _curviness = Curviness.curvy;
+  TourDirection _direction = TourDirection.any;
   bool _roundTrip = true;
   bool _avoidMotorways = true;
+  bool _avoidUnpaved = true;
   bool _preferKnown = false;
   final Set<PoiKind> _stops = {};
+
+  /// Eigener Start statt GPS-Position (z. B. Tour am Urlaubsort planen).
+  Place? _start;
+  bool _pickStart = false;
+  Place? _dest;
+  Place? _via;
 
   final _aiCtrl = TextEditingController();
   bool _busy = false;
@@ -36,9 +50,12 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
   String? _aiReply;
 
   // Einstellungen
-  String _ghUrl = '';
-  String _ghKey = '';
+  RoutingSettings _routing = const RoutingSettings();
   AiConfig _ai = const AiConfig();
+  final _valhallaCtrl = TextEditingController();
+  final _ghUrlCtrl = TextEditingController();
+  final _ghKeyCtrl = TextEditingController();
+  RoutingService _serviceSel = RoutingService.valhalla;
 
   @override
   void initState() {
@@ -49,80 +66,146 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
   @override
   void dispose() {
     _aiCtrl.dispose();
+    _valhallaCtrl.dispose();
+    _ghUrlCtrl.dispose();
+    _ghKeyCtrl.dispose();
     super.dispose();
   }
 
+  // ------------------------------------------------------------------
+  // Einstellungen laden / speichern
+  // ------------------------------------------------------------------
   Future<void> _loadSettings() async {
     final sp = await SharedPreferences.getInstance();
     final ai = await AiConfig.load();
+    final routing = await RoutingSettings.load();
     if (!mounted) return;
     setState(() {
-      _ghUrl = sp.getString('gh_url') ?? '';
-      _ghKey = sp.getString('gh_key') ?? '';
       _ai = ai;
+      _routing = routing;
+      _serviceSel = routing.service;
+      _valhallaCtrl.text = routing.valhallaUrl;
+      _ghUrlCtrl.text = routing.ghUrl;
+      _ghKeyCtrl.text = routing.ghKey;
+      // Letzte eigene Vorgaben wieder herstellen.
+      _distanceKm = (sp.getDouble('plan_km') ?? 150).clamp(20, 600).toDouble();
+      _curviness = CurvinessX.parse(sp.getString('plan_curv') ?? 'curvy');
+      _avoidMotorways = sp.getBool('plan_no_motorway') ?? true;
+      _avoidUnpaved = sp.getBool('plan_no_unpaved') ?? true;
     });
   }
 
-  Future<void> _saveSettings() async {
+  Future<void> _rememberChoices() async {
     final sp = await SharedPreferences.getInstance();
-    await sp.setString('gh_url', _ghUrl);
-    await sp.setString('gh_key', _ghKey);
+    await sp.setDouble('plan_km', _distanceKm);
+    await sp.setString('plan_curv', _curviness.id);
+    await sp.setBool('plan_no_motorway', _avoidMotorways);
+    await sp.setBool('plan_no_unpaved', _avoidUnpaved);
   }
 
-  RoutePlanner _engine() {
-    if (_ghUrl.trim().isEmpty) return DemoLoopPlanner();
-    return GraphHopperPlanner(
-      baseUrl: _ghUrl.trim(),
-      apiKey: _ghKey.trim().isEmpty ? null : _ghKey.trim(),
+  Future<void> _saveRouting() async {
+    final r = _routing.copyWith(
+      service: _serviceSel,
+      valhallaUrl: _valhallaCtrl.text.trim(),
+      ghUrl: _ghUrlCtrl.text.trim(),
+      ghKey: _ghKeyCtrl.text.trim(),
     );
+    if (r.service == RoutingService.graphhopper && r.ghUrl.isEmpty) {
+      toast(context, 'Für GraphHopper fehlt die Server-Adresse');
+      return;
+    }
+    await r.save();
+    if (!mounted) return;
+    setState(() => _routing = r);
+    toast(context, 'Gespeichert');
   }
+
+  // ------------------------------------------------------------------
+  // Start
+  // ------------------------------------------------------------------
+  double? get _startLat => _start?.lat ?? widget.startLat;
+  double? get _startLon => _start?.lon ?? widget.startLon;
+  bool get _hasStart => _startLat != null && _startLon != null;
 
   RouteRequest _buildRequest() => RouteRequest(
-        startLat: widget.startLat ?? 51.1657,
-        startLon: widget.startLon ?? 10.4515,
+        startLat: _startLat!,
+        startLon: _startLon!,
         roundTrip: _roundTrip,
+        endLat: _roundTrip ? null : _dest?.lat,
+        endLon: _roundTrip ? null : _dest?.lon,
         distanceKm: _distanceKm,
         curviness: _curviness,
+        direction: _direction,
+        viaLat: _via?.lat,
+        viaLon: _via?.lon,
         avoidMotorways: _avoidMotorways,
+        avoidUnpaved: _avoidUnpaved,
         preferKnownGoodRoads: _preferKnown,
         stops: _stops.map((k) => StopWish(kind: k)).toList(),
+        destinationName: _dest?.name,
       );
 
   // ------------------------------------------------------------------
   // Planen
   // ------------------------------------------------------------------
-  Future<void> _plan(RouteRequest req, {String? aiText}) async {
+  Future<void> _plan({
+    String? aiText,
+    List<StopWish>? aiStops,
+    String? title,
+  }) async {
+    if (!_hasStart) {
+      setState(() => _status = 'Kein Standort bekannt. Bitte unten einen '
+          'Start suchen oder auf GPS warten.');
+      return;
+    }
+    if (!_roundTrip && _dest == null) {
+      setState(() => _status = 'Bitte ein Ziel suchen und auswählen - '
+          'oder auf RUNDTOUR umschalten.');
+      return;
+    }
+    if (!_routing.isUsable) {
+      setState(() => _status = 'Routing-Dienst unvollständig eingerichtet. '
+          'Unter EINSTELLUNGEN prüfen.');
+      return;
+    }
+
     setState(() {
       _busy = true;
       _status = 'Route wird berechnet ...';
     });
+    await _rememberChoices();
 
     try {
-      var plan = await _engine().plan(req);
+      var req = _buildRequest().copyWith(title: title);
+      // KI-Stopps behalten ihre Begruendung und Kilometerangabe.
+      if (aiStops != null) req = req.copyWith(stops: aiStops);
 
-      if (req.stops.isNotEmpty) {
-        if (!mounted) return;
-        setState(() => _status = 'Stopps werden gesucht ...');
-        plan = await StopResolver.attachStops(plan, req.stops);
+      Map<String, double>? heatmap;
+      if (_preferKnown) {
+        setState(() => _status = 'Eigene Fahrten werden ausgewertet ...');
+        heatmap = await RideStore.instance.buildLeanHeatmap();
       }
 
-      // Optional: Beschreibungstext von der KI, nur aus echten Fakten
+      final planner = TourPlanner(_routing.engine(), heatmap: heatmap);
+      var plan = await planner.plan(req, onProgress: (m) {
+        if (mounted) setState(() => _status = m);
+      });
+
+      if (_preferKnown && (heatmap == null || heatmap.isEmpty)) {
+        plan = plan.copyWith(notes: [
+          ...plan.notes,
+          'Noch keine eigenen Fahrten gespeichert - '
+              '"Bewährte Strecken" hatte keine Wirkung.',
+        ]);
+      }
+
+      // Optional: Beschreibungstext von der KI, nur aus echten Fakten.
       if (aiText != null && _ai.isConfigured) {
         if (!mounted) return;
         setState(() => _status = 'Beschreibung wird erstellt ...');
         final desc =
             await _ai.planner().describe(plan: plan, userText: aiText);
-        if (desc != null) {
-          plan = RoutePlan(
-            points: plan.points,
-            distanceM: plan.distanceM,
-            durationSec: plan.durationSec,
-            steps: plan.steps,
-            pois: plan.pois,
-            title: plan.title,
-            description: desc,
-          );
-        }
+        if (desc != null) plan = plan.copyWith(description: desc);
       }
 
       if (!mounted) return;
@@ -130,7 +213,9 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
     } on RouteException catch (e) {
       if (mounted) setState(() => _status = e.message);
     } catch (_) {
-      if (mounted) setState(() => _status = 'Route konnte nicht berechnet werden.');
+      if (mounted) {
+        setState(() => _status = 'Route konnte nicht berechnet werden.');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -149,12 +234,16 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
   Future<void> _planWithAi() async {
     final text = _aiCtrl.text.trim();
     if (text.isEmpty) return;
+    FocusScope.of(context).unfocus();
 
-    // Nicht verbunden? Dann direkt die Einrichtung oeffnen, statt den
-    // Nutzer in den Einstellungen suchen zu lassen.
     if (!_ai.isConfigured) {
       await _openConnect();
       if (!mounted || !_ai.isConfigured) return;
+    }
+    if (!_hasStart) {
+      setState(() => _status = 'Kein Standort bekannt. Bitte auf GPS warten '
+          'oder unten einen Start suchen.');
+      return;
     }
 
     setState(() {
@@ -164,28 +253,60 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
     });
 
     try {
-      final ai = _ai.planner();
-      final res = await ai.interpret(
-        userText: text,
-        startLat: widget.startLat ?? 51.1657,
-        startLon: widget.startLon ?? 10.4515,
-      );
+      final res = await _ai.planner().interpret(
+            userText: text,
+            startLat: _startLat!,
+            startLon: _startLon!,
+          );
+      final r = res.request;
 
-      // Regler mitziehen, damit sichtbar wird, was die KI verstanden hat
+      // Ortsnamen der KI in echten Kartendaten suchen.
+      Place? dest;
+      Place? via;
+      if (r.destinationName != null) {
+        setState(() => _status = 'Ziel "${r.destinationName}" wird gesucht ...');
+        final found = await Geocoder.search(r.destinationName!,
+            nearLat: _startLat, nearLon: _startLon, limit: 1);
+        if (found.isEmpty) {
+          if (mounted) {
+            setState(() => _status = 'Ziel "${r.destinationName}" nicht '
+                'gefunden. Bitte unten von Hand suchen.');
+          }
+          return;
+        }
+        dest = found.first;
+      }
+      if (r.towardsName != null) {
+        setState(() => _status = '"${r.towardsName}" wird gesucht ...');
+        final found = await Geocoder.search(r.towardsName!,
+            nearLat: _startLat, nearLon: _startLon, limit: 1);
+        if (found.isNotEmpty) via = found.first;
+      }
+
+      if (!mounted) return;
+      // Regler mitziehen, damit sichtbar wird, was die KI verstanden hat.
       setState(() {
-        _distanceKm = res.request.distanceKm.clamp(20, 600);
-        _curviness = res.request.curviness;
-        _roundTrip = res.request.roundTrip;
-        _avoidMotorways = res.request.avoidMotorways;
+        _distanceKm = r.distanceKm.clamp(20, 600).toDouble();
+        _curviness = r.curviness;
+        _roundTrip = r.roundTrip;
+        _direction = r.direction;
+        _avoidMotorways = r.avoidMotorways;
+        _avoidUnpaved = r.avoidUnpaved;
+        _preferKnown = r.preferKnownGoodRoads;
+        _dest = dest ?? (r.roundTrip ? null : _dest);
+        _via = via;
         _stops
           ..clear()
-          ..addAll(res.request.stops.map((s) => s.kind));
-        _aiReply = [res.reply, res.safetyNote]
-            .where((s) => s != null && s.isNotEmpty)
-            .join('\n');
+          ..addAll(r.stops.map((s) => s.kind));
+        _aiReply = [
+          res.reply,
+          res.safetyNote,
+          if (r.towardsName != null && via == null)
+            '"${r.towardsName}" wurde nicht gefunden - Richtung frei gewählt.',
+        ].whereType<String>().where((s) => s.isNotEmpty).join('\n');
       });
 
-      await _plan(res.request, aiText: text);
+      await _plan(aiText: text, aiStops: r.stops, title: r.title);
     } on AiException catch (e) {
       if (mounted) setState(() => _status = e.message);
     } finally {
@@ -203,46 +324,53 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
-          // Ohne Routing-Server kann die App keine Strassen kennen. Das muss
-          // man VOR dem Planen sehen, nicht erst an der Karte.
-          if (_ghUrl.trim().isEmpty) ...[
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: panel,
-                border: const Border(
-                    left: BorderSide(color: amber, width: 3)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('DEMO-MODUS – KEIN ROUTING-SERVER',
-                      style: TextStyle(
-                          fontSize: 10, letterSpacing: 1.5, color: amber)),
-                  const SizedBox(height: 5),
-                  const Text(
-                    'Ohne Routing-Server zeichnet die App nur eine Testschleife, '
-                    'die keinen echten Straßen folgt. Unter EINSTELLUNGEN einen '
-                    'Server eintragen, dann kommen echte Routen.',
-                    style: TextStyle(fontSize: 10.5, color: steel, height: 1.45),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-          ],
           _aiBox(),
           const SizedBox(height: 18),
           _sectionTitle('ODER SELBST EINSTELLEN'),
           const SizedBox(height: 10),
-          _distanceRow(),
+          _modeRow(),
+          const SizedBox(height: 12),
+          _startRow(),
+          const SizedBox(height: 14),
+          if (_roundTrip) ...[
+            _distanceRow(),
+            const SizedBox(height: 12),
+            _directionRow(),
+            const SizedBox(height: 14),
+            _PlaceField(
+              label: 'ÜBER (OPTIONAL)',
+              hint: 'Ort oder Gegend, z. B. Edersee',
+              value: _via,
+              nearLat: _startLat,
+              nearLon: _startLon,
+              onChanged: (p) => setState(() => _via = p),
+            ),
+          ] else ...[
+            _PlaceField(
+              label: 'ZIEL',
+              hint: 'Ort, Adresse oder Sehenswürdigkeit',
+              value: _dest,
+              nearLat: _startLat,
+              nearLon: _startLon,
+              onChanged: (p) => setState(() => _dest = p),
+            ),
+            const SizedBox(height: 10),
+            _PlaceField(
+              label: 'ÜBER (OPTIONAL)',
+              hint: 'Zwischenziel',
+              value: _via,
+              nearLat: _startLat,
+              nearLon: _startLon,
+              onChanged: (p) => setState(() => _via = p),
+            ),
+          ],
           const SizedBox(height: 14),
           _curvinessRow(),
-          const SizedBox(height: 14),
-          _switchRow('Rundtour (zurück zum Start)', _roundTrip,
-              (v) => setState(() => _roundTrip = v)),
+          const SizedBox(height: 10),
           _switchRow('Autobahnen meiden', _avoidMotorways,
               (v) => setState(() => _avoidMotorways = v)),
+          _switchRow('Schotter und Feldwege meiden', _avoidUnpaved,
+              (v) => setState(() => _avoidUnpaved = v)),
           _switchRow('Meine bewährten Strecken bevorzugen', _preferKnown,
               (v) => setState(() => _preferKnown = v)),
           const SizedBox(height: 14),
@@ -257,8 +385,21 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
                 color: panel,
                 border: Border.all(color: line),
               ),
-              child: Text(_status!,
-                  style: const TextStyle(fontSize: 11, color: amber)),
+              child: Row(children: [
+                if (_busy) ...[
+                  const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                        color: amber, strokeWidth: 1.5),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  child: Text(_status!,
+                      style: const TextStyle(fontSize: 11, color: amber)),
+                ),
+              ]),
             ),
             const SizedBox(height: 12),
           ],
@@ -268,10 +409,15 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
               label: _busy ? 'BITTE WARTEN ...' : 'ROUTE BERECHNEN',
               color: signal,
               strong: true,
-              onTap: _busy ? null : () => _plan(_buildRequest()),
+              onTap: _busy ? null : () => _plan(),
             ),
           ),
-          const SizedBox(height: 26),
+          const SizedBox(height: 8),
+          Text(
+            'Routing: ${_routing.engine().label}',
+            style: const TextStyle(fontSize: 9, color: steel),
+          ),
+          const SizedBox(height: 22),
           _settingsBox(),
         ],
       ),
@@ -282,6 +428,114 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
         s,
         style: const TextStyle(fontSize: 9.5, letterSpacing: 3, color: steel),
       );
+
+  Widget _chip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+    Color color = signal,
+    EdgeInsets padding =
+        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: padding,
+        decoration: BoxDecoration(
+          color: selected ? color.withValues(alpha: 0.14) : panel,
+          border: Border.all(color: selected ? color : line),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            letterSpacing: 1,
+            color: selected ? color : chalk,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _modeRow() {
+    return Row(children: [
+      Expanded(
+        child: _chip(
+          label: 'RUNDTOUR',
+          selected: _roundTrip,
+          onTap: () => setState(() => _roundTrip = true),
+        ),
+      ),
+      const SizedBox(width: 8),
+      Expanded(
+        child: _chip(
+          label: 'VON A NACH B',
+          selected: !_roundTrip,
+          onTap: () => setState(() => _roundTrip = false),
+        ),
+      ),
+    ]);
+  }
+
+  Widget _startRow() {
+    final gps = widget.startLat != null && widget.startLon != null;
+    if (gps && !_pickStart && _start == null) {
+      return Row(children: [
+        const Icon(Icons.my_location, size: 14, color: cool),
+        const SizedBox(width: 8),
+        const Expanded(
+          child: Text('Start: aktueller Standort',
+              style: TextStyle(fontSize: 11.5, color: chalk)),
+        ),
+        InkWell(
+          onTap: () => setState(() => _pickStart = true),
+          child: const Padding(
+            padding: EdgeInsets.all(4),
+            child: Text('ANDERER START',
+                style: TextStyle(fontSize: 9, letterSpacing: 1.5, color: steel)),
+          ),
+        ),
+      ]);
+    }
+    // Kein GPS oder bewusst anderer Start: suchen lassen.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!gps && _start == null)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: Text(
+              'Noch kein GPS-Standort. Start suchen oder kurz warten.',
+              style: TextStyle(fontSize: 10.5, color: amber),
+            ),
+          ),
+        _PlaceField(
+          label: 'START',
+          hint: 'Ort oder Adresse',
+          value: _start,
+          nearLat: widget.startLat,
+          nearLon: widget.startLon,
+          onChanged: (p) => setState(() => _start = p),
+        ),
+        if (gps)
+          Align(
+            alignment: Alignment.centerRight,
+            child: InkWell(
+              onTap: () => setState(() {
+                _start = null;
+                _pickStart = false;
+              }),
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Text('AKTUELLEN STANDORT NEHMEN',
+                    style: TextStyle(
+                        fontSize: 9, letterSpacing: 1.5, color: steel)),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 
   Widget _aiBox() {
     final ready = _ai.isConfigured;
@@ -310,25 +564,9 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
             maxLines: 3,
             minLines: 2,
             style: const TextStyle(fontSize: 12.5, color: chalk),
-            decoration: InputDecoration(
-              hintText: 'z. B. "Nachmittagsrunde, gut 180 km, viele Kurven, '
-                  'einmal tanken und eine Pause mit Aussicht"',
-              hintStyle: const TextStyle(fontSize: 11.5, color: steel),
-              filled: true,
-              fillColor: asphalt,
-              border: const OutlineInputBorder(
-                borderSide: BorderSide(color: line),
-                borderRadius: BorderRadius.zero,
-              ),
-              enabledBorder: const OutlineInputBorder(
-                borderSide: BorderSide(color: line),
-                borderRadius: BorderRadius.zero,
-              ),
-              focusedBorder: const OutlineInputBorder(
-                borderSide: BorderSide(color: signal),
-                borderRadius: BorderRadius.zero,
-              ),
-              contentPadding: const EdgeInsets.all(10),
+            decoration: _inputDecoration(
+              'z. B. "Nachmittagsrunde, gut 180 km, viele Kurven, über den '
+              'Edersee, einmal tanken und eine Pause mit Aussicht"',
             ),
           ),
           if (_aiReply != null && _aiReply!.isNotEmpty) ...[
@@ -355,8 +593,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
               Expanded(
                 child: Text(
                   ready ? 'KI: ${_ai.label}' : 'KI: nicht verbunden',
-                  style: TextStyle(
-                      fontSize: 9.5, color: ready ? cool : steel),
+                  style: TextStyle(fontSize: 9.5, color: ready ? cool : steel),
                 ),
               ),
               const Text('ÄNDERN',
@@ -406,6 +643,36 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
     );
   }
 
+  Widget _directionRow() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const TinyLabel('RICHTUNG'),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: TourDirection.values
+              .map((d) => _chip(
+                    label: d.label,
+                    selected: d == _direction,
+                    color: cool,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    onTap: () => setState(() => _direction = d),
+                  ))
+              .toList(),
+        ),
+        if (_via != null)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text('Mit einem "Über"-Ort bestimmt dieser die Richtung.',
+                style: TextStyle(fontSize: 9.5, color: steel)),
+          ),
+      ],
+    );
+  }
+
   Widget _curvinessRow() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -415,28 +682,13 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: Curviness.values.map((c) {
-            final sel = c == _curviness;
-            return GestureDetector(
-              onTap: () => setState(() => _curviness = c),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: sel ? signal.withValues(alpha: 0.14) : panel,
-                  border: Border.all(color: sel ? signal : line),
-                ),
-                child: Text(
-                  c.label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    letterSpacing: 1,
-                    color: sel ? signal : chalk,
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
+          children: Curviness.values
+              .map((c) => _chip(
+                    label: c.label,
+                    selected: c == _curviness,
+                    onTap: () => setState(() => _curviness = c),
+                  ))
+              .toList(),
         ),
       ],
     );
@@ -461,7 +713,11 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       runSpacing: 8,
       children: PoiKind.values.map((k) {
         final sel = _stops.contains(k);
-        return GestureDetector(
+        return _chip(
+          label: k.label,
+          selected: sel,
+          color: cool,
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
           onTap: () => setState(() {
             if (sel) {
               _stops.remove(k);
@@ -469,17 +725,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
               _stops.add(k);
             }
           }),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-            decoration: BoxDecoration(
-              color: sel ? cool.withValues(alpha: 0.14) : panel,
-              border: Border.all(color: sel ? cool : line),
-            ),
-            child: Text(
-              k.label,
-              style: TextStyle(fontSize: 10.5, color: sel ? cool : chalk),
-            ),
-          ),
         );
       }).toList(),
     );
@@ -494,19 +739,65 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       title: const Text('EINSTELLUNGEN',
           style: TextStyle(fontSize: 9.5, letterSpacing: 3, color: steel)),
       children: [
-        _field(
-          label: 'ROUTING-SERVER (leer = Demo-Modus)',
-          value: _ghUrl,
-          hint: 'https://graphhopper.com/api/1',
-          onChanged: (v) => _ghUrl = v,
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: TinyLabel('ROUTING-DIENST'),
         ),
-        _field(
-          label: 'ROUTING-SCHLÜSSEL',
-          value: _ghKey,
-          hint: 'nur bei offizieller API nötig',
-          obscure: true,
-          onChanged: (v) => _ghKey = v,
+        const SizedBox(height: 6),
+        Row(children: [
+          Expanded(
+            child: _chip(
+              label: 'VALHALLA',
+              selected: _serviceSel == RoutingService.valhalla,
+              onTap: () =>
+                  setState(() => _serviceSel = RoutingService.valhalla),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _chip(
+              label: 'GRAPHHOPPER',
+              selected: _serviceSel == RoutingService.graphhopper,
+              onTap: () =>
+                  setState(() => _serviceSel = RoutingService.graphhopper),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        if (_serviceSel == RoutingService.valhalla) ...[
+          const Text(
+            'Kostenlos und ohne Schlüssel, mit eigenem Motorrad-Profil. '
+            'Standard ist der öffentliche Server der FOSSGIS '
+            '(OpenStreetMap). Bitte fair nutzen.',
+            style: TextStyle(fontSize: 10, color: steel, height: 1.4),
+          ),
+          const SizedBox(height: 8),
+          _field(
+            label: 'EIGENER VALHALLA-SERVER (leer = öffentlich)',
+            controller: _valhallaCtrl,
+            hint: ValhallaEngine.publicUrl,
+          ),
+        ] else ...[
+          _field(
+            label: 'GRAPHHOPPER-ADRESSE',
+            controller: _ghUrlCtrl,
+            hint: 'https://graphhopper.com/api/1',
+          ),
+          _field(
+            label: 'GRAPHHOPPER-SCHLÜSSEL',
+            controller: _ghKeyCtrl,
+            hint: 'nur bei der offiziellen API nötig',
+            obscure: true,
+          ),
+        ],
+        SizedBox(
+          width: double.infinity,
+          child: FlatButton2(
+            label: 'ROUTING SPEICHERN',
+            onTap: _saveRouting,
+          ),
         ),
+        const SizedBox(height: 10),
         // Der KI-Zugang hat seinen eigenen Bildschirm - dort gibt es
         // auch einen echten Verbindungstest.
         SizedBox(
@@ -516,28 +807,13 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
             onTap: _openConnect,
           ),
         ),
-        const SizedBox(height: 10),
-        SizedBox(
-          width: double.infinity,
-          child: FlatButton2(
-            label: 'EINSTELLUNGEN SPEICHERN',
-            onTap: () async {
-              await _saveSettings();
-              if (mounted) {
-                setState(() {});
-                toast(context, 'Gespeichert');
-              }
-            },
-          ),
-        ),
       ],
     );
   }
 
   Widget _field({
     required String label,
-    required String value,
-    required ValueChanged<String> onChanged,
+    required TextEditingController controller,
     String? hint,
     bool obscure = false,
   }) {
@@ -548,34 +824,192 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
         children: [
           TinyLabel(label),
           const SizedBox(height: 4),
-          TextFormField(
-            initialValue: value,
+          TextField(
+            controller: controller,
             obscureText: obscure,
+            autocorrect: false,
             style: const TextStyle(fontSize: 12, color: chalk),
-            onChanged: onChanged,
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: const TextStyle(fontSize: 11, color: steel),
-              isDense: true,
-              filled: true,
-              fillColor: asphalt,
-              contentPadding: const EdgeInsets.all(10),
-              border: const OutlineInputBorder(
-                borderSide: BorderSide(color: line),
-                borderRadius: BorderRadius.zero,
-              ),
-              enabledBorder: const OutlineInputBorder(
-                borderSide: BorderSide(color: line),
-                borderRadius: BorderRadius.zero,
-              ),
-              focusedBorder: const OutlineInputBorder(
-                borderSide: BorderSide(color: signal),
-                borderRadius: BorderRadius.zero,
-              ),
-            ),
+            decoration: _inputDecoration(hint, dense: true),
           ),
         ],
       ),
+    );
+  }
+}
+
+InputDecoration _inputDecoration(String? hint, {bool dense = false}) =>
+    InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(fontSize: 11, color: steel),
+      isDense: dense,
+      filled: true,
+      fillColor: asphalt,
+      contentPadding: const EdgeInsets.all(10),
+      border: const OutlineInputBorder(
+        borderSide: BorderSide(color: line),
+        borderRadius: BorderRadius.zero,
+      ),
+      enabledBorder: const OutlineInputBorder(
+        borderSide: BorderSide(color: line),
+        borderRadius: BorderRadius.zero,
+      ),
+      focusedBorder: const OutlineInputBorder(
+        borderSide: BorderSide(color: signal),
+        borderRadius: BorderRadius.zero,
+      ),
+    );
+
+/// Ortssuche mit Ergebnisliste. Gesucht wird nur auf Knopfdruck.
+class _PlaceField extends StatefulWidget {
+  const _PlaceField({
+    required this.label,
+    required this.hint,
+    required this.value,
+    required this.onChanged,
+    this.nearLat,
+    this.nearLon,
+  });
+
+  final String label;
+  final String hint;
+  final Place? value;
+  final ValueChanged<Place?> onChanged;
+  final double? nearLat;
+  final double? nearLon;
+
+  @override
+  State<_PlaceField> createState() => _PlaceFieldState();
+}
+
+class _PlaceFieldState extends State<_PlaceField> {
+  final _ctrl = TextEditingController();
+  List<Place> _results = const [];
+  bool _busy = false;
+  String? _msg;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search() async {
+    final q = _ctrl.text.trim();
+    if (q.isEmpty) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _busy = true;
+      _msg = null;
+    });
+    final r = await Geocoder.search(q,
+        nearLat: widget.nearLat, nearLon: widget.nearLon);
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _results = r;
+      _msg = r.isEmpty ? 'Nichts gefunden (oder kein Internet).' : null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final v = widget.value;
+    if (v != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TinyLabel(widget.label),
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
+            decoration: BoxDecoration(
+              color: panel,
+              border: Border.all(color: cool),
+            ),
+            child: Row(children: [
+              const Icon(Icons.place, size: 15, color: cool),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(v.name,
+                        style: const TextStyle(fontSize: 12, color: chalk)),
+                    if (v.detail.isNotEmpty)
+                      Text(v.detail,
+                          style: const TextStyle(fontSize: 9.5, color: steel)),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, size: 16, color: steel),
+                onPressed: () => widget.onChanged(null),
+              ),
+            ]),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TinyLabel(widget.label),
+        const SizedBox(height: 4),
+        Row(children: [
+          Expanded(
+            child: TextField(
+              controller: _ctrl,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => _search(),
+              style: const TextStyle(fontSize: 12, color: chalk),
+              decoration: _inputDecoration(widget.hint, dense: true),
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 40,
+            child: FlatButton2(
+              label: _busy ? '...' : 'SUCHEN',
+              onTap: _busy ? null : _search,
+            ),
+          ),
+        ]),
+        if (_msg != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(_msg!,
+                style: const TextStyle(fontSize: 10, color: amber)),
+          ),
+        for (final p in _results)
+          InkWell(
+            onTap: () {
+              setState(() => _results = const []);
+              widget.onChanged(p);
+            },
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: const BoxDecoration(
+                border: Border(
+                  left: BorderSide(color: line),
+                  right: BorderSide(color: line),
+                  bottom: BorderSide(color: line),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(p.name,
+                      style: const TextStyle(fontSize: 11.5, color: chalk)),
+                  if (p.detail.isNotEmpty)
+                    Text(p.detail,
+                        style: const TextStyle(fontSize: 9.5, color: steel)),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
