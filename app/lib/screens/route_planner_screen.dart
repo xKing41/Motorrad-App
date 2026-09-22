@@ -309,6 +309,11 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       await _plan(aiText: text, aiStops: r.stops, title: r.title);
     } on AiException catch (e) {
       if (mounted) setState(() => _status = e.message);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _status = 'Die KI-Planung ist fehlgeschlagen. '
+            'Bitte erneut versuchen oder die Regler nutzen.');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

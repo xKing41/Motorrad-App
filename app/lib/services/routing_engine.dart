@@ -175,6 +175,10 @@ class ValhallaEngine implements RoutingEngine {
     return u;
   }
 
+  /// Server, die das Motorrad-Profil nicht anbieten - dort gleich mit
+  /// dem Auto-Profil fragen, statt jedes Mal erst einen Fehler zu holen.
+  static final Set<String> _noMotorcycle = {};
+
   @override
   Future<List<EngineRoute>> route(
     List<Waypoint> wps,
@@ -182,24 +186,33 @@ class ValhallaEngine implements RoutingEngine {
     int alternates = 0,
   }) async {
     if (wps.length < 2) throw RouteException('Zu wenige Wegpunkte.');
+    var costing = _noMotorcycle.contains(baseUrl) ? 'auto' : 'motorcycle';
     try {
-      return await _send(buildRequest(wps, prefs, alternates: alternates));
+      return await _send(buildRequest(wps, prefs,
+          alternates: alternates, costing: costing));
     } on ValhallaError catch (e) {
+      // Profil unbekannt (124/125): mit dem Auto-Profil weiter. Die
+      // Bewertung der Varianten sorgt trotzdem fuer Kurven.
+      if (costing == 'motorcycle' && (e.code == 124 || e.code == 125)) {
+        _noMotorcycle.add(baseUrl);
+        return route(wps, prefs, alternates: alternates);
+      }
       // Wegpunkt ohne passende Strasse oder kein Weg: nochmal ohne
       // Strassenklassen-Filter und mit erlaubtem Wenden versuchen.
       if (e.code == 170 || e.code == 171 || e.code == 442) {
         try {
           return await _send(buildRequest(wps, prefs,
-              alternates: alternates, relaxed: true));
+              alternates: alternates, relaxed: true, costing: costing));
         } on ValhallaError catch (e2) {
           throw RouteException(e2.userMessage);
         }
       }
       // Motorrad-Profil hat auf oeffentlichen Servern eine Laengengrenze.
-      if (e.code == 154) {
+      if (e.code == 154 && costing == 'motorcycle') {
+        costing = 'auto';
         try {
           return await _send(buildRequest(wps, prefs,
-              alternates: alternates, costing: 'auto'));
+              alternates: alternates, costing: costing));
         } on ValhallaError catch (e2) {
           throw RouteException(e2.userMessage);
         }

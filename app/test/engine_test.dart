@@ -161,6 +161,41 @@ void main() {
       expect(((bodies[1]['locations'] as List)[1] as Map)['type'], 'via');
     });
 
+    test('Server ohne Motorrad-Profil: weiter mit Auto-Profil', () async {
+      final costings = <String>[];
+      final client = MockClient((req) async {
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        costings.add(body['costing'] as String);
+        if (body['costing'] == 'motorcycle') {
+          return http.Response(
+              jsonEncode({'error_code': 125, 'error': 'No costing method found'}),
+              400);
+        }
+        return http.Response(
+            jsonEncode({
+              'trip': {
+                'legs': [
+                  {'shape': encodePolyline(const [a, c]), 'maneuvers': []},
+                ],
+                'summary': {'length': 20.0, 'time': 1200},
+              },
+            }),
+            200);
+      });
+      final engine = ValhallaEngine(
+          baseUrl: 'https://ohne-motorrad.example',
+          client: client,
+          minInterval: Duration.zero);
+      const wps = [
+        Waypoint(a, WaypointKind.endpoint),
+        Waypoint(c, WaypointKind.endpoint),
+      ];
+      await engine.route(wps, const RoutingPrefs());
+      await engine.route(wps, const RoutingPrefs());
+      // Beim zweiten Mal gleich mit dem Auto-Profil.
+      expect(costings, ['motorcycle', 'auto', 'auto']);
+    });
+
     test('Server ueberlastet: verstaendliche Meldung', () async {
       final engine = ValhallaEngine(
           client: MockClient((_) async => http.Response('busy', 429)),

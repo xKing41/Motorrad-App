@@ -212,7 +212,14 @@ $routeRequestSchema
           _errorFor(res.statusCode, utf8.decode(res.bodyBytes)));
     }
 
-    final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    final Map<String, dynamic> data;
+    try {
+      data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    } catch (_) {
+      // Etwa ein eigener Server, der etwas anderes als die Claude-Antwort
+      // zurueckgibt.
+      throw AiException('Antwort der KI war nicht verwertbar.');
+    }
     if (data['stop_reason'] == 'refusal') {
       throw AiException('Die KI hat diesen Wunsch abgelehnt. '
           'Bitte die Tour anders beschreiben.');
