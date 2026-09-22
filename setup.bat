@@ -1,13 +1,13 @@
 @echo off
 setlocal EnableExtensions
-title Schraeglage - Automatische Einrichtung und APK-Build (v4.1)
+title Schraeglage - Automatische Einrichtung und APK-Build (v4.2)
 
 REM ================================================================
-REM  SCHRAEGLAGE  -  Ein-Klick-Setup fuer Windows  (v2.1)
+REM  SCHRAEGLAGE  -  Ein-Klick-Setup fuer Windows  (v4.2)
 REM  Laedt alles Noetige (Git, Java, Flutter, Android-Tools),
 REM  baut die App und legt die fertige APK auf den Desktop.
-REM  v2.1: Repariert den Gradle-Fehler (BOM in build.gradle.kts),
-REM        erzeugt den Android-Ordner bei jedem Lauf frisch neu.
+REM  Erzeugt den Android-Ordner bei jedem Lauf frisch neu und ersetzt
+REM  den Code-Ordner lib komplett (keine Reste alter Versionen).
 REM ================================================================
 
 set "BASE=C:\dev"
@@ -17,7 +17,7 @@ set "SRC=%~dp0app"
 set "PS=powershell -NoProfile -ExecutionPolicy Bypass -Command"
 
 echo ==============================================================
-echo    SCHRAEGLAGE  -  Automatische Einrichtung + APK-Build v3.1
+echo    SCHRAEGLAGE  -  Automatische Einrichtung + APK-Build v4.2
 echo ==============================================================
 echo.
 echo  Beim ersten Lauf werden ca. 1-2 GB heruntergeladen.
@@ -136,6 +136,10 @@ rmdir /s /q "%PROJ%\android" 2>nul
 call flutter create . --platforms=android --project-name schraeglage >nul
 if errorlevel 1 goto :build_fail
 copy /Y "%SRC%\pubspec.yaml" "%PROJ%\pubspec.yaml" >nul
+REM lib vorher komplett loeschen: xcopy ueberschreibt nur, es entfernt
+REM nichts. Eine in der neuen Version geloeschte oder umbenannte Datei
+REM bliebe sonst liegen, wuerde mitgebaut und kann den Build brechen.
+if exist "%PROJ%\lib" rmdir /s /q "%PROJ%\lib"
 xcopy /Y /E /I "%SRC%\lib" "%PROJ%\lib" >nul
 if exist "%SRC%\android" xcopy /Y /E /I "%SRC%\android" "%PROJ%\android" >nul
 REM minSdk auf 24 setzen - OHNE BOM schreiben (WriteAllText = UTF-8 ohne BOM).

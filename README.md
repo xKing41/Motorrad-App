@@ -20,9 +20,21 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
 - Nullpunkt-Kalibrierung: Das Handy darf beliebig schräg montiert sein
 - Wetterstreifen mit Regen-, Frost- und Kaltreifenwarnung
 
-**Karte**
+**Karte und Routenplanung**
 - OpenStreetMap, Live-Spur nach Schräglage eingefärbt
-- Routenplanung mit Kurvigkeit, Zwischenstopps, GPX-Import und -Export
+- Echte Motorrad-Routen ohne Schlüssel und ohne Konto (Valhalla auf dem
+  Server der FOSSGIS, mit eigenem Motorrad-Profil)
+- **Rundtouren**, die an deinem Standort beginnen und enden – mit
+  Wunschlänge, Himmelsrichtung und optional „über“ einen Ort
+- **Von A nach B** mit Zielsuche und kurvigen Umwegen
+- Mehrere Varianten zur Auswahl, bewertet nach Kurvigkeit, Länge und
+  doppelt gefahrenen Abschnitten; Sackgassen-Stiche werden
+  herausgeschnitten
+- Zwischenstopps (Tanken, Aussicht, Einkehr …) werden als echte Wegpunkte
+  in die Route eingebaut
+- „Bewährte Strecken bevorzugen“: Varianten auf Straßen, die du schon
+  gefahren bist, werden bevorzugt
+- GPX-Import und -Export (Export über den Teilen-Dialog des Handys)
 - Optionale KI-Unterstützung: Sie übersetzt nur deinen Wunsch in Vorgaben
   und beschreibt das Ergebnis. Wege und Orte kommen **immer** aus echten
   Kartendaten – erfundene Ziele sind damit ausgeschlossen
@@ -57,9 +69,16 @@ installierten Flutter-Version und passen zur jeweiligen Toolchain.
 
 ### Ohne PC: in der Cloud
 
-`.github/workflows/build-apk.yml` baut die APK bei jedem Push. Abholen unter
-**Actions → letzter Lauf → Artifacts → Schraeglage-APK**. Von Hand starten
-über **Run workflow**. Damit reicht ein Handy mit Browser.
+`.github/workflows/build-apk.yml` prüft den Code (Analyzer und Tests) und
+baut die APK bei jedem Push auf `main`, `master` und `claude/…`-Zweige.
+Abholen unter **Actions → letzter Lauf → Artifacts → Schraeglage-APK**.
+Von Hand starten über **Run workflow**. Damit reicht ein Handy mit Browser.
+
+Alle Cloud-Builds sind mit demselben Schlüssel signiert
+(`app/android/ci-signing.jks`), damit sich jede neue APK als Update über
+die alte installieren lässt. Eine am PC gebaute APK hat eine andere
+Signatur – beim Wechsel zwischen PC- und Cloud-Build muss die App einmal
+deinstalliert werden (dabei gehen die gespeicherten Fahrten verloren).
 
 Einzelheiten in [OHNE-PC-BAUEN.txt](OHNE-PC-BAUEN.txt).
 
@@ -97,6 +116,18 @@ muss zusätzlich hinterlegt werden:
 <string>Für Tacho und präzise Schräglagenmessung wird der Standort benötigt.</string>
 ```
 
+### Tests
+
+```
+cd proj        # das von build.sh erzeugte Projekt
+flutter analyze
+flutter test
+```
+
+Die Tests prüfen die Streckenlogik ohne Netz: Kurvigkeit, Sackgassen,
+Rundtour-Form, Längenkorrektur, Stoppauswahl, Valhalla-Anfragen und
+-Antworten, GPX, Folgen-Modus. In der Cloud laufen sie vor jedem Build.
+
 ---
 
 ## Aufbau
@@ -106,19 +137,30 @@ app/lib/
   main.dart                     App-Hülle, Tabs, Sturzalarm
   theme.dart                    Farben und gemeinsame Bausteine
   models/ride.dart              Datenmodell, Kurvenerkennung
+  models/route_plan.dart        Routenanfrage, Route, Orte, KI-Schema
   services/
     telemetry.dart              Sensorfusion, GPS, Aufzeichnung
     crash_detector.dart         Sturzerkennung
     emergency.dart              Notfalldaten und Notruf
     weather_service.dart        Wetter und Regenwarnung
     ride_analysis.dart          Histogramm, Kammscher Kreis, Bewertung
-    route_planner.dart          Routing über GraphHopper
+    route_planner.dart          Tourenplaner: Rundtour, A→B, Varianten,
+                                Bewertung, Zwischenstopps
+    routing_engine.dart         Valhalla (Standard) und GraphHopper
+    routing_settings.dart       gespeicherte Routing-Einstellungen
+    geo.dart                    Geometrie: Kurvigkeit, Doppelstrecken,
+                                Sackgassen, Projektion auf die Route
+    geocoder.dart               Ortssuche (Photon, Nominatim)
+    poi_service.dart            Orte aus OpenStreetMap (Overpass)
+    route_follow.dart           Folgen-Modus: Position auf der Route
+    gpx_service.dart            GPX lesen, schreiben, teilen
     ride_store.dart             Fahrten dateibasiert ablegen
     ai_planner.dart             Anbindung an die Claude-API
     ai_config.dart              Zugangsdaten für die KI
-  screens/                      Cockpit, Karte, Fahrten, Auswertung, Notfall
+  screens/                      Cockpit, Karte, Planer, Fahrten, Notfall
   widgets/                      Anzeige, Diagramme, Quellenangabe
-app/android/                    Manifest und Gradle-Korrekturen
+app/test/                       Unit-Tests (Geometrie, Planer, GPX …)
+app/android/                    Manifest, Gradle-Korrektur, Cloud-Schlüssel
 tools/check_dart.py             Strukturprüfung aller Dart-Dateien
 ```
 
@@ -130,16 +172,27 @@ tools/check_dart.py             Strukturprüfung aller Dart-Dateien
 |---|---|---|
 | Karte | OpenStreetMap | nein |
 | Wetter | Open-Meteo | nein |
+| Routing | Valhalla (FOSSGIS) | nein |
+| Routing, alternativ | GraphHopper | ja, optional |
+| Ortssuche | Photon (komoot), Nominatim | nein |
 | Zwischenstopps | Overpass | nein |
-| Routing | GraphHopper | ja, kostenlos |
 | KI-Planung | Claude-API | ja, optional |
 
-**Im Code steckt kein Schlüssel.** Alle Zugangsdaten werden in der App
-eingegeben und bleiben auf dem Gerät. Deshalb ist es unbedenklich, dieses
-Repository öffentlich zu stellen.
+**Im Code steckt kein API-Schlüssel.** Alle Zugangsdaten werden in der App
+eingegeben und bleiben auf dem Gerät.
 
-Ohne Routing-Server arbeitet die Planung im Demo-Modus und zeichnet nur eine
-Testschleife, die keinen echten Straßen folgt. Die App weist darauf hin.
+Einzige Ausnahme ist der Signaturschlüssel für die Cloud-Builds
+(`app/android/ci-signing.jks`). Solange das Repository privat ist, ist das
+unkritisch. Bei einem **öffentlichen** Repository könnte jemand damit eine
+APK bauen, die sich als Update über deine App installieren lässt. Dann
+entweder privat lassen oder den Schlüssel durch einen eigenen ersetzen.
+
+Den Demo-Modus mit der gemalten Testschleife gibt es nicht mehr: Die App
+plant ohne jede Einrichtung echte Routen über den öffentlichen
+Valhalla-Server der FOSSGIS e. V. Der ist ein kostenloses Angebot für alle –
+die App stellt deshalb höchstens eine Anfrage je Sekunde. Wer die App an
+viele Leute weitergibt, braucht einen eigenen Valhalla-Server (Adresse in
+der App unter **PLANEN → EINSTELLUNGEN**).
 
 ---
 
@@ -147,6 +200,8 @@ Testschleife, die keinen echten Straßen folgt. Die App weist darauf hin.
 
 - Kartendaten: © OpenStreetMap-Mitwirkende, ODbL. Die Angabe erscheint auf
   beiden Kartenansichten – sie ist Pflicht und darf nicht entfernt werden.
+- Routing: Valhalla auf dem Server der FOSSGIS e. V., Daten aus
+  OpenStreetMap. Ortssuche über Photon (komoot) und Nominatim.
 - Kartenkacheln über `tile.openstreetmap.org`. Deren Nutzungsrichtlinie ist
   auf geringe Lasten ausgelegt. Für den Eigengebrauch passt das; bei vielen
   Nutzern gehört ein eigener Kachelserver her.

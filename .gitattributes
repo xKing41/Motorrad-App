@@ -1,0 +1,4 @@
+# Windows-Skripte brauchen CRLF-Zeilenenden - unveraendert speichern.
+*.bat -text
+# Shell-Skripte brauchen LF, sonst bricht bash mit "\r: command not found" ab.
+*.sh text eol=lf

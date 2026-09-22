@@ -16,6 +16,8 @@ build/
 # --- Android ---
 *.jks
 *.keystore
+# Ausnahme: fester Schluessel fuer die Cloud-Builds (siehe OHNE-PC-BAUEN.txt)
+!app/android/ci-signing.jks
 key.properties
 local.properties
 .gradle/

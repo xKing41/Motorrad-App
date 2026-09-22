@@ -10,9 +10,16 @@ name: APK bauen
 on:
   # Von Hand startbar (auch vom Handy aus, im Reiter "Actions").
   workflow_dispatch:
-  # Und automatisch bei jeder Aenderung am Code.
+  # Und automatisch bei jeder Aenderung am Code - auch auf Arbeitszweigen,
+  # damit man eine Aenderung testen kann, bevor sie nach main kommt.
   push:
-    branches: [main, master]
+    branches: [main, master, 'claude/**']
+
+# Kommt ein neuer Push, waehrend noch gebaut wird: alten Lauf abbrechen.
+# Spart Bauminuten.
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   apk:
@@ -49,6 +56,9 @@ jobs:
           rm -rf proj/lib
           cp -r app/lib proj/lib
           cp -r app/android/. proj/android/
+          # Eigene Tests statt der Beispiel-Tests aus der Vorlage
+          rm -rf proj/test
+          if [ -d app/test ]; then cp -r app/test proj/test; fi
 
           # minSdk 24 - wird von geolocator verlangt
           for f in proj/android/app/build.gradle.kts proj/android/app/build.gradle; do
@@ -62,6 +72,22 @@ jobs:
             cat proj/android/compilesdk-fix.txt >> proj/android/build.gradle.kts
           fi
 
+          # Fester Signaturschluessel fuer alle Cloud-Builds.
+          # Ohne ihn erzeugt JEDER Lauf einen neuen Schluessel - die neue
+          # APK liesse sich dann nicht ueber die alte installieren, man
+          # muesste deinstallieren und verloere alle Fahrten.
+          KS="$GITHUB_WORKSPACE/proj/android/ci-signing.jks"
+          if [ -f "$KS" ]; then
+            {
+              echo ""
+              echo "android.injected.signing.store.file=$KS"
+              echo "android.injected.signing.store.type=pkcs12"
+              echo "android.injected.signing.store.password=schraeglage"
+              echo "android.injected.signing.key.alias=schraeglage"
+              echo "android.injected.signing.key.password=schraeglage"
+            } >> proj/android/gradle.properties
+          fi
+
           echo "--- android/app/build.gradle.kts (Auszug) ---"
           grep -n "compileSdk\|minSdk" proj/android/app/build.gradle.kts || true
 
@@ -69,9 +95,26 @@ jobs:
         working-directory: proj
         run: flutter pub get
 
+      # Findet Fehler, bevor der lange APK-Bau startet. Nur echte Fehler
+      # brechen ab, Stil-Hinweise nicht.
+      - name: Code pruefen
+        working-directory: proj
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Tests
+        working-directory: proj
+        run: flutter test
+
       - name: APK bauen
         working-directory: proj
         run: flutter build apk --release
+
+      - name: Signatur anzeigen
+        run: |
+          APK=proj/build/app/outputs/flutter-apk/app-release.apk
+          SIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
+          "$SIGNER" verify --print-certs "$APK" | grep -i "SHA-256" || true
+          echo "Erwartet (fester Schluessel): e513fa43b826d686123371aa1ddec96cc73d11d611054c45e0da10857a59b572"
 
       - name: APK bereitstellen
         uses: actions/upload-artifact@v4

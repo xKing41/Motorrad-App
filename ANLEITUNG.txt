@@ -14,6 +14,30 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.2 - Routenplanung neu
+-------------------------------
+
+- Echte Routen OHNE Schluessel und ohne Einrichtung: Die App rechnet
+  ueber den kostenlosen Valhalla-Server von OpenStreetMap/FOSSGIS, mit
+  Motorrad-Profil. Der alte Demo-Modus (gemalte Schleife um den
+  Standort, die keiner Strasse folgt) ist weg.
+- Rundtouren beginnen und enden an deinem Standort. Laenge,
+  Himmelsrichtung und "Ueber"-Ort sind waehlbar.
+- Mehrere Varianten: auf der Karte oben rechts VARIANTE antippen.
+  Das i-Symbol zeigt Laenge, Fahrzeit, Kurvigkeit und Stopps.
+- Kurvige Varianten werden bevorzugt, Sackgassen-Stiche und doppelt
+  gefahrene Abschnitte vermieden, die Laenge wird nachgeregelt.
+- Von A nach B mit Zielsuche.
+- Tankstelle, Aussicht usw. werden als echte Wegpunkte eingebaut.
+- GPX-Export ueber den Teilen-Dialog (WhatsApp, Drive, Navi-App).
+- Viele Fehler behoben, u. a.: Strecke wurde teils zu lang gezaehlt,
+  Fahrt loeschen ohne Rueckfrage, Test-SMS sah wie ein echter Notfall
+  aus, "abseits der Route" mitten auf langen Geraden, Version 4.1 liess
+  sich wegen eines fehlenden Imports gar nicht bauen.
+
+Die Planung braucht Internet. Eine Rundtour dauert etwa 10-20 Sekunden,
+weil der kostenlose Server hoechstens eine Anfrage je Sekunde bekommt.
+
 VERSION 4.0 - drei neue Bereiche
 --------------------------------
 
@@ -40,10 +64,6 @@ NEU in Version 3.5: Der Neigungsmesser laeuft jetzt fluessig.
 Er wurde vorher nur 10-mal je Sekunde aktualisiert - jetzt folgt er
 dem Sensor direkt (etwa 50-mal je Sekunde).
 
-NEU in Version 3.4: Der Demo-Modus ist jetzt klar gekennzeichnet
-(ohne Routing-Server folgt die Linie keinen echten Strassen), und
-der Schalter "Autobahnen meiden" wirkt jetzt wirklich.
-
 NEU in Version 3.3: Die KI-Anbindung funktioniert jetzt wirklich.
 Im Tab KARTE -> PLANEN auf "KI VERBINDEN" tippen, dort einmal
 den Schluessel einsetzen und VERBINDUNG TESTEN druecken. Danach
@@ -54,8 +74,7 @@ NEU in Version 3.2: Gradle-Fehler behoben
 
 NEU in Version 3.1: Karte, GPX-Import, Follow-Modus, Routenplanung
 und Zwischenstopps (Tankstellen, Fotospots, Rastplätze).
-Die KI-Routenplanung ist vorbereitet - wie du sie zum Testen
-anschaltest, steht in KI-ANBINDUNG.md.
+Wie du die KI-Routenplanung anschaltest, steht in KI-ANBINDUNG.md.
 
 GPX-Routen lädst du über KARTE -> GPX: Datei öffnen, Inhalt
 kopieren, im Dialog einfügen.

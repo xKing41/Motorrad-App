@@ -5,20 +5,27 @@ Dazwischen liegt immer echte Technik.
 
 ```
    Freitext des Fahrers
-   "180 km, viele Kurven, einmal tanken, Pause mit Aussicht"
+   "180 km über den Edersee, viele Kurven, einmal tanken"
         │
         ▼
    AiRoutePlanner.interpret()      ← Claude, liefert nur JSON
+        │                            (per Structured Outputs erzwungen)
+        ▼
+   RouteRequest  { distance_km: 180, curviness: "curvy",
+                   towards: "Edersee", stops: [{kind: "fuel"}] }
         │
         ▼
-   RouteRequest  { distance_km: 180, curviness: "curvy", stops: [...] }
+   Geocoder.search("Edersee")      ← Ortsname → Koordinaten aus OSM
         │
         ▼
-   GraphHopperPlanner.plan()       ← echte Straßen aus OpenStreetMap
+   Regler auf dem Bildschirm       ← zeigen, was die KI verstanden hat
         │
         ▼
-   StopResolver.attachStops()      ← echte Orte aus Overpass/OSM
-        │
+   TourPlanner.plan()              ← echte Straßen (Valhalla, Motorrad-
+        │                            Profil), mehrere Varianten, bewertet
+        ▼
+   TourPlanner.chooseStops()       ← echte Orte aus Overpass/OSM, als
+        │                            Wegpunkte in die Route eingebaut
         ▼
    AiRoutePlanner.describe()       ← Claude, nur mit verifizierten Fakten
         │
@@ -40,13 +47,21 @@ ist eine erfundene Tankstelle ein Problem. Deshalb gilt in diesem Code:
 Das Modell benennt nur die *Art* des Stopps (`fuel`, `viewpoint`, `food` …).
 Den konkreten Ort sucht danach `PoiService` in OpenStreetMap.
 
+Ortsnamen darf das Modell weitergeben, aber nur, wenn der Fahrer sie selbst
+nennt: `destination` (Tour endet dort) und `towards` (Rundtour führt darüber
+oder in diese Richtung). Die Koordinaten dazu sucht `Geocoder` in echten
+Kartendaten. Findet er den Ort nicht, sagt die App das, statt zu raten.
+Koordinaten, die das Modell trotzdem schickt, werden verworfen.
+
 ## Die beteiligten Dateien
 
 | Datei | Aufgabe |
 |---|---|
-| `models/route_plan.dart` | `RouteRequest`, `StopWish`, `Poi`, `RoutePlan` + JSON-Schema |
-| `services/ai_planner.dart` | Claude-Aufruf, System-Prompt, JSON-Auswertung |
-| `services/route_planner.dart` | Routing-Engine (GraphHopper) + Demo-Planer |
+| `models/route_plan.dart` | `RouteRequest`, `StopWish`, `Poi`, `RoutePlan`, lesbares Schema |
+| `services/ai_planner.dart` | Claude-Aufruf, System-Prompt, erzwungenes JSON-Schema |
+| `services/geocoder.dart` | Ortsnamen → Koordinaten (Photon, Nominatim) |
+| `services/route_planner.dart` | `TourPlanner`: Rundtour, A→B, Varianten, Bewertung, Stopps |
+| `services/routing_engine.dart` | Valhalla (Standard) und GraphHopper |
 | `services/poi_service.dart` | echte Orte aus OpenStreetMap (Overpass) |
 | `screens/route_planner_screen.dart` | Oberfläche: Regler **und** KI-Feld |
 
@@ -57,13 +72,10 @@ komplett ohne KI.
 ## Testen (Testphase)
 
 1. App starten → Tab **KARTE** → **PLANEN**
-2. Ganz unten **EINSTELLUNGEN** aufklappen
-3. Eintragen:
-   - *Routing-Server*: `https://graphhopper.com/api/1` + Schlüssel,
-     oder leer lassen für den Demo-Modus
-   - *KI-Schlüssel*: dein Claude-Key (`sk-ant-...`)
-4. **EINSTELLUNGEN SPEICHERN**
-5. Oben die Tour in eigenen Worten beschreiben → **MIT KI PLANEN**
+2. **KI VERBINDEN** antippen, Claude-Schlüssel (`sk-ant-...`) einsetzen,
+   **VERBINDUNG TESTEN**, speichern. Ein Routing-Schlüssel ist nicht nötig –
+   geroutet wird über den kostenlosen Valhalla-Server.
+3. Oben die Tour in eigenen Worten beschreiben → **MIT KI PLANEN**
 
 Was du dann siehst: Die Regler springen auf das, was die KI verstanden hat.
 Das ist Absicht – so bleibt nachvollziehbar, was passiert, statt dass eine
@@ -99,18 +111,23 @@ dauerhaft. Genau daran sind Motorrad-Apps schon gescheitert.
 
 Praktische Konsequenzen:
 - `describe()` ist optional und wird übersprungen, wenn kein Schlüssel gesetzt ist
-- `max_tokens` bewusst klein gehalten (800 bzw. 300)
+- `effort: "low"` für beide Aufrufe (bei Haiku entfällt der Wert, Haiku kennt
+  ihn nicht) – die Aufgaben sind einfach, langes Nachdenken kostet nur
+- `max_tokens` 2048 bzw. 1024: Sonnet 5 denkt standardmäßig kurz nach, und
+  das zählt mit. Mit den alten 1200 bzw. 500 konnte die Antwort
+  abgeschnitten werden – dann kam „Antwort nicht verwertbar“
 - Später sinnvoll: Ergebnisse zwischenspeichern, Anfragen pro Tag begrenzen
 
 ## Was als Nächstes drankommt
 
 - **Rückfragen-Dialog**: mehrere Runden statt einer Anfrage
   (`interpret()` nimmt bereits einen `history`-Parameter entgegen)
-- **`prefer_known_good_roads` scharf schalten**: `RideStore.buildLeanHeatmap()`
-  liefert schon die eigenen Strecken, `RouteScorer` bewertet Routen dagegen.
-  Fehlt noch: diese Bereiche als bevorzugte Zonen an GraphHopper übergeben.
-  Das ist das Feature, das sonst niemand hat – Routen, die deine eigenen
-  Fahrdaten kennen.
+- **`prefer_known_good_roads` ausbauen**: Ist jetzt aktiv –
+  `RideStore.buildLeanHeatmap()` liefert die eigenen Strecken, und
+  `RouteScoring` gibt Varianten darauf einen Bonus. Nächster Schritt:
+  gezielt Hilfspunkte auf Lieblingsstrecken legen, statt nur unter den
+  Varianten auszuwählen. Das ist das Feature, das sonst niemand hat –
+  Routen, die deine eigenen Fahrdaten kennen.
 - **Eigene Fotospots**: Nutzer markieren Stellen, `Poi.source = 'user'` ist
   dafür schon vorgesehen. Je mehr Spots die Community sammelt, desto
   schwerer kopierbar wird die App.

@@ -43,6 +43,22 @@ APK holen:
  3. Unten unter "Artifacts" liegt "Schraeglage-APK" - herunterladen.
  4. ZIP am Handy entpacken, app-release.apk antippen, installieren.
 
+Vor dem Bauen prueft der Lauf den Code (Analyzer) und fuehrt die Tests
+aus. Ist dort etwas rot, gibt es keine APK - der Fehler steht im Lauf.
+
+Gebaut wird bei Aenderungen auf main/master und auf Zweigen, die mit
+"claude/" beginnen - so laesst sich eine Aenderung testen, bevor sie
+nach main kommt.
+
+WICHTIG - Signatur und Updates:
+Alle Cloud-Builds sind mit demselben festen Schluessel signiert
+(app/android/ci-signing.jks). Dadurch installiert sich jede neue APK
+als Update ueber die alte, die Fahrten bleiben erhalten.
+Eine am PC (setup.bat) gebaute APK hat einen anderen Schluessel. Wer
+von PC-Build auf Cloud-Build wechselt (oder umgekehrt), muss die App
+EINMAL deinstallieren - dabei gehen die gespeicherten Fahrten verloren.
+Am besten bei einem Weg bleiben.
+
 Von Hand starten (ohne Codeaenderung): Actions -> "APK bauen" ->
 "Run workflow".
 
@@ -51,8 +67,11 @@ Code fuer alle lesbar, das Bauen ist unbegrenzt frei. Bei einem
 privaten Repository bleibt der Code privat, und es gibt 2000
 Bauminuten je Monat gratis - bei rund 8 Minuten je Build reichlich.
 Wichtig: Im Code steckt KEIN API-Schluessel. Der KI-Schluessel wird
-erst in der App eingegeben und liegt nur auf dem Geraet. Es ist also
-nichts Geheimes im Repository.
+erst in der App eingegeben und liegt nur auf dem Geraet.
+Einzige Ausnahme ist der Signaturschluessel fuer die Cloud-Builds. Bei
+einem OEFFENTLICHEN Repository koennte jemand damit eine APK bauen, die
+sich als Update ueber deine App installiert - deshalb das Repository
+lieber privat lassen.
 
 
 WEG 2: Direkt am Handy bauen  (aufwendig)
