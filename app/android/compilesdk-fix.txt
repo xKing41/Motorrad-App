@@ -1,0 +1,51 @@
+
+// ---------------------------------------------------------------------
+// Schraeglage: erzwingt compileSdk 36 fuer alle Plugin-Module.
+//
+// Hintergrund: Einzelne Flutter-Plugins geben in ihrer eigenen
+// Gradle-Datei noch aeltere Android-Versionen an. Sobald ein anderes
+// Plugin mindestens 36 verlangt, bricht der gesamte Build ab
+// ("An issue was found when checking AAR metadata").
+//
+// WICHTIG (v3.2): Weiter oben steht in der Flutter-Vorlage die Zeile
+//     subprojects { project.evaluationDependsOn(":app") }
+// Dadurch ist das Modul ":app" an dieser Stelle schon fertig
+// ausgewertet. Ein afterEvaluate darauf wirft:
+//     "Cannot run Project.afterEvaluate(Action) when the project is
+//      already evaluated."
+// Deshalb wird afterEvaluate nur noch fuer Module registriert, die
+// noch nicht ausgewertet sind. ":app" braucht es gar nicht - dessen
+// compileSdk wird bereits direkt in app/build.gradle.kts auf 36
+// gesetzt. Zusaetzlich faengt ein try/catch alles ab, damit dieser
+// Block den Build unter keinen Umstaenden zum Absturz bringen kann.
+//
+// Der Wert wird per Reflection gesetzt, damit es sowohl mit der
+// aelteren als auch mit der neuen AGP-DSL funktioniert.
+// ---------------------------------------------------------------------
+subprojects {
+    if (!state.executed) {
+        afterEvaluate {
+            try {
+                val androidExt = extensions.findByName("android")
+                if (androidExt != null) {
+                    var applied = false
+                    try {
+                        androidExt.javaClass
+                            .getMethod("setCompileSdk", java.lang.Integer::class.java)
+                            .invoke(androidExt, 36)
+                        applied = true
+                    } catch (e: Exception) {
+                        applied = false
+                    }
+                    if (!applied) {
+                        androidExt.javaClass
+                            .getMethod("setCompileSdkVersion", java.lang.Integer.TYPE)
+                            .invoke(androidExt, 36)
+                    }
+                }
+            } catch (e: Exception) {
+                logger.info("compileSdk unveraendert fuer " + project.name)
+            }
+        }
+    }
+}

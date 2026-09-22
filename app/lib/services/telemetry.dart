@@ -1,0 +1,469 @@
+import 'dart:async';
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:sensors_plus/sensors_plus.dart';
+
+import '../models/ride.dart';
+import 'crash_detector.dart';
+import 'emergency.dart';
+import 'weather_service.dart';
+
+/// Zentrale Messwerterfassung: Schraeglage, Tempo, G-Kraefte, Track.
+///
+/// Messprinzip Schraeglage:
+///  - Gyroskop liefert schnelle Aenderungen (driftet langsam weg)
+///  - Bei Fahrt dient die physikalisch korrekte GPS-Methode als Referenz:
+///    Schraeglage = asin(v * Gierrate / g)
+///  - Im Stand stuetzt der Beschleunigungssensor
+///  Ein Komplementaerfilter fuehrt beides zusammen.
+///
+/// Singleton, damit Dashboard und Karte dieselben Werte sehen.
+class Telemetry extends ChangeNotifier {
+  // --- Sicherheit ---------------------------------------------------
+  /// Meldet einen Sturzverdacht an die Oberflaeche. Die Oberflaeche
+  /// entscheidet, was zu tun ist - der Dienst kennt keine Bildschirme.
+  final ValueNotifier<int> crashAlarm = ValueNotifier<int>(0);
+
+  late final CrashDetector _crash = CrashDetector(
+    onSuspectedCrash: () => crashAlarm.value = crashAlarm.value + 1,
+  );
+
+  // --- Wetter ------------------------------------------------------
+  RideWeather? weather;
+  Timer? _weatherTimer;
+  int _weatherFailMs = 0;
+  int _weatherAtMs = 0;
+  bool _weatherBusy = false;
+
+  /// Schneller Kanal ausschliesslich fuer die Schraeglagen-Anzeige.
+  ///
+  /// Der Zeiger haengt hieran und wird bei jedem Sensorwert aktualisiert
+  /// (etwa 50-mal je Sekunde). notifyListeners() laeuft weiter im
+  /// langsamen Takt fuer Kacheln und Texte - die brauchen kein Tempo und
+  /// wuerden bei jedem Bild den halben Bildschirm neu aufbauen.
+  final ValueNotifier<double> lean = ValueNotifier<double>(0);
+
+  /// Alle Tabs bleiben im Hintergrund geladen. Ohne diesen Schalter
+  /// wuerde die Anzeige auch dann 50-mal je Sekunde neu aufgebaut, wenn
+  /// gerade die Karte zu sehen ist - verschenkte Rechenzeit, die dort
+  /// beim Scrollen fehlt. Die Messung selbst laeuft immer weiter.
+  bool _leanLive = true;
+
+  void setLeanLive(bool v) {
+    _leanLive = v;
+    if (v) lean.value = roll;
+  }
+
+  Telemetry._();
+  static final Telemetry instance = Telemetry._();
+
+  // --- Sensor-Abos ---
+  StreamSubscription<AccelerometerEvent>? _accSub;
+  StreamSubscription<UserAccelerometerEvent>? _linSub;
+  StreamSubscription<GyroscopeEvent>? _gyroSub;
+  StreamSubscription<Position>? _posSub;
+  Timer? _uiTimer;
+  Timer? _autoCalTimer;
+  bool _started = false;
+
+  // --- Schwerkraft (tiefpassgefiltert, Geraetesystem) ---
+  double _gx = 0, _gy = 9.81, _gz = 0;
+  bool _hasAccel = false;
+
+  // --- lineare Beschleunigung ohne Schwerkraft ---
+  double _lx = 0, _ly = 0, _lz = 0;
+
+  // --- Vorwaertsachse des Motorrads im Geraetesystem ---
+  double _fx = 0, _fy = 0, _fz = -1;
+
+  double _accOffset = 0;
+  /// Monotone Uhr fuer die Zeitschritte der Sensorfusion.
+  /// DateTime.now() waere hier falsch: Die Kalenderzeit kann springen
+  /// (Zeitumstellung, Abgleich mit dem Mobilfunknetz). Ein Sprung
+  /// verfaelscht dt und damit den Winkel. Ein Stopwatch laeuft
+  /// gleichmaessig weiter und ist ausserdem schneller abzufragen.
+  final Stopwatch _clock = Stopwatch()..start();
+  int _lastGyroUs = 0;
+  int _lastAccUs = 0;
+  int _lastLinUs = 0;
+  bool _calibrated = false;
+
+  // --- oeffentliche Messwerte ---
+  double roll = 0; // Grad, + = rechts
+  double maxLeanL = 0, maxLeanR = 0;
+  double longG = 0; // + beschleunigen, - bremsen
+  double latG = 0;
+  double maxBrakeG = 0, maxLatG = 0;
+  bool gpsReference = false; // true = GPS-gestuetzter Praezisionsmodus
+
+  // --- Position ---
+  double speedMs = -1;
+  double? lat, lon, altM;
+  double gpsAccuracyM = 999;
+  DateTime? _fixTime;
+  bool gpsDenied = false;
+  bool gpsServiceOff = false;
+
+  bool get hasFix =>
+      _fixTime != null &&
+      DateTime.now().difference(_fixTime!).inSeconds < 3 &&
+      lat != null;
+
+  double get speedKmh => speedMs > 0 ? speedMs * 3.6 : 0;
+
+  // --- Aufzeichnung ---
+  bool recording = false;
+  DateTime? rideStart;
+  double rideDistanceM = 0;
+  double rideMaxSpeedMs = 0;
+  final List<TrackPoint> track = [];
+  double? _lastRecLat, _lastRecLon;
+  int _lastRecMs = 0;
+
+  int get rideDurationSec => rideStart == null
+      ? 0
+      : DateTime.now().difference(rideStart!).inSeconds;
+
+  // ---------------------------------------------------------------
+  // Start / Stop
+  // ---------------------------------------------------------------
+  Future<void> start() async {
+    if (_started) return;
+    _started = true;
+
+    // 50 ms statt 20 ms: Dieser Wert dient nur als traege Referenz fuer
+    // "wo ist unten". Die Glaettung ist zeitbasiert, das Ergebnis bleibt
+    // also gleich - es kostet nur noch ein Drittel der Ereignisse.
+    _accSub = accelerometerEventStream(
+      samplingPeriod: const Duration(milliseconds: 50),
+    ).listen(_onAccel);
+
+    _linSub = userAccelerometerEventStream(
+      samplingPeriod: const Duration(milliseconds: 20),
+    ).listen(_onLinear);
+
+    _gyroSub = gyroscopeEventStream(
+      samplingPeriod: const Duration(milliseconds: 20),
+    ).listen(_onGyro);
+
+    await _initGps();
+
+    // 200 ms genuegen fuer Zahlen und Kacheln. Der Zeiger haengt nicht
+    // mehr an diesem Takt, sondern am ValueNotifier oben.
+    _uiTimer =
+        Timer.periodic(const Duration(milliseconds: 200), (_) => _tick());
+
+    // Erster Wetterabruf, sobald eine Position vorliegt, danach
+    // viertelstuendlich.
+    _weatherTimer = Timer.periodic(
+        const Duration(minutes: 2), (_) => refreshWeather());
+
+    _autoCalTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (!_calibrated && _hasAccel) calibrate();
+    });
+  }
+
+  Future<void> stop() async {
+    _started = false;
+    await _accSub?.cancel();
+    await _linSub?.cancel();
+    await _gyroSub?.cancel();
+    await _posSub?.cancel();
+    _uiTimer?.cancel();
+    _autoCalTimer?.cancel();
+    _weatherTimer?.cancel();
+  }
+
+  Future<void> _initGps() async {
+    try {
+      gpsServiceOff = !await Geolocator.isLocationServiceEnabled();
+      var p = await Geolocator.checkPermission();
+      if (p == LocationPermission.denied) {
+        p = await Geolocator.requestPermission();
+      }
+      if (p == LocationPermission.denied ||
+          p == LocationPermission.deniedForever) {
+        gpsDenied = true;
+        return;
+      }
+      gpsDenied = false;
+      _posSub = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.bestForNavigation,
+          distanceFilter: 0,
+        ),
+      ).listen(_onPos, onError: (_) => gpsServiceOff = true);
+    } catch (_) {
+      gpsDenied = true;
+    }
+  }
+
+  /// Erneuter Versuch, GPS zu starten (z. B. nachdem der Nutzer die
+  /// Berechtigung nachtraeglich erteilt hat).
+  Future<void> retryGps() async {
+    await _posSub?.cancel();
+    await _initGps();
+    notifyListeners();
+  }
+
+  // ---------------------------------------------------------------
+  // Sensor-Callbacks
+  // ---------------------------------------------------------------
+  /// Glaettungsfaktor aus Zeitschritt und Zeitkonstante.
+  ///
+  /// Vorher war der Faktor fest verdrahtet ("0.04 je Messwert"). Damit
+  /// haing die Staerke der Glaettung davon ab, wie oft das Handy Werte
+  /// liefert - und diese Rate haelt kein Geraet exakt ein. Auf einem
+  /// schnellen Sensor wurde zu wenig geglaettet, auf einem langsamen zu
+  /// viel. Ueber die Zeitkonstante ist das Verhalten jetzt auf jedem
+  /// Geraet gleich.
+  static double _alpha(double dt, double tau) {
+    if (dt <= 0) return 0;
+    return dt / (tau + dt);
+  }
+
+  void _onAccel(AccelerometerEvent e) {
+    final us = _clock.elapsedMicroseconds;
+    final dt = _lastAccUs == 0 ? 0.05 : (us - _lastAccUs) / 1e6;
+    _lastAccUs = us;
+    // 0,5 s Zeitkonstante: traege genug gegen Motorvibration.
+    final a = _alpha(dt.clamp(0.0, 0.5), 0.5);
+    _gx += a * (e.x - _gx);
+    _gy += a * (e.y - _gy);
+    _gz += a * (e.z - _gz);
+    _hasAccel = true;
+
+    // Sturzerkennung bekommt den ROHEN Wert inklusive Schwerkraft - der
+    // geglaettete Wert wuerde jeden Aufprall wegbuegeln.
+    if (Emergency.instance.autoDetect) {
+      _crash.enabled = true;
+      _crash.feedAccel(e.x, e.y, e.z, _clock.elapsedMilliseconds);
+    } else {
+      _crash.enabled = false;
+    }
+  }
+
+  void _onLinear(UserAccelerometerEvent e) {
+    final us = _clock.elapsedMicroseconds;
+    final dt = _lastLinUs == 0 ? 0.02 : (us - _lastLinUs) / 1e6;
+    _lastLinUs = us;
+    // 0,15 s: schnell genug, um eine harte Bremsung zu erfassen.
+    final a = _alpha(dt.clamp(0.0, 0.5), 0.15);
+    _lx += a * (e.x - _lx);
+    _ly += a * (e.y - _ly);
+    _lz += a * (e.z - _lz);
+    _updateForces();
+  }
+
+  double get _rollAcc => math.atan2(-_gx, _gy) * 180 / math.pi;
+
+  void _onGyro(GyroscopeEvent e) {
+    final us = _clock.elapsedMicroseconds;
+    final last = _lastGyroUs;
+    _lastGyroUs = us;
+    if (last == 0) return;
+    final dt = (us - last) / 1e6;
+    if (dt <= 0 || dt > 0.2) return;
+
+    // Drehrate um die Vorwaertsachse = Schraeglagen-Aenderung
+    final rate = (e.x * _fx + e.y * _fy + e.z * _fz) * 180 / math.pi;
+
+    final upn = math.sqrt(_gx * _gx + _gy * _gy + _gz * _gz);
+    double refDeg;
+    double tau;
+    if (hasFix && speedMs > 2.5 && upn > 2) {
+      final yaw = (e.x * _gx + e.y * _gy + e.z * _gz) / upn;
+      final s = (-speedMs * yaw / 9.81).clamp(-0.999, 0.999).toDouble();
+      refDeg = math.asin(s) * 180 / math.pi;
+      tau = 1.4;
+      gpsReference = true;
+    } else {
+      refDeg = _norm(_rollAcc - _accOffset);
+      tau = 2.5;
+      gpsReference = false;
+    }
+
+    final k = tau / (tau + dt);
+    roll = _norm(k * (roll + rate * dt) + (1 - k) * refDeg);
+
+    if (roll.abs() < 85) {
+      if (-roll > maxLeanL) maxLeanL = -roll;
+      if (roll > maxLeanR) maxLeanR = roll;
+    }
+
+    // Direkt an die Anzeige. Kein setState, kein Neuaufbau des
+    // Bildschirms - nur der Zeiger zeichnet sich neu.
+    if (_leanLive) lean.value = roll;
+  }
+
+  void _onPos(Position p) {
+    _fixTime = DateTime.now();
+    gpsServiceOff = false;
+    lat = p.latitude;
+    lon = p.longitude;
+    altM = p.altitude;
+    gpsAccuracyM = p.accuracy;
+
+    final s = (p.speed.isFinite && p.speed >= 0) ? p.speed : 0.0;
+    speedMs = speedMs < 0 ? s : speedMs + 0.35 * (s - speedMs);
+
+    // Erst hier, mit dem frisch aktualisierten Tempo: Die
+    // Stillstandspruefung der Sturzerkennung braucht den aktuellen Wert,
+    // nicht den des vorigen Fixes.
+    _crash.feedSpeed(speedMs * 3.6, _clock.elapsedMilliseconds);
+
+    if (recording) {
+      if (speedMs > rideMaxSpeedMs) rideMaxSpeedMs = speedMs;
+      _recordPoint(p);
+    }
+
+    // Erster Wetterabruf, sobald ueberhaupt eine Position vorliegt.
+    if (weather == null) refreshWeather();
+  }
+
+  void _recordPoint(Position p) {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+    // Strecke aufaddieren (nur bei brauchbarer Genauigkeit und Bewegung)
+    if (_lastRecLat != null && p.accuracy < 30 && speedMs > 1.0) {
+      final d = distanceMeters(_lastRecLat!, _lastRecLon!, p.latitude, p.longitude);
+      if (d < 200) rideDistanceM += d;
+    }
+
+    // Punkte hoechstens alle 700 ms speichern - reicht fuer eine
+    // fluessige Linie und haelt die Dateien klein.
+    if (nowMs - _lastRecMs < 700) return;
+    _lastRecMs = nowMs;
+    _lastRecLat = p.latitude;
+    _lastRecLon = p.longitude;
+
+    track.add(TrackPoint(
+      lat: p.latitude,
+      lon: p.longitude,
+      tMs: nowMs,
+      speedMs: speedMs,
+      lean: roll,
+      altM: p.altitude,
+    ));
+  }
+
+  /// G-Kraefte im Sensortakt berechnen, nicht im Anzeigetakt: Eine kurze
+  /// Bremsspitze faellt sonst zwischen zwei Takte und wird nie gesehen.
+  void _updateForces() {
+    longG = (_lx * _fx + _ly * _fy + _lz * _fz) / 9.81;
+    latG = math.tan(roll.abs() * math.pi / 180).clamp(0.0, 3.0).toDouble();
+
+    final moving = hasFix ? speedMs > 1.5 : true;
+    if (moving) {
+      final brake = -longG;
+      if (brake > maxBrakeG) maxBrakeG = brake;
+      if (latG > maxLatG) maxLatG = latG;
+    }
+  }
+
+  /// Langsamer Takt: nur noch Kacheln und Texte auffrischen.
+  void _tick() {
+    _crash.tick(_clock.elapsedMilliseconds);
+    notifyListeners();
+  }
+
+  // -----------------------------------------------------------------
+  // Wetter
+  // -----------------------------------------------------------------
+  /// Holt das Wetter fuer die aktuelle Position. Alle 15 Minuten reicht -
+  /// das Wetter aendert sich nicht im Sekundentakt, und jeder Aufruf
+  /// kostet Akku und Datenvolumen.
+  Future<void> refreshWeather({bool force = false}) async {
+    final la = lat, lo = lon;
+    if (la == null || lo == null) return;
+    if (_weatherBusy) return;
+    final nowMs = _clock.elapsedMilliseconds;
+    // Vorhandene Daten sind noch frisch genug.
+    if (!force && weather != null && nowMs - _weatherAtMs < 900000) return;
+    // Nach einem Fehlschlag nicht sofort wieder anklopfen.
+    if (!force && _weatherFailMs != 0 && nowMs - _weatherFailMs < 120000) {
+      return;
+    }
+    _weatherBusy = true;
+    final w = await WeatherService.fetch(la, lo);
+    _weatherBusy = false;
+    if (w == null) {
+      _weatherFailMs = _clock.elapsedMilliseconds;
+      return;
+    }
+    _weatherFailMs = 0;
+    _weatherAtMs = _clock.elapsedMilliseconds;
+    weather = w;
+    notifyListeners();
+  }
+
+  static double _norm(double a) {
+    a = (a + 180) % 360;
+    if (a < 0) a += 360;
+    return a - 180;
+  }
+
+  // ---------------------------------------------------------------
+  // Aktionen
+  // ---------------------------------------------------------------
+
+  /// Setzt den Nullpunkt und bestimmt die Vorwaertsachse des Motorrads
+  /// aus der aktuellen Schwerkraftrichtung. Dadurch darf das Handy
+  /// beliebig schraeg montiert sein.
+  void calibrate() {
+    final n = math.sqrt(_gy * _gy + _gz * _gz);
+    if (n > 2) {
+      _fx = 0;
+      _fy = _gz / n;
+      _fz = -_gy / n;
+    }
+    _accOffset = _rollAcc;
+    roll = 0;
+    _calibrated = true;
+    notifyListeners();
+  }
+
+  void resetMax() {
+    maxLeanL = 0;
+    maxLeanR = 0;
+    maxBrakeG = 0;
+    maxLatG = 0;
+    notifyListeners();
+  }
+
+  void startRecording() {
+    recording = true;
+    rideStart = DateTime.now();
+    rideDistanceM = 0;
+    rideMaxSpeedMs = 0;
+    track.clear();
+    _lastRecLat = null;
+    _lastRecLon = null;
+    _lastRecMs = 0;
+    resetMax();
+    notifyListeners();
+  }
+
+  /// Beendet die Aufzeichnung und liefert die Zusammenfassung.
+  /// Das Speichern uebernimmt der RideStore.
+  RideSummary? stopRecording() {
+    if (!recording || rideStart == null) return null;
+    recording = false;
+    final s = RideSummary(
+      id: 'ride_${rideStart!.millisecondsSinceEpoch}',
+      start: rideStart!,
+      durationSec: DateTime.now().difference(rideStart!).inSeconds,
+      distanceM: rideDistanceM,
+      maxLeanL: maxLeanL,
+      maxLeanR: maxLeanR,
+      maxSpeedMs: rideMaxSpeedMs,
+      maxBrakeG: maxBrakeG,
+      maxLatG: maxLatG,
+      pointCount: track.length,
+    );
+    notifyListeners();
+    return s;
+  }
+}

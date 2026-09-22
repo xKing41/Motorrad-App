@@ -1,0 +1,75 @@
+SCHRÄGLAGE – Schnellstart (Windows)
+====================================
+
+1. Diesen ZIP-Ordner komplett entpacken (Rechtsklick → „Alle extrahieren…")
+
+2. Im entpackten Ordner:  setup.bat  doppelklicken
+   → Falls Windows warnt („Der Computer wurde geschützt"):
+     auf „Weitere Informationen" und dann „Trotzdem ausführen" klicken.
+
+3. Warten (10–30 Minuten, je nach Internet). Das Skript lädt automatisch
+   alles Nötige herunter (ca. 1–2 GB) und baut die App.
+
+4. Fertig! Die Datei „Schraeglage.apk" liegt danach auf deinem Desktop.
+   → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
+   → Beim Installieren einmalig „Unbekannte Apps" erlauben.
+
+VERSION 4.0 - drei neue Bereiche
+--------------------------------
+
+1) FAHRSTIL AUSWERTEN  (Tab FAHRTEN -> eine Fahrt oeffnen)
+   Schraeglagen-Histogramm, Kammscher Kreis, Kurvenradien und eine
+   Bewertung von Gleichmaessigkeit, Bremsdisziplin und Balance.
+   Wichtig: Mehr Schraeglage gibt absichtlich KEINE Punkte.
+
+2) NOTFALL / STURZERKENNUNG  (Cockpit -> rotes Symbol oben rechts)
+   Notfallkontakt und medizinische Angaben hinterlegen. Erkennt einen
+   moeglichen Sturz und startet einen Countdown mit grosser
+   Abbruchtaste. Danach wird eine SMS mit Koordinaten vorbereitet.
+   Das ist eine Hilfe, KEIN zugelassenes Notrufsystem.
+
+3) WETTER UND REGENWARNUNG  (Cockpit, Streifen unter der Kopfzeile)
+   Zeigt Temperatur, Wind und warnt vor Regen, Frost und kalten
+   Reifen. Braucht keinen Schluessel und keine Anmeldung.
+
+NEU in Version 3.6: Durchgang durch den gesamten Code.
+Die Karte bleibt jetzt auch nach Stunden Fahrt fluessig, die Messung
+arbeitet auf jedem Geraet gleich, und zwei Absturzursachen sind weg.
+
+NEU in Version 3.5: Der Neigungsmesser laeuft jetzt fluessig.
+Er wurde vorher nur 10-mal je Sekunde aktualisiert - jetzt folgt er
+dem Sensor direkt (etwa 50-mal je Sekunde).
+
+NEU in Version 3.4: Der Demo-Modus ist jetzt klar gekennzeichnet
+(ohne Routing-Server folgt die Linie keinen echten Strassen), und
+der Schalter "Autobahnen meiden" wirkt jetzt wirklich.
+
+NEU in Version 3.3: Die KI-Anbindung funktioniert jetzt wirklich.
+Im Tab KARTE -> PLANEN auf "KI VERBINDEN" tippen, dort einmal
+den Schluessel einsetzen und VERBINDUNG TESTEN druecken. Danach
+fragt die App nie wieder nach einem Schluessel.
+
+NEU in Version 3.2: Gradle-Fehler behoben
+("Cannot run Project.afterEvaluate ... already evaluated").
+
+NEU in Version 3.1: Karte, GPX-Import, Follow-Modus, Routenplanung
+und Zwischenstopps (Tankstellen, Fotospots, Rastplätze).
+Die KI-Routenplanung ist vorbereitet - wie du sie zum Testen
+anschaltest, steht in KI-ANBINDUNG.md.
+
+GPX-Routen lädst du über KARTE -> GPX: Datei öffnen, Inhalt
+kopieren, im Dialog einfügen.
+
+Später etwas am Code ändern? Einfach C:\dev\schraeglage\lib\main.dart
+bearbeiten und C:\dev\schraeglage-neu-bauen.bat starten.
+
+Hinweise
+--------
+• Das Skript funktioniert nur für ANDROID. Für iPhone verlangt Apple
+  zwingend einen Mac mit Xcode – Anleitung dazu steht in der README.md.
+• Bricht ein Download ab: setup.bat einfach nochmal starten,
+  es macht dort weiter, wo es aufgehört hat.
+• Beim ersten App-Start: Standort-Berechtigung ERLAUBEN
+  (wird für den GPS-Tacho und die präzise Messung gebraucht).
+• Benutzung der App: Handy fest montieren, Motorrad gerade halten,
+  „Nullpunkt setzen" – und Bedienung bitte nur im Stand.

@@ -1,0 +1,103 @@
+OHNE PC BAUEN
+=============
+
+Zwei Wege. Der erste ist deutlich einfacher.
+
+
+WEG 1: In der Cloud bauen  (empfohlen)
+--------------------------------------
+Das Handy braucht nur einen Browser. Gebaut wird auf einem echten
+Linux-Rechner bei GitHub, kostenlos. Dauer: 5-10 Minuten je Build.
+
+Einmalige Einrichtung:
+
+ 1. Kostenloses Konto auf github.com anlegen.
+
+ 2. Neues Repository anlegen ("New repository"). Name egal.
+    Sichtbarkeit: siehe Hinweis unten.
+
+ 3. Den Inhalt dieses Ordners ins Repository bringen. Am Handy geht das
+    am einfachsten mit Termux (nur fuer git, nicht zum Bauen - das ist
+    wenige Minuten Arbeit):
+
+        pkg install git
+        cd /sdcard/Download/schraeglage        # entpackter Ordner
+        git init
+        git add .
+        git commit -m "Schraeglage"
+        git branch -M main
+        git remote add origin https://github.com/DEINNAME/DEINREPO.git
+        git push -u origin main
+
+    Bei der Passwortfrage NICHT das Kontopasswort eingeben, sondern
+    einen "Personal Access Token" (GitHub: Settings -> Developer
+    settings -> Personal access tokens -> Fine-grained -> Zugriff auf
+    das Repo, Rechte "Contents: Read and write").
+
+ 4. Fertig. Ab jetzt baut GitHub bei jeder Aenderung automatisch.
+
+APK holen:
+
+ 1. Im Repository auf den Reiter "Actions".
+ 2. Den letzten Lauf "APK bauen" antippen.
+ 3. Unten unter "Artifacts" liegt "Schraeglage-APK" - herunterladen.
+ 4. ZIP am Handy entpacken, app-release.apk antippen, installieren.
+
+Von Hand starten (ohne Codeaenderung): Actions -> "APK bauen" ->
+"Run workflow".
+
+Hinweis zur Sichtbarkeit: Bei einem oeffentlichen Repository ist der
+Code fuer alle lesbar, das Bauen ist unbegrenzt frei. Bei einem
+privaten Repository bleibt der Code privat, und es gibt 2000
+Bauminuten je Monat gratis - bei rund 8 Minuten je Build reichlich.
+Wichtig: Im Code steckt KEIN API-Schluessel. Der KI-Schluessel wird
+erst in der App eingegeben und liegt nur auf dem Geraet. Es ist also
+nichts Geheimes im Repository.
+
+
+WEG 2: Direkt am Handy bauen  (aufwendig)
+-----------------------------------------
+Geht wirklich, ist aber ein eigenes Projekt und keine halbe Stunde.
+Grund: Android-Werkzeuge wie aapt2 und das NDK werden von Google nur
+als x86-Programme fuer Linux ausgeliefert. Auf einem ARM-Handy laufen
+die nicht. Man muss sie nach dem ersten Build gegen ARM64-Fassungen
+austauschen.
+
+Voraussetzungen, die wirklich noetig sind:
+  - Termux (aus F-Droid, NICHT aus dem Play Store - die Play-Fassung
+    ist veraltet)
+  - mindestens 8 GB RAM. Mit weniger bricht der Release-Build waehrend
+    des Dart-Uebersetzens mit Speichermangel ab.
+  - 5-10 GB freier Speicher
+
+Was zu tun ist, in Kurzform:
+  - Ubuntu in Termux einrichten (proot-distro install ubuntu)
+  - JDK 17 oder 21, Gradle, Android SDK build-tools in ARM64
+  - Flutter fuer ARM64 installieren
+  - in android/gradle.properties eintragen:
+        android.aapt2FromMavenOverride=/PFAD/ZU/ARM64/aapt2
+  - das von Gradle geladene x86-aapt2 im Cache gegen die ARM64-Fassung
+    austauschen
+  - ARM64-NDK von dritter Seite nachlegen
+  - beim Bauen auf ARM64 begrenzen:
+        flutter build apk --release --target-platform android-arm64
+
+WICHTIG: Den aapt2-Eintrag NICHT in die mitgelieferte
+gradle.properties schreiben, wenn du auch am PC baust - dort zeigt der
+Pfad ins Leere und der Build bricht ab. Nur in der Handy-Kopie setzen.
+
+Zum Stand der Kompatibilitaet widersprechen sich die Quellen: Ein
+aktuelles Projekt meldet einen erfolgreichen Test auf Android 16,
+andere Anleitungen nennen Android 14 als problematisch. Rechne also
+damit, dass es hakt.
+
+
+UND WEG 3: Der PC, den du schon hast
+------------------------------------
+Auf deinem Rechner liegen Flutter, Java und die Android-Werkzeuge
+bereits fertig eingerichtet. Ein neuer Build dauert dort nur noch
+wenige Minuten:
+
+        C:\dev\schraeglage-neu-bauen.bat
+
+Wenn der PC erreichbar ist, ist das mit Abstand der schnellste Weg.

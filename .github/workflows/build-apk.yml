@@ -1,0 +1,82 @@
+name: APK bauen
+
+# Baut die fertige APK in der Cloud auf einem echten Linux-Rechner.
+# Damit braucht das Handy nur einen Browser: Workflow starten, warten,
+# APK herunterladen, installieren.
+#
+# Der Ablauf macht genau das, was die setup.bat auf dem PC macht -
+# Projekt anlegen, eigene Dateien darueberkopieren, Gradle-Fixes setzen.
+
+on:
+  # Von Hand startbar (auch vom Handy aus, im Reiter "Actions").
+  workflow_dispatch:
+  # Und automatisch bei jeder Aenderung am Code.
+  push:
+    branches: [main, master]
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Code holen
+        uses: actions/checkout@v4
+
+      - name: Java einrichten
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Flutter einrichten
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Umgebung anzeigen
+        run: flutter --version
+
+      - name: Projekt aufbauen
+        run: |
+          set -e
+          # Gerüst erzeugen (liefert android/, Gradle-Dateien, Icons)
+          flutter create --platforms=android --project-name schraeglage proj
+
+          # Eigene Dateien darueberlegen
+          cp app/pubspec.yaml proj/pubspec.yaml
+          rm -rf proj/lib
+          cp -r app/lib proj/lib
+          cp -r app/android/. proj/android/
+
+          # minSdk 24 - wird von geolocator verlangt
+          for f in proj/android/app/build.gradle.kts proj/android/app/build.gradle; do
+            if [ -f "$f" ]; then
+              sed -i 's/flutter\.minSdkVersion/24/g' "$f"
+            fi
+          done
+
+          # compileSdk-Fix fuer die Plugin-Module anhaengen
+          if [ -f proj/android/compilesdk-fix.txt ]; then
+            cat proj/android/compilesdk-fix.txt >> proj/android/build.gradle.kts
+          fi
+
+          echo "--- android/app/build.gradle.kts (Auszug) ---"
+          grep -n "compileSdk\|minSdk" proj/android/app/build.gradle.kts || true
+
+      - name: Abhaengigkeiten laden
+        working-directory: proj
+        run: flutter pub get
+
+      - name: APK bauen
+        working-directory: proj
+        run: flutter build apk --release
+
+      - name: APK bereitstellen
+        uses: actions/upload-artifact@v4
+        with:
+          name: Schraeglage-APK
+          path: proj/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
