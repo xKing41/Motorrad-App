@@ -1,4 +1,3 @@
-import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
 
@@ -91,8 +90,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       col = signal;
     }
 
+    // Titel links, Statusfeld und Notfalltaste rechts beieinander.
+    // Vorher verteilte spaceBetween den Platz auch um den Abstandhalter,
+    // und das GPS-Feld stand verloren in der Mitte.
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         RichText(
           text: const TextSpan(
@@ -109,6 +110,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ],
           ),
         ),
+        const Spacer(),
         InkWell(
           onTap: t.gpsDenied ? () => t.retryGps() : null,
           child: Container(
@@ -191,9 +193,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Icon(w.rainSoon ? Icons.umbrella : Icons.thermostat,
                 size: 13, color: col),
             const SizedBox(width: 7),
-            Text(info,
-                style: const TextStyle(fontSize: 10.5, color: chalk)),
-            const Spacer(),
+            Expanded(
+              child: Text(info,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 10.5, color: chalk)),
+            ),
+            if (warn != null) const SizedBox(width: 8),
             if (warn != null)
               Text(warn,
                   style: TextStyle(
@@ -203,8 +209,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       color: col)),
           ]),
           const SizedBox(height: 3),
-          Text(WeatherService.attribution,
-              style: const TextStyle(fontSize: 8, color: steel)),
+          const Text(WeatherService.attribution,
+              style: TextStyle(fontSize: 8, color: steel)),
         ],
       ),
     );

@@ -51,10 +51,21 @@ class Emergency {
   /// Text der Notfallnachricht. Koordinaten in Dezimalgrad, dazu ein
   /// Kartenlink - beides, weil manche Handys Links nicht anzeigen und
   /// die Rettungsleitstelle mit reinen Zahlen ebenfalls arbeiten kann.
-  String alertText({double? lat, double? lon, String? extra}) {
+  String alertText({
+    double? lat,
+    double? lon,
+    String? extra,
+    bool test = false,
+  }) {
     final who = riderName.trim().isEmpty ? 'Der Fahrer' : riderName.trim();
-    final b = StringBuffer()
-      ..write('NOTFALL: $who hatte möglicherweise einen Motorradunfall.');
+    final b = StringBuffer();
+    // Eine Test-Nachricht darf NIEMALS wie ein echter Notfall aussehen -
+    // sonst steht beim Ausprobieren die Familie senkrecht im Bett.
+    if (test) {
+      b.write('TEST – KEIN NOTFALL, bitte ignorieren. So sähe die '
+          'Nachricht im Ernstfall aus: ');
+    }
+    b.write('NOTFALL: $who hatte möglicherweise einen Motorradunfall.');
     if (lat != null && lon != null) {
       final la = lat.toStringAsFixed(5);
       final lo = lon.toStringAsFixed(5);
@@ -82,9 +93,10 @@ class Emergency {
   /// eine Berechtigung, die Android sehr restriktiv behandelt, und ein
   /// automatischer Fehlalarm an die Familie waere schlimmer als ein
   /// zusaetzlicher Tastendruck.
-  Future<bool> sendSms({double? lat, double? lon}) async {
+  Future<bool> sendSms({double? lat, double? lon, bool test = false}) async {
     if (!hasContact) return false;
-    final body = Uri.encodeComponent(alertText(lat: lat, lon: lon));
+    final body =
+        Uri.encodeComponent(alertText(lat: lat, lon: lon, test: test));
     final uri = Uri.parse('sms:${contactPhone.trim()}?body=$body');
     return _open(uri);
   }

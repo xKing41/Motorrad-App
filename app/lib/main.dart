@@ -96,6 +96,12 @@ class _HomeShellState extends State<HomeShell> {
 
     final summary = t.stopRecording();
     if (summary == null) return;
+    // Aus Versehen gestartet und gleich wieder beendet: nicht als Fahrt
+    // in die Liste schreiben.
+    if (summary.durationSec < 30 && summary.distanceM < 100) {
+      if (mounted) toast(context, 'Fahrt zu kurz – nicht gespeichert');
+      return;
+    }
     await RideStore.instance.saveRide(summary, List.of(t.track));
     await _ridesKey.currentState?.reload();
     if (mounted) {

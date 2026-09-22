@@ -119,8 +119,10 @@ class Telemetry extends ChangeNotifier {
   double rideDistanceM = 0;
   double rideMaxSpeedMs = 0;
   final List<TrackPoint> track = [];
-  double? _lastRecLat, _lastRecLon;
   int _lastRecMs = 0;
+  // Letzter Punkt, bis zu dem die Strecke schon gezaehlt ist.
+  double? _lastDistLat, _lastDistLon;
+  int _lastDistMs = 0;
 
   int get rideDurationSec => rideStart == null
       ? 0
@@ -133,11 +135,12 @@ class Telemetry extends ChangeNotifier {
     if (_started) return;
     _started = true;
 
-    // 50 ms statt 20 ms: Dieser Wert dient nur als traege Referenz fuer
-    // "wo ist unten". Die Glaettung ist zeitbasiert, das Ergebnis bleibt
-    // also gleich - es kostet nur noch ein Drittel der Ereignisse.
+    // 20 ms: Fuer "wo ist unten" wuerden 50 ms reichen (die Glaettung
+    // ist zeitbasiert), aber die Sturzerkennung haengt am selben Strom.
+    // Ein Aufprall dauert oft nur 10-30 ms - bei 50 ms Abstand faellt
+    // die Spitze zwischen zwei Messwerte und wird nie gesehen.
     _accSub = accelerometerEventStream(
-      samplingPeriod: const Duration(milliseconds: 50),
+      samplingPeriod: const Duration(milliseconds: 20),
     ).listen(_onAccel);
 
     _linSub = userAccelerometerEventStream(
@@ -155,8 +158,8 @@ class Telemetry extends ChangeNotifier {
     _uiTimer =
         Timer.periodic(const Duration(milliseconds: 200), (_) => _tick());
 
-    // Erster Wetterabruf, sobald eine Position vorliegt, danach
-    // viertelstuendlich.
+    // Alle 2 Minuten nachsehen - abgerufen wird aber nur, wenn die Daten
+    // aelter als 15 Minuten sind (siehe refreshWeather).
     _weatherTimer = Timer.periodic(
         const Duration(minutes: 2), (_) => refreshWeather());
 
@@ -326,18 +329,30 @@ class Telemetry extends ChangeNotifier {
   void _recordPoint(Position p) {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-    // Strecke aufaddieren (nur bei brauchbarer Genauigkeit und Bewegung)
-    if (_lastRecLat != null && p.accuracy < 30 && speedMs > 1.0) {
-      final d = distanceMeters(_lastRecLat!, _lastRecLon!, p.latitude, p.longitude);
-      if (d < 200) rideDistanceM += d;
+    // Strecke aufaddieren (nur bei brauchbarer Genauigkeit und Bewegung).
+    //
+    // Vorher wurde vom letzten GESPEICHERTEN Punkt aus gemessen, der aber
+    // nur alle 700 ms weiterrueckt. Lieferte das GPS schneller als einmal
+    // je 700 ms, wurde derselbe Abschnitt mehrfach gezaehlt - die Strecke
+    // war zu lang. Jetzt wird jeder Abschnitt genau einmal gezaehlt.
+    if (p.accuracy < 30 && speedMs > 1.0) {
+      final la = _lastDistLat, lo = _lastDistLon;
+      if (la != null && lo != null) {
+        final d = distanceMeters(la, lo, p.latitude, p.longitude);
+        final dt = (nowMs - _lastDistMs) / 1000;
+        // Grosse Spruenge nur zaehlen, wenn sie zur Zeit passen (etwa
+        // nach einem Tunnel), nicht bei einem GPS-Ausreisser.
+        if (d < 200 || (dt > 0 && d / dt < 70)) rideDistanceM += d;
+      }
+      _lastDistLat = p.latitude;
+      _lastDistLon = p.longitude;
+      _lastDistMs = nowMs;
     }
 
     // Punkte hoechstens alle 700 ms speichern - reicht fuer eine
     // fluessige Linie und haelt die Dateien klein.
     if (nowMs - _lastRecMs < 700) return;
     _lastRecMs = nowMs;
-    _lastRecLat = p.latitude;
-    _lastRecLon = p.longitude;
 
     track.add(TrackPoint(
       lat: p.latitude,
@@ -439,8 +454,9 @@ class Telemetry extends ChangeNotifier {
     rideDistanceM = 0;
     rideMaxSpeedMs = 0;
     track.clear();
-    _lastRecLat = null;
-    _lastRecLon = null;
+    _lastDistLat = null;
+    _lastDistLon = null;
+    _lastDistMs = 0;
     _lastRecMs = 0;
     resetMax();
     notifyListeners();

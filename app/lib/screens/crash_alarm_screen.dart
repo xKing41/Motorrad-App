@@ -31,6 +31,7 @@ class _CrashAlarmScreenState extends State<CrashAlarmScreen> {
   late int _left;
   Timer? _timer;
   bool _fired = false;
+  bool _smsOpened = false;
 
   @override
   void initState() {
@@ -59,9 +60,9 @@ class _CrashAlarmScreenState extends State<CrashAlarmScreen> {
     if (_fired) return;
     _fired = true;
     _timer?.cancel();
-    await em.sendSms(lat: widget.lat, lon: widget.lon);
+    final ok = await em.sendSms(lat: widget.lat, lon: widget.lon);
     if (!mounted) return;
-    setState(() {});
+    setState(() => _smsOpened = ok);
   }
 
   void _cancel() {
@@ -100,10 +101,15 @@ class _CrashAlarmScreenState extends State<CrashAlarmScreen> {
                   style: const TextStyle(fontSize: 12, color: chalk),
                 )
               else
-                const Text(
-                  'Die SMS-App wurde geöffnet. Nachricht dort absenden.',
+                Text(
+                  _smsOpened
+                      ? 'Die SMS-App wurde geöffnet. Nachricht dort absenden.'
+                      : (em.hasContact
+                          ? 'SMS-App ließ sich nicht öffnen. Bitte 112 anrufen.'
+                          : 'Kein Notfallkontakt hinterlegt – bitte 112 anrufen.'),
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: amber),
+                  style: TextStyle(
+                      fontSize: 12, color: _smsOpened ? amber : redline),
                 ),
               const Spacer(),
               if (!_fired)

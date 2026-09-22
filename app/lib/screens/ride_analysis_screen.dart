@@ -273,7 +273,7 @@ class _RideAnalysisScreenState extends State<RideAnalysisScreen> {
             size: 16, color: col),
         const SizedBox(width: 10),
         Text('${c.maxLean.round()}°',
-            style: TextStyle(
+            style: const TextStyle(
                 fontSize: 17, fontWeight: FontWeight.w700, color: chalk)),
         const SizedBox(width: 12),
         Expanded(

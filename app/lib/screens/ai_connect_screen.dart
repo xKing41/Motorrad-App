@@ -367,16 +367,16 @@ class _AiConnectScreenState extends State<AiConnectScreen> {
           color: panel,
           border: Border.all(color: line),
         ),
-        child: Column(
+        child: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: const [
+            Row(children: [
               Icon(Icons.info_outline, size: 14, color: amber),
               SizedBox(width: 6),
               TinyLabel('WICHTIG ZUM SCHLÜSSEL', color: amber),
             ]),
-            const SizedBox(height: 8),
-            const Text(
+            SizedBox(height: 8),
+            Text(
               'Ein Schlüssel, der in einer weitergegebenen App steckt, lässt '
               'sich aus dem Installationspaket auslesen – die Kosten landen '
               'dann bei dir. Für eigene Tests auf dem eigenen Gerät ist der '
@@ -385,8 +385,8 @@ class _AiConnectScreenState extends State<AiConnectScreen> {
               'Schlüssel eintragen.',
               style: TextStyle(fontSize: 10.5, color: steel, height: 1.55),
             ),
-            const SizedBox(height: 10),
-            const Text(
+            SizedBox(height: 10),
+            Text(
               'Die KI plant übrigens nie selbst die Strecke. Sie übersetzt '
               'nur deinen Wunsch in Vorgaben und beschreibt danach das '
               'Ergebnis. Wege und Orte kommen immer aus echten Kartendaten.',

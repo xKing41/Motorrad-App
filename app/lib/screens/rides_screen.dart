@@ -36,6 +36,35 @@ class RidesScreenState extends State<RidesScreen> {
   }
 
   Future<void> _delete(RideSummary r) async {
+    // Ein versehentlicher Tipp auf das kleine X hat vorher sofort und
+    // endgueltig eine Fahrt geloescht.
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: panel,
+        shape: const RoundedRectangleBorder(side: BorderSide(color: line)),
+        title: const Text('FAHRT LÖSCHEN?',
+            style: TextStyle(fontSize: 12, letterSpacing: 2.5, color: chalk)),
+        content: Text(
+          '${fmtDate(r.start)} · ${r.distanceKm.toStringAsFixed(1)} km\n'
+          'Das lässt sich nicht rückgängig machen.',
+          style: const TextStyle(fontSize: 11.5, color: steel, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('BEHALTEN',
+                style: TextStyle(fontSize: 11, color: steel)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('LÖSCHEN',
+                style: TextStyle(fontSize: 11, color: redline)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
     await RideStore.instance.deleteRide(r.id);
     await reload();
     if (mounted) toast(context, 'Fahrt gelöscht');

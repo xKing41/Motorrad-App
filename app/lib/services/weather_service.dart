@@ -102,7 +102,7 @@ class RideWeather {
     if (rainSoon) {
       final m = rainInMinutes!;
       if (m <= 5) return 'REGEN JETZT';
-      return 'REGEN IN ${m} MIN';
+      return 'REGEN IN $m MIN';
     }
     if (frostRisk) return 'FROSTGEFAHR';
     if (coldTyres) return 'KALTE REIFEN';
@@ -140,7 +140,14 @@ class RideWeather {
           if (t == null || t.isBefore(now)) continue;
           final p = asD(prec[i]) ?? 0;
           if (p >= 0.1) {
-            rainIn = t.difference(now).inMinutes;
+            // Der Wert zu einem Zeitstempel ist die Summe der
+            // VORANGEGANGENEN Viertelstunde. Regen "um 14:15" faellt also
+            // ab 14:00 - sonst hiess es "Regen in 12 min", waehrend es
+            // schon regnet.
+            rainIn = t
+                .subtract(const Duration(minutes: 15))
+                .difference(now)
+                .inMinutes;
             if (rainIn < 0) rainIn = 0;
             break;
           }
@@ -175,7 +182,7 @@ class RideWeather {
           }
           if (temps is List && i < temps.length) {
             final v = asD(temps[i]);
-            if (v != null && (minTemp == null || v < minTemp!)) minTemp = v;
+            if (v != null && (minTemp == null || v < minTemp)) minTemp = v;
           }
           // Ersatz, falls es keine Viertelstundenwerte gab.
           if (rainIn == null && prec is List && i < prec.length) {

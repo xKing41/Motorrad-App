@@ -107,7 +107,7 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
               child: FlatButton2(
                 label: 'TEST-SMS VORBEREITEN',
                 onTap: em.hasContact
-                    ? () => em.sendSms(lat: null, lon: null)
+                    ? () => em.sendSms(lat: null, lon: null, test: true)
                     : null,
               ),
             ),
@@ -138,7 +138,7 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: const [
+          const Row(children: [
             Icon(Icons.medical_services_outlined, size: 16, color: redline),
             SizedBox(width: 8),
             Text('IM NOTFALL',
@@ -281,9 +281,9 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
   Widget _explainer() => Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(color: panel, border: Border.all(color: line)),
-        child: Column(
+        child: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
+          children: [
             Row(children: [
               Icon(Icons.info_outline, size: 14, color: amber),
               SizedBox(width: 6),
