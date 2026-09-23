@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'routing_engine.dart';
+import 'fuel_prices.dart';
 import 'speed_limits.dart';
 import 'traffic_service.dart';
 import 'traffic_sources.dart';
@@ -29,6 +30,8 @@ class RoutingSettings {
     this.speedWarn = false,
     this.showCameras = false,
     this.curveWarn = true,
+    this.tankerKey = '',
+    this.fuelType = FuelType.e5,
   });
 
   final RoutingService service;
@@ -49,6 +52,16 @@ class RoutingSettings {
 
   /// Bei zu hohem Tempo einmal ansagen.
   final bool speedWarn;
+
+  /// Schluessel fuer Tankerkoenig (Spritpreise, Deutschland). Leer =
+  /// ohne Preise.
+  final String tankerKey;
+
+  /// Getankte Sorte - dieser Preis wird angezeigt.
+  final FuelType fuelType;
+
+  FuelPrices? fuelPrices() =>
+      tankerKey.trim().isEmpty ? null : FuelPrices(tankerKey.trim());
 
   /// Vor engen Kurven warnen, wenn man zu schnell darauf zufaehrt.
   final bool curveWarn;
@@ -107,6 +120,8 @@ class RoutingSettings {
     bool? speedWarn,
     bool? showCameras,
     bool? curveWarn,
+    String? tankerKey,
+    FuelType? fuelType,
   }) =>
       RoutingSettings(
         service: service ?? this.service,
@@ -120,6 +135,8 @@ class RoutingSettings {
         speedWarn: speedWarn ?? this.speedWarn,
         showCameras: showCameras ?? this.showCameras,
         curveWarn: curveWarn ?? this.curveWarn,
+        tankerKey: tankerKey ?? this.tankerKey,
+        fuelType: fuelType ?? this.fuelType,
       );
 
   static const _kService = 'routing_service';
@@ -135,6 +152,8 @@ class RoutingSettings {
   static const _kSpeedWarn = 'nav_speed_warn';
   static const _kCameras = 'plan_cameras';
   static const _kCurves = 'nav_curve_warn';
+  static const _kTanker = 'tanker_key';
+  static const _kFuelType = 'fuel_type';
 
   static Future<RoutingSettings> load() async {
     final sp = await SharedPreferences.getInstance();
@@ -163,6 +182,8 @@ class RoutingSettings {
       speedWarn: sp.getBool(_kSpeedWarn) ?? false,
       showCameras: sp.getBool(_kCameras) ?? false,
       curveWarn: sp.getBool(_kCurves) ?? true,
+      tankerKey: sp.getString(_kTanker) ?? '',
+      fuelType: FuelTypeX.parse(sp.getString(_kFuelType)),
     );
   }
 
@@ -179,5 +200,7 @@ class RoutingSettings {
     await sp.setBool(_kSpeedWarn, speedWarn);
     await sp.setBool(_kCameras, showCameras);
     await sp.setBool(_kCurves, curveWarn);
+    await sp.setString(_kTanker, tankerKey.trim());
+    await sp.setString(_kFuelType, fuelType.name);
   }
 }

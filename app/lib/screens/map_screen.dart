@@ -14,6 +14,7 @@ import '../models/route_plan.dart';
 import '../services/curve_warning.dart';
 import '../services/external_nav.dart';
 import '../services/geo.dart';
+import '../services/fuel_prices.dart';
 import '../services/gpx_service.dart';
 import '../services/navigation.dart';
 import '../services/offline_maps.dart';
@@ -587,8 +588,27 @@ class _MapScreenState extends State<MapScreen>
     _prefetchLimits(plan);
     _loadCameras(plan);
     _loadWeather(plan);
+    _loadFuelPrices(plan);
     // Zuletzt geplante Route merken - uebersteht einen Neustart.
     TourStore.open().then((s) => s.saveLast(plan)).catchError((_) {});
+  }
+
+  // ------------------------------------------------------------------
+  // Spritpreise an den Tankstopps
+  // ------------------------------------------------------------------
+  Map<String, StopPrice> _fuelPrices = const {};
+
+  Future<void> _loadFuelPrices(RoutePlan plan) async {
+    _fuelPrices = const {};
+    final s = await RoutingSettings.load();
+    final fp = s.fuelPrices();
+    if (fp == null || !plan.pois.any((p) => p.kind == PoiKind.fuel)) return;
+    try {
+      final m = await fp.forStops(plan.pois, s.fuelType);
+      if (mounted && identical(_route, plan)) setState(() => _fuelPrices = m);
+    } on FormatException catch (e) {
+      if (mounted) toast(context, 'Spritpreise: ${e.message}');
+    }
   }
 
   // ------------------------------------------------------------------
@@ -1660,12 +1680,17 @@ class _MapScreenState extends State<MapScreen>
                           [
                             p.displayName,
                             if (_detailOf(p) != null) _detailOf(p)!,
+                            if (_fuelPrices[p.id] != null)
+                              _fuelPrices[p.id]!.text,
                           ].join(' · '),
                           style: const TextStyle(fontSize: 11, color: chalk),
                         ),
                       ),
                     ]),
                   ),
+                if (_fuelPrices.isNotEmpty)
+                  const Text(FuelPrices.attribution,
+                      style: TextStyle(fontSize: 8.5, color: steel)),
               ],
               if (_weather != null) ...[
                 const SizedBox(height: 10),
@@ -2089,7 +2114,8 @@ class _MapScreenState extends State<MapScreen>
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      '${stop.poi.displayName} in ${_fmtDist(stop.distanceM)}',
+                      '${stop.poi.displayName} in ${_fmtDist(stop.distanceM)}'
+                      '${_fuelPrices[stop.poi.id] != null ? ' · ${_fuelPrices[stop.poi.id]!.text}' : ''}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 11, color: chalk),

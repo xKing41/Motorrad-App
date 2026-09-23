@@ -14,6 +14,19 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.18 - Spritpreise an den Tankstopps
+--------------------------------------------
+
+- Nur Deutschland, kostenlos: Schluessel bei Tankerkoenig holen
+  (creativecommons.tankerkoenig.de -> API-Key beantragen, kommt per
+  Mail). In PLANEN -> EINSTELLUNGEN eintragen und die Sorte waehlen
+  (Super E5, E10 oder Diesel).
+- Danach steht bei jedem Tankstopp der aktuelle Preis und ob die
+  Tankstelle geoeffnet ist - in den Routen-Details und unten in der
+  Navigation ("Aral in 12 km · E5 1,839 €").
+- Ohne Schluessel oder ausserhalb Deutschlands: Tankstopps wie bisher,
+  nur ohne Preis.
+
 VERSION 4.17 - Tour auf der Karte bearbeiten
 --------------------------------------------
 

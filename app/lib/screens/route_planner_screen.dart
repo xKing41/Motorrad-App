@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/route_plan.dart';
 import '../services/ai_config.dart';
 import '../services/ai_planner.dart';
+import '../services/fuel_prices.dart';
 import '../services/geocoder.dart';
 import '../services/ride_store.dart';
 import '../services/route_planner.dart';
@@ -61,6 +62,8 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
   final _ghKeyCtrl = TextEditingController();
   final _tomtomCtrl = TextEditingController();
   final _hereCtrl = TextEditingController();
+  final _tankerCtrl = TextEditingController();
+  FuelType _fuelType = FuelType.e5;
   bool _voice = true;
   bool _showLimits = true;
   bool _speedWarn = false;
@@ -82,6 +85,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
     _ghKeyCtrl.dispose();
     _tomtomCtrl.dispose();
     _hereCtrl.dispose();
+    _tankerCtrl.dispose();
     super.dispose();
   }
 
@@ -102,6 +106,8 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       _ghKeyCtrl.text = routing.ghKey;
       _tomtomCtrl.text = routing.tomtomKey;
       _hereCtrl.text = routing.hereKey;
+      _tankerCtrl.text = routing.tankerKey;
+      _fuelType = routing.fuelType;
       _voice = routing.voice;
       _showLimits = routing.showLimits;
       _speedWarn = routing.speedWarn;
@@ -141,6 +147,8 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       ghKey: _ghKeyCtrl.text.trim(),
       tomtomKey: _tomtomCtrl.text.trim(),
       hereKey: _hereCtrl.text.trim(),
+      tankerKey: _tankerCtrl.text.trim(),
+      fuelType: _fuelType,
       voice: _voice,
       showLimits: _showLimits,
       speedWarn: _speedWarn,
@@ -942,6 +950,28 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
           hint: 'API-Key',
           obscure: true,
         ),
+        const SizedBox(height: 6),
+        const Text(
+          'Spritpreise an den Tankstopps (nur Deutschland): kostenloser '
+          'Schlüssel von Tankerkönig (creativecommons.tankerkoenig.de).',
+          style: TextStyle(fontSize: 10, color: steel, height: 1.4),
+        ),
+        const SizedBox(height: 6),
+        _field(
+          label: 'TANKERKÖNIG-SCHLÜSSEL (optional)',
+          controller: _tankerCtrl,
+          hint: 'API-Key',
+          obscure: true,
+        ),
+        Wrap(spacing: 6, children: [
+          for (final f in FuelType.values)
+            ChoiceChip(
+              label: Text(f.label, style: const TextStyle(fontSize: 11)),
+              selected: _fuelType == f,
+              onSelected: (_) => setState(() => _fuelType = f),
+            ),
+        ]),
+        const SizedBox(height: 6),
         _switchRow('Sprachansagen bei der Navigation', _voice,
             (v) => setState(() => _voice = v)),
         _switchRow('Vor engen Kurven warnen (wenn zu schnell)', _curveWarn,

@@ -40,6 +40,7 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
   Fahrtende – ohne Server und ohne App beim Empfänger
 - **Sicherung**: alle Fahrten und Touren in eine Datei (Drive, Mail …) und
   auf dem neuen Handy wieder einspielen
+- **Spritpreise** an den Tankstopps (Deutschland, Tankerkönig, optional)
 - **Tour bearbeiten** per langem Druck auf die Karte: über einen Punkt führen,
   Straße meiden, Stopp entfernen – nur das Stück um die Stelle wird neu
   berechnet, mit Rückgängig
@@ -249,6 +250,7 @@ tools/check_dart.py             Strukturprüfung aller Dart-Dateien
 | Routing, alternativ | GraphHopper | ja, optional |
 | Tempolimits entlang der Route | Valhalla trace_attributes (OSM maxspeed) | nein |
 | Feste Blitzer (nur Planung) | Overpass (OSM) | nein |
+| Spritpreise an Tankstopps (DE) | Tankerkönig / MTS-K | ja, optional (kostenlos) |
 | Ortssuche | Photon (komoot), Nominatim | nein |
 | Zwischenstopps | Overpass | nein |
 | Verkehrslage (Staus, Sperrungen), Verkehrsfluss-Karte | TomTom Traffic API | ja, optional (kostenlos, 2.500 Abfragen/Tag) |
