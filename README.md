@@ -16,7 +16,10 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
 - Sensorfusion aus Gyroskop, Beschleunigungssensor und GPS. Bei Fahrt gilt
   `Schräglage = asin(v · Gierrate / g)` – dadurch stimmen die Werte auch in
   langen Kurven, wo reine Sensor-Apps zu wenig anzeigen
-- GPS-Tacho, Brems- und Kurven-G, Maximalwerte
+- GPS-Tacho, Brems- und Kurven-G, Maximalwerte. Kurven-G wird aus Tempo ×
+  Drehrate gemessen (nicht aus der Schräglage geschätzt), Brems-G per GPS
+  gegengeprüft, die Schräglage um die Reifenbreite korrigiert
+  (`services/dynamics.dart`)
 - Nullpunkt-Kalibrierung: Das Handy darf hochkant, quer oder flach und
   beliebig schräg montiert sein; die Lage wird gespeichert
 - Wetterstreifen mit Regen-, Frost- und Kaltreifenwarnung

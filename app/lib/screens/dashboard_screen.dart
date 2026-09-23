@@ -408,7 +408,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _tripBar() {
     final dur = t.rideDurationSec;
     final distKm = t.rideDistanceM / 1000;
-    final avg = (t.recording && dur > 10) ? distKm / (dur / 3600) : 0.0;
+    // Durchschnitt in Fahrt, ohne Stillstand.
+    final mov = t.rideMovingSec;
+    final avg = (t.recording && mov > 10) ? distKm / (mov / 3600) : 0.0;
 
     final parts = <String>[
       'STRECKE ${distKm.toStringAsFixed(1)} KM',

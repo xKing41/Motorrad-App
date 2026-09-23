@@ -276,7 +276,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       Row(children: [
         Expanded(
             child: StatCard(
-                label: 'Ø TEMPO',
+                label: r.movingSec != null ? 'Ø IN FAHRT' : 'Ø TEMPO',
                 value: '${r.avgSpeedKmh.round()}',
                 unit: ' km/h')),
         const SizedBox(width: 8),

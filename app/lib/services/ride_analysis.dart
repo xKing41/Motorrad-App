@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../models/ride.dart';
+import 'dynamics.dart';
 
 // ---------------------------------------------------------------------------
 //  TIEFENAUSWERTUNG EINER FAHRT
@@ -171,11 +172,12 @@ class RideAnalysis {
       buckets[bi] += dt;
 
       // --- Kammscher Kreis ---
-      // Quer: bei stetiger Kurvenfahrt gilt a_quer = g * tan(Schraeglage).
-      // Laengs: aus der Geschwindigkeitsaenderung.
-      final latG =
-          math.tan(absLean * math.pi / 180).clamp(0.0, 2.0).toDouble();
-      final longG = ((b.speedMs - a.speedMs) / dt / _g).clamp(-2.0, 2.0)
+      // Quer- und Laengsbeschleunigung wie gemessen. Aeltere Fahrten ohne
+      // Messwert: quer aus der Schraeglage (nur in gleichmaessigen Kurven
+      // richtig), laengs aus der Tempoaenderung.
+      final latG = b.latG ?? Dynamics.lateralGFromLean(absLean);
+      final longG = (b.longG ?? (b.speedMs - a.speedMs) / dt / _g)
+          .clamp(-1.5, 1.5)
           .toDouble();
       final p = KammPoint(latG, longG);
       if (p.total > maxCombined) maxCombined = p.total;
@@ -191,9 +193,12 @@ class RideAnalysis {
       jerkCount++;
 
       // --- Bremsen in Schraeglage ---
+      // Aus der Tempoaenderung, nicht aus dem Sensorwert: Der ist ein
+      // Momentwert und schwankt mit jeder Bodenwelle.
       if (absLean > 20) {
         leanTimeSec += dt;
-        if (longG < -0.25) brakeInLeanSec += dt;
+        final decel = (b.speedMs - a.speedMs) / dt / _g;
+        if (decel < -0.25) brakeInLeanSec += dt;
       }
     }
 
@@ -255,18 +260,16 @@ class RideAnalysis {
     );
   }
 
-  /// Geschaetzter Radius einer einzelnen Kurve in Metern.
+  /// Radius einer Kurve in Metern: r = v^2 / a am Scheitel.
   ///
-  /// Bei stetiger Kurvenfahrt gilt r = v^2 / (g * tan(Schraeglage)).
-  /// Tempo und Schraeglage muessen vom SELBEN Moment stammen (Scheitel).
-  /// Vorher wurde das kleinste Tempo mit der groessten Schraeglage
-  /// verrechnet - die kommen selten gleichzeitig vor, die Radien waren
-  /// zu klein. Gibt 0 zurueck, wenn keine sinnvolle Rechnung moeglich ist.
+  /// Mit gemessener Querbeschleunigung direkt; bei aelteren Fahrten aus
+  /// der Schraeglage (mit Reifenkorrektur). Tempo und Beschleunigung
+  /// stammen vom SELBEN Moment. Gibt 0 zurueck, wenn keine sinnvolle
+  /// Rechnung moeglich ist.
   static double radiusOf(Corner c) {
     final v = (c.apexSpeedKmh > 0 ? c.apexSpeedKmh : c.minSpeedKmh) / 3.6;
-    final t = math.tan(c.maxLean * math.pi / 180);
-    if (v <= 3 || t <= 0.05) return 0;
-    final r = v * v / (_g * t);
-    return (r > 3 && r < 2000) ? r : 0;
+    final a = c.apexLatG ?? Dynamics.lateralGFromLean(c.maxLean);
+    return Dynamics.radiusM(v, a);
   }
+
 }

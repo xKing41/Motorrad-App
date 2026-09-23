@@ -11,6 +11,8 @@ class TrackPoint {
     required this.speedMs,
     required this.lean,
     this.altM,
+    this.latG,
+    this.longG,
   });
 
   final double lat;
@@ -20,6 +22,11 @@ class TrackPoint {
   final double lean; // Schraeglage in Grad, + = rechts
   final double? altM;
 
+  /// Gemessene Quer- und Laengsbeschleunigung in g (ab Version 4.5;
+  /// aeltere Fahrten haben sie nicht).
+  final double? latG;
+  final double? longG;
+
   Map<String, dynamic> toJson() => {
         'a': double.parse(lat.toStringAsFixed(6)),
         'o': double.parse(lon.toStringAsFixed(6)),
@@ -27,6 +34,8 @@ class TrackPoint {
         's': double.parse(speedMs.toStringAsFixed(2)),
         'l': double.parse(lean.toStringAsFixed(1)),
         if (altM != null) 'h': double.parse(altM!.toStringAsFixed(1)),
+        if (latG != null) 'g': double.parse(latG!.toStringAsFixed(2)),
+        if (longG != null) 'x': double.parse(longG!.toStringAsFixed(2)),
       };
 
   static TrackPoint fromJson(Map<String, dynamic> j) => TrackPoint(
@@ -36,6 +45,8 @@ class TrackPoint {
         speedMs: (j['s'] as num?)?.toDouble() ?? 0,
         lean: (j['l'] as num?)?.toDouble() ?? 0,
         altM: (j['h'] as num?)?.toDouble(),
+        latG: (j['g'] as num?)?.toDouble(),
+        longG: (j['x'] as num?)?.toDouble(),
       );
 }
 
@@ -54,6 +65,7 @@ class RideSummary {
     required this.maxLatG,
     required this.pointCount,
     this.title,
+    this.movingSec,
   });
 
   final String id;
@@ -68,10 +80,18 @@ class RideSummary {
   final int pointCount;
   final String? title;
 
+  /// Reine Fahrzeit ohne Stillstand (null bei alten Fahrten).
+  final int? movingSec;
+
   double get distanceKm => distanceM / 1000;
   double get maxSpeedKmh => maxSpeedMs * 3.6;
-  double get avgSpeedKmh =>
-      durationSec > 0 ? distanceKm / (durationSec / 3600) : 0;
+
+  /// Durchschnitt in Fahrt - Pausen an der Tankstelle oder im Cafe
+  /// zaehlen nicht mit (vorher: 60 km in 2 h mit 1 h Pause = "30 km/h").
+  double get avgSpeedKmh {
+    final t = (movingSec != null && movingSec! > 0) ? movingSec! : durationSec;
+    return t > 0 ? distanceKm / (t / 3600) : 0;
+  }
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -85,6 +105,7 @@ class RideSummary {
         'lat': double.parse(maxLatG.toStringAsFixed(2)),
         'n': pointCount,
         if (title != null) 'title': title,
+        if (movingSec != null) 'mov': movingSec,
       };
 
   static RideSummary fromJson(Map<String, dynamic> j) => RideSummary(
@@ -99,6 +120,7 @@ class RideSummary {
         maxLatG: (j['lat'] as num?)?.toDouble() ?? 0,
         pointCount: (j['n'] as num?)?.toInt() ?? 0,
         title: j['title'] as String?,
+        movingSec: (j['mov'] as num?)?.toInt(),
       );
 }
 
@@ -117,6 +139,7 @@ class Corner {
     required this.lat,
     required this.lon,
     this.apexSpeedKmh = 0,
+    this.apexLatG,
   });
 
   final int startIndex;
@@ -131,6 +154,9 @@ class Corner {
 
   /// Tempo am Scheitel (Punkt der groessten Schraeglage).
   final double apexSpeedKmh;
+
+  /// Gemessene Querbeschleunigung am Scheitel (null bei alten Fahrten).
+  final double? apexLatG;
 
   Map<String, dynamic> toJson() => {
         'i0': startIndex,
@@ -211,6 +237,7 @@ void _addCorner(
     lat: track[apex].lat,
     lon: track[apex].lon,
     apexSpeedKmh: track[apex].speedMs * 3.6,
+    apexLatG: track[apex].latG,
   ));
 }
 

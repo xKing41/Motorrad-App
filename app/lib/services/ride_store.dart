@@ -164,6 +164,7 @@ class RideStore {
         maxLatG: s.maxLatG,
         pointCount: track.length,
         title: 'Unterbrochene Fahrt',
+        movingSec: s.movingSec,
       );
       await saveRide(saved, track);
       return saved;

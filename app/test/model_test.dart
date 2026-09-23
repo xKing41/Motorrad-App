@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:schraeglage/models/ride.dart';
 import 'package:schraeglage/models/route_plan.dart';
 import 'package:schraeglage/services/ai_planner.dart';
 import 'package:schraeglage/services/poi_service.dart';
@@ -103,5 +104,23 @@ void main() {
       expect(list.first.detail, 'Aral');
       expect(list.last.detail, 'Gipfel, 600 m');
     });
+  });
+
+  test('Durchschnitt ohne Pausen', () {
+    final r = RideSummary(
+      id: 'x',
+      start: DateTime(2026),
+      durationSec: 7200,
+      distanceM: 60000,
+      maxLeanL: 0,
+      maxLeanR: 0,
+      maxSpeedMs: 0,
+      maxBrakeG: 0,
+      maxLatG: 0,
+      pointCount: 0,
+      movingSec: 3600,
+    );
+    expect(r.avgSpeedKmh, closeTo(60, 1e-9));
+    expect(RideSummary.fromJson(r.toJson()).movingSec, 3600);
   });
 }

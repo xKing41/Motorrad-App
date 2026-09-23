@@ -37,7 +37,25 @@ void main() {
     expect(c.direction, 1);
     expect(c.maxLean, 30);
     expect(c.apexSpeedKmh, closeTo(12 * 3.6, 1e-9));
-    // r = v^2 / (g tan 30) = 144 / (9.81 * 0.577) ~ 25,4 m
-    expect(RideAnalysis.radiusOf(c), closeTo(25.4, 0.2));
+    // Alte Fahrt ohne Messwert: Radius aus der Schraeglage, mit
+    // Reifenkorrektur (30 Grad Motorrad ~ 26 Grad effektiv) -> ~30 m.
+    expect(RideAnalysis.radiusOf(c), inInclusiveRange(28.0, 32.0));
+  });
+
+  test('gemessene Querbeschleunigung hat Vorrang', () {
+    final t = [
+      for (var i = 0; i < 9; i++)
+        TrackPoint(
+          lat: 51 + i * 0.0001,
+          lon: 7,
+          tMs: i * 700,
+          speedMs: 20,
+          lean: i == 4 ? 35 : (i == 3 || i == 5 ? 20 : 0),
+          latG: i == 4 ? 0.8 : 0.1,
+        ),
+    ];
+    final c = detectCorners(t).single;
+    // r = v^2 / a = 400 / (0,8 * 9,81) ~ 51 m
+    expect(RideAnalysis.radiusOf(c), closeTo(51, 1));
   });
 }

@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/ride.dart';
 import 'crash_detector.dart';
+import 'dynamics.dart';
 import 'emergency.dart';
 import 'mount.dart';
 import 'weather_service.dart';
@@ -17,7 +18,8 @@ import 'weather_service.dart';
 /// Messprinzip Schraeglage:
 ///  - Gyroskop liefert schnelle Aenderungen (driftet langsam weg)
 ///  - Bei Fahrt dient die physikalisch korrekte GPS-Methode als Referenz:
-///    Schraeglage = asin(v * Gierrate / g)
+///    effektive Schraeglage = asin(v * Gierrate / g), plus Korrektur fuer
+///    die Reifenbreite (siehe dynamics.dart)
 ///  - Im Stand stuetzt der Beschleunigungssensor
 ///  Ein Komplementaerfilter fuehrt beides zusammen.
 ///
@@ -112,7 +114,13 @@ class Telemetry extends ChangeNotifier {
   double roll = 0; // Grad, + = rechts
   double maxLeanL = 0, maxLeanR = 0;
   double longG = 0; // + beschleunigen, - bremsen
+  /// Querbeschleunigung in g - gemessen aus Tempo und Drehrate, nicht
+  /// aus der Schraeglage geschaetzt. Im Stand 0.
   double latG = 0;
+  // Laengsbeschleunigung laut GPS-Tempo (g), zur Plausibilisierung.
+  double _gpsLongG = 0;
+  double? _lastRawSpeed;
+  int _lastRawSpeedUs = 0;
   double maxBrakeG = 0, maxLatG = 0;
   bool gpsReference = false; // true = GPS-gestuetzter Praezisionsmodus
 
@@ -139,6 +147,10 @@ class Telemetry extends ChangeNotifier {
   DateTime? rideStart;
   double rideDistanceM = 0;
   double rideMaxSpeedMs = 0;
+
+  /// Fahrzeit ohne Stillstand in Sekunden.
+  double rideMovingSec = 0;
+  int _lastMoveUs = 0;
   final List<TrackPoint> track = [];
   int _lastRecMs = 0;
   // Letzter Punkt, bis zu dem die Strecke schon gezaehlt ist.
@@ -428,10 +440,15 @@ class Telemetry extends ChangeNotifier {
     final upn = math.sqrt(_gx * _gx + _gy * _gy + _gz * _gz);
     double refDeg;
     double tau;
+    var latNow = 0.0;
     if (hasFix && speedMs > 2.5 && upn > 2) {
-      final yaw = (e.x * _gx + e.y * _gy + e.z * _gz) / upn;
-      final s = (-speedMs * yaw / 9.81).clamp(-0.999, 0.999).toDouble();
-      refDeg = math.asin(s) * 180 / math.pi;
+      // Drehrate um die (effektive) Hochachse - das Handy neigt sich mit.
+      final yaw = -(e.x * _gx + e.y * _gy + e.z * _gz) / upn;
+      final eff = Dynamics.effectiveLeanDeg(speedMs, yaw);
+      // Das Motorrad liegt wegen des runden Reifens tiefer als die
+      // effektive Linie Aufstandspunkt-Schwerpunkt.
+      refDeg = Dynamics.bikeLeanDeg(eff);
+      latNow = Dynamics.lateralG(speedMs, yaw);
       tau = 1.4;
       gpsReference = true;
     } else {
@@ -439,6 +456,8 @@ class Telemetry extends ChangeNotifier {
       tau = 2.5;
       gpsReference = false;
     }
+    // Querbeschleunigung leicht geglaettet (0,3 s) gegen Vibrationen.
+    latG += _alpha(dt, 0.3) * (latNow - latG);
 
     final k = tau / (tau + dt);
     roll = _norm(k * (roll + rate * dt) + (1 - k) * refDeg);
@@ -450,6 +469,7 @@ class Telemetry extends ChangeNotifier {
       if (-roll > maxLeanL) maxLeanL = -roll;
       if (roll > maxLeanR) maxLeanR = roll;
     }
+    if (gpsReference && latG > maxLatG) maxLatG = latG;
 
     // Direkt an die Anzeige. Kein setState, kein Neuaufbau des
     // Bildschirms - nur der Zeiger zeichnet sich neu.
@@ -465,7 +485,24 @@ class Telemetry extends ChangeNotifier {
     gpsAccuracyM = p.accuracy;
 
     final s = (p.speed.isFinite && p.speed >= 0) ? p.speed : 0.0;
-    speedMs = speedMs < 0 ? s : speedMs + 0.35 * (s - speedMs);
+    // Leicht geglaettet. Vorher 0,35 je Fix - das Tempo hing gut zwei
+    // Sekunden hinterher, und damit auch Querbeschleunigung und
+    // Schraeglage, die daraus berechnet werden.
+    speedMs = speedMs < 0 ? s : speedMs + 0.6 * (s - speedMs);
+
+    // Laengsbeschleunigung aus dem GPS-Tempo: langsam, aber frei von
+    // Vibrationen - damit wird der Brems-Sensor gegengeprueft.
+    final us = _clock.elapsedMicroseconds;
+    final prev = _lastRawSpeed;
+    if (prev != null) {
+      final dt = (us - _lastRawSpeedUs) / 1e6;
+      if (dt > 0.2 && dt < 5) {
+        final a = (s - prev) / dt / Dynamics.g;
+        _gpsLongG += 0.5 * (a - _gpsLongG);
+      }
+    }
+    _lastRawSpeed = s;
+    _lastRawSpeedUs = us;
     if (s > 2 && p.heading.isFinite && p.heading >= 0) headingDeg = p.heading;
 
     // Erst hier, mit dem frisch aktualisierten Tempo: Die
@@ -475,6 +512,12 @@ class Telemetry extends ChangeNotifier {
 
     if (recording) {
       if (speedMs > rideMaxSpeedMs) rideMaxSpeedMs = speedMs;
+      final nowUs = _clock.elapsedMicroseconds;
+      if (_lastMoveUs != 0 && speedMs > 1.5) {
+        final dt = (nowUs - _lastMoveUs) / 1e6;
+        if (dt < 10) rideMovingSec += dt;
+      }
+      _lastMoveUs = nowUs;
       _recordPoint(p);
     }
 
@@ -517,20 +560,23 @@ class Telemetry extends ChangeNotifier {
       speedMs: speedMs,
       lean: roll,
       altM: p.altitude,
+      latG: gpsReference ? latG : 0,
+      longG: longG,
     ));
   }
 
   /// G-Kraefte im Sensortakt berechnen, nicht im Anzeigetakt: Eine kurze
   /// Bremsspitze faellt sonst zwischen zwei Takte und wird nie gesehen.
   void _updateForces() {
-    longG = _frame.forward(_lx, _ly, _lz) / 9.81;
-    latG = math.tan(roll.abs() * math.pi / 180).clamp(0.0, 3.0).toDouble();
+    longG = _frame.forward(_lx, _ly, _lz) / Dynamics.g;
 
-    final moving = hasFix ? speedMs > 1.5 : true;
-    if (moving) {
-      final brake = -longG;
+    // Maximale Bremsverzoegerung nur zaehlen, wenn das GPS-Tempo
+    // tatsaechlich faellt. Vorher reichte ein Schlagloch oder eine
+    // Bodenwelle (Stoss nach vorn im Sensor) fuer einen "Rekord".
+    // Mehr als 1,5 g kann ein Motorrad nicht verzoegern.
+    if (hasFix && speedMs > 2 && _gpsLongG < -0.12) {
+      final brake = (-longG).clamp(0.0, 1.5).toDouble();
       if (brake > maxBrakeG) maxBrakeG = brake;
-      if (latG > maxLatG) maxLatG = latG;
     }
   }
 
@@ -635,6 +681,8 @@ class Telemetry extends ChangeNotifier {
     rideStart = DateTime.now();
     rideDistanceM = 0;
     rideMaxSpeedMs = 0;
+    rideMovingSec = 0;
+    _lastMoveUs = 0;
     track.clear();
     _lastDistLat = null;
     _lastDistLon = null;
@@ -661,6 +709,7 @@ class Telemetry extends ChangeNotifier {
         maxBrakeG: maxBrakeG,
         maxLatG: maxLatG,
         pointCount: track.length,
+        movingSec: rideMovingSec.round(),
       );
 
   /// Beendet die Aufzeichnung und liefert die Zusammenfassung.
