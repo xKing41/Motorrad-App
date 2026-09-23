@@ -14,6 +14,18 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.14 - Sicherung
+------------------------
+
+- FAHRTEN -> ganz unten "SICHERN & TEILEN": alle Fahrten (mit Spur)
+  und alle gespeicherten Touren in EINE Datei
+  (schraeglage-sicherung-JJJJ-MM-TT.json.gz). Im Teilen-Menue z. B.
+  Google Drive, E-Mail oder "In Dateien speichern" waehlen.
+- Neues Handy: FAHRTEN -> "SICHERUNG EINSPIELEN" -> Datei auswaehlen.
+  Vorhandenes bleibt, nichts wird doppelt eingespielt.
+- Schluessel (TomTom, HERE, KI) sind NICHT in der Sicherung - die Datei
+  landet womoeglich in einer Cloud. Die traegt man neu ein.
+
 VERSION 4.13 - Kurven-Vorwarnung
 --------------------------------
 

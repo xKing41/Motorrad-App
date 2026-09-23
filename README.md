@@ -34,6 +34,8 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
 - **Offline-Karten**: angesehene Karten bleiben auf dem Handy, Route
   (automatisch beim Planen) und Kartenausschnitte vorab speichern; im
   Funkloch vergrößerte gröbere Kacheln statt leerer Flächen
+- **Sicherung**: alle Fahrten und Touren in eine Datei (Drive, Mail …) und
+  auf dem neuen Handy wieder einspielen
 - **Tourenbibliothek**: geplante Touren samt Stopps und Vorgaben speichern
   und ohne Neuberechnung wieder laden; die zuletzt geplante Route merkt
   sich die App selbst

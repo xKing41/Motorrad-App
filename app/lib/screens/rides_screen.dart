@@ -1,7 +1,14 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../models/ride.dart';
+import '../services/backup_service.dart';
 import '../services/ride_store.dart';
+import '../services/tour_store.dart';
 import '../theme.dart';
 import 'ride_detail_screen.dart';
 
@@ -70,6 +77,78 @@ class RidesScreenState extends State<RidesScreen> {
     if (mounted) toast(context, 'Fahrt gelöscht');
   }
 
+  // -------------------------------------------------------------------
+  //  Sicherung
+  // -------------------------------------------------------------------
+  bool _backupBusy = false;
+
+  Future<void> _exportBackup() async {
+    setState(() => _backupBusy = true);
+    try {
+      final dir = await getTemporaryDirectory();
+      final f = File('${dir.path}/${BackupService.fileName(DateTime.now())}');
+      final res = await BackupService.export(
+          f, RideStore.instance, await TourStore.open());
+      if (!mounted) return;
+      await SharePlus.instance.share(ShareParams(
+        files: [XFile(f.path, mimeType: 'application/gzip')],
+        subject: 'Schräglage-Sicherung',
+        text: 'Sicherung: ${res.text}',
+      ));
+    } catch (e) {
+      if (mounted) toast(context, 'Sicherung fehlgeschlagen');
+    } finally {
+      if (mounted) setState(() => _backupBusy = false);
+    }
+  }
+
+  Future<void> _importBackup() async {
+    PlatformFile? f;
+    try {
+      f = await FilePicker.pickFile();
+    } catch (_) {
+      f = null;
+    }
+    if (f == null || !mounted) return;
+    setState(() => _backupBusy = true);
+    try {
+      final res = await BackupService.import(
+          f.readAsByteStream(), RideStore.instance, await TourStore.open());
+      await reload();
+      if (mounted) toast(context, 'Eingespielt: ${res.text}');
+    } on FormatException {
+      if (mounted) toast(context, 'Das ist keine Schräglage-Sicherung');
+    } catch (_) {
+      if (mounted) toast(context, 'Einspielen fehlgeschlagen');
+    } finally {
+      if (mounted) setState(() => _backupBusy = false);
+    }
+  }
+
+  Widget _backupRow() {
+    if (_backupBusy) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: LinearProgressIndicator(color: signal, backgroundColor: line),
+      );
+    }
+    return Row(children: [
+      Expanded(
+        child: FlatButton2(
+          label: 'SICHERN & TEILEN',
+          onTap: _exportBackup,
+        ),
+      ),
+      const SizedBox(width: 8),
+      Expanded(
+        child: FlatButton2(
+          label: 'SICHERUNG EINSPIELEN',
+          onTap: _importBackup,
+        ),
+      ),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_loaded) {
@@ -78,17 +157,28 @@ class RidesScreenState extends State<RidesScreen> {
     }
 
     if (_rides.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Text(
-            'Noch keine Fahrten gespeichert.\n\n'
-            'Tippe auf FAHRT STARTEN, fahre los\n'
-            'und beende die Fahrt – sie landet dann hier,\n'
-            'mit Karte und Kurvenauswertung.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: steel, height: 1.7, fontSize: 12),
-          ),
+          padding: const EdgeInsets.all(32),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text(
+              'Noch keine Fahrten gespeichert.\n\n'
+              'Tippe auf FAHRT STARTEN, fahre los\n'
+              'und beende die Fahrt – sie landet dann hier,\n'
+              'mit Karte und Kurvenauswertung.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: steel, height: 1.7, fontSize: 12),
+            ),
+            const SizedBox(height: 24),
+            // Neues Handy: alte Fahrten und Touren zurueckholen.
+            if (_backupBusy)
+              const LinearProgressIndicator(color: signal, backgroundColor: line)
+            else
+              FlatButton2(
+                label: 'SICHERUNG EINSPIELEN',
+                onTap: _importBackup,
+              ),
+          ]),
         ),
       );
     }
@@ -101,7 +191,7 @@ class RidesScreenState extends State<RidesScreen> {
       onRefresh: reload,
       child: ListView.separated(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-        itemCount: _rides.length + 1,
+        itemCount: _rides.length + 2,
         separatorBuilder: (_, __) => const SizedBox(height: 8),
         itemBuilder: (context, i) {
           if (i == 0) {
@@ -129,6 +219,12 @@ class RidesScreenState extends State<RidesScreen> {
                 ),
               ),
             ]);
+          }
+          if (i == _rides.length + 1) {
+            return Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: _backupRow(),
+            );
           }
           return _tile(_rides[i - 1]);
         },

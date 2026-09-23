@@ -202,13 +202,14 @@ class TourStore {
   static String _newId() => 't${DateTime.now().microsecondsSinceEpoch}';
 
   /// Speichert eine Tour. Mit [id] wird eine bestehende ersetzt.
-  Future<TourMeta> save(RoutePlan plan, {String? title, String? id}) async {
+  Future<TourMeta> save(RoutePlan plan,
+      {String? title, String? id, DateTime? savedAt}) async {
     final meta = TourMeta(
       id: id ?? _newId(),
       title: (title ?? plan.title ?? '').trim().isEmpty
           ? 'Tour ${(plan.distanceM / 1000).round()} km'
           : (title ?? plan.title)!.trim(),
-      savedAt: DateTime.now(),
+      savedAt: savedAt ?? DateTime.now(),
       distanceM: plan.distanceM,
       durationSec: plan.durationSec,
       roundTrip: plan.roundTrip,

@@ -1,9 +1,9 @@
 @echo off
 setlocal EnableExtensions
-title Schraeglage - Automatische Einrichtung und APK-Build (v4.13)
+title Schraeglage - Automatische Einrichtung und APK-Build (v4.14)
 
 REM ================================================================
-REM  SCHRAEGLAGE  -  Ein-Klick-Setup fuer Windows  (v4.13)
+REM  SCHRAEGLAGE  -  Ein-Klick-Setup fuer Windows  (v4.14)
 REM  Laedt alles Noetige (Git, Java, Flutter, Android-Tools),
 REM  baut die App und legt die fertige APK auf den Desktop.
 REM  Erzeugt den Android-Ordner bei jedem Lauf frisch neu und ersetzt
@@ -17,7 +17,7 @@ set "SRC=%~dp0app"
 set "PS=powershell -NoProfile -ExecutionPolicy Bypass -Command"
 
 echo ==============================================================
-echo    SCHRAEGLAGE  -  Automatische Einrichtung + APK-Build v4.13
+echo    SCHRAEGLAGE  -  Automatische Einrichtung + APK-Build v4.14
 echo ==============================================================
 echo.
 echo  Beim ersten Lauf werden ca. 1-2 GB heruntergeladen.
