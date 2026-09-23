@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/route_plan.dart';
@@ -323,12 +324,16 @@ class _MapScreenState extends State<MapScreen>
   // ------------------------------------------------------------------
   final List<RoutePlan> _undo = [];
 
+  /// Markierung der Stelle, die gerade bearbeitet wird.
+  LatLng? _editPin;
+
   Future<void> _editAt(RoutePoint p) async {
     final r = _route;
     if (r == null || _nav != null || _busy) {
       if (r == null) toast(context, 'Erst eine Route planen oder laden');
       return;
     }
+    setState(() => _editPin = LatLng(p.lat, p.lon));
     final cum = cumulativeDistances(r.points);
     final hit = projectOnPolyline(p, r.points, cum);
     final onRoute = hit != null && hit.distanceM < 150;
@@ -376,7 +381,10 @@ class _MapScreenState extends State<MapScreen>
         ]),
       ),
     );
-    if (what == null || !mounted) return;
+    if (what == null || !mounted) {
+      if (mounted) setState(() => _editPin = null);
+      return;
+    }
     final settings = await RoutingSettings.load();
     final patcher = RoutePatcher(
       settings.engine(),
@@ -399,19 +407,31 @@ class _MapScreenState extends State<MapScreen>
       if (!mounted || !identical(_route, r)) return;
       _undo.add(r);
       if (_undo.length > 10) _undo.removeAt(0);
+      // Automatischer Titel mit km-Angabe: an die neue Laenge anpassen.
+      final km = (res.route.distanceM / 1000).round();
+      final t = r.title;
+      final title = t != null && RegExp(r'^Rundtour · \d+ km$').hasMatch(t)
+          ? 'Rundtour · $km km'
+          : t;
       final edited = planWith(r, res.route).copyWith(
+        title: title,
         pois: pois,
         // Varianten und Verkehrslage gehoerten zur alten Linie.
         alternatives: const [],
         traffic: const [],
       );
       _setRoute(edited, keepUndo: true);
-      final km = res.extraM / 1000;
-      final sign = km >= 0 ? '+' : '−';
+      final extra = res.extraM / 1000;
+      final sign = extra >= 0 ? '+' : '−';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         backgroundColor: panel,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 150),
+        duration: const Duration(seconds: 8),
+        shape: const RoundedRectangleBorder(
+            side: BorderSide(color: line)),
         content: Text(
-            'Tour geändert: $sign${km.abs().toStringAsFixed(1).replaceAll('.', ',')} km',
+            'Tour geändert: $sign${extra.abs().toStringAsFixed(1).replaceAll('.', ',')} km',
             style: const TextStyle(color: chalk)),
         action: SnackBarAction(
           label: 'RÜCKGÄNGIG',
@@ -422,7 +442,22 @@ class _MapScreenState extends State<MapScreen>
     } on RouteException catch (e) {
       if (mounted) toast(context, 'Nicht möglich: ${e.message}');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _editPin = null;
+        });
+      }
+    }
+  }
+
+  /// Einmalig erklaeren, dass man die Tour per langem Druck aendern kann.
+  Future<void> _editHintOnce() async {
+    final sp = await SharedPreferences.getInstance();
+    if (sp.getBool('hint_edit_tour') == true || !mounted) return;
+    await sp.setBool('hint_edit_tour', true);
+    if (mounted) {
+      toast(context, 'Tipp: Lange auf die Karte drücken, um die Tour zu ändern');
     }
   }
 
@@ -594,6 +629,7 @@ class _MapScreenState extends State<MapScreen>
     _loadWeather(plan);
     _loadFuelPrices(plan);
     _loadTrafficEta(plan);
+    _editHintOnce();
     // Zuletzt geplante Route merken - uebersteht einen Neustart.
     TourStore.open().then((s) => s.saveLast(plan)).catchError((_) {});
   }
@@ -1374,6 +1410,17 @@ class _MapScreenState extends State<MapScreen>
       out.add(_flag(b, loop ? const Color(0xFF7FBF4F) : redline, Icons.flag));
     }
 
+    final pin = _editPin;
+    if (pin != null) {
+      out.add(Marker(
+        point: pin,
+        width: 36,
+        height: 36,
+        alignment: Alignment.topCenter,
+        child: const Icon(Icons.location_on, size: 36, color: signal),
+      ));
+    }
+
     if (_camerasVisible) {
       for (final c in _cameras) {
         out.add(Marker(
@@ -1688,6 +1735,14 @@ class _MapScreenState extends State<MapScreen>
                       '${(st.knownShare * 100).round()} %'),
               ],
               if (r.engineLabel != null) row('Berechnet mit', r.engineLabel!),
+              const Padding(
+                padding: EdgeInsets.only(top: 6),
+                child: Text(
+                  'Tipp: Lange auf die Karte drücken, um die Tour zu ändern - '
+                  'über einen Punkt führen, Straße meiden, Stopp entfernen.',
+                  style: TextStyle(fontSize: 10, color: cool, height: 1.4),
+                ),
+              ),
               if (r.pois.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 const TinyLabel('STOPPS'),
@@ -1842,6 +1897,7 @@ class _MapScreenState extends State<MapScreen>
               label: 'NAVIGATION',
               color: signal,
               strong: true,
+              fill: signal,
               onTap: _startNav,
             ),
           ),
@@ -1851,7 +1907,10 @@ class _MapScreenState extends State<MapScreen>
           child: FlatButton2(
             label: t.recording ? 'FAHRT BEENDEN' : 'FAHRT STARTEN',
             color: t.recording ? amber : (_route != null ? cool : signal),
-            strong: _route == null || t.recording,
+            strong: true,
+            fill: _route == null && !t.recording
+                ? signal
+                : panel.withValues(alpha: 0.96),
             onTap: widget.onToggleRide,
           ),
         ),
@@ -2217,6 +2276,8 @@ class _MapScreenState extends State<MapScreen>
           child: FlatButton2(
             label: 'NAVIGATION BEENDEN',
             color: amber,
+            strong: true,
+            fill: panel.withValues(alpha: 0.96),
             tall: true,
             onTap: _holdHint,
             onLongPress: _stopNav,
@@ -2227,6 +2288,8 @@ class _MapScreenState extends State<MapScreen>
           child: FlatButton2(
             label: t.recording ? 'FAHRT BEENDEN' : 'FAHRT STARTEN',
             color: t.recording ? amber : signal,
+            strong: true,
+            fill: panel.withValues(alpha: 0.96),
             tall: true,
             onTap: t.recording ? _holdHint : widget.onToggleRide,
             onLongPress: widget.onToggleRide,

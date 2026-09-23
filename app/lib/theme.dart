@@ -128,7 +128,12 @@ class FlatButton2 extends StatelessWidget {
     this.strong = false,
     this.onLongPress,
     this.tall = false,
+    this.fill,
   });
+
+  /// Hintergrund - ueber der Karte noetig, sonst ist der Knopf kaum zu
+  /// sehen. Ist er gleich [color], wird die Schrift dunkel.
+  final Color? fill;
 
   final String label;
   final VoidCallback? onTap;
@@ -145,6 +150,7 @@ class FlatButton2 extends StatelessWidget {
       onPressed: onTap,
       onLongPress: onLongPress,
       style: OutlinedButton.styleFrom(
+        backgroundColor: fill,
         foregroundColor: color,
         side: BorderSide(color: color, width: strong ? 1.4 : 1),
         padding: EdgeInsets.symmetric(vertical: tall ? 18 : (strong ? 13 : 11)),
@@ -157,7 +163,7 @@ class FlatButton2 extends StatelessWidget {
           fontSize: strong ? 11.5 : 9.5,
           fontWeight: FontWeight.w600,
           letterSpacing: 1.4,
-          color: strong ? color : chalk,
+          color: fill == color ? asphalt : (strong ? color : chalk),
         ),
       ),
     );

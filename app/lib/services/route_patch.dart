@@ -183,27 +183,62 @@ class RoutePatcher {
   static const double editSpanM = 4000;
 
   (double, double, double) _span(EngineRoute base, RoutePoint p,
-      List<double> cum) {
+      List<double> cum, [double span = editSpanM]) {
     final hit = projectOnPolyline(p, base.points, cum);
     final along = hit?.alongM ?? 0;
     return (
       along,
-      math.max(0.0, along - editSpanM),
-      math.min(cum.last, along + editSpanM),
+      math.max(0.0, along - span),
+      math.min(cum.last, along + span),
     );
   }
 
-  /// Die Tour soll ueber [p] fuehren.
-  Future<PatchResult> via(EngineRoute base, RoutePoint p) async {
-    final cum = cumulativeDistances(base.points);
-    final (_, a, b) = _span(base, p, cum);
+  /// Wie weit vor und hinter der Stelle neu gerechnet wird, wenn der
+  /// Punkt [offM] neben der Route liegt. Liegt er weit ab, muss das
+  /// Stueck entsprechend laenger sein - sonst bleibt der Engine nur,
+  /// auf derselben Strasse hin und wieder zurueck zu fahren (Stich).
+  static double viaSpan(double offM) =>
+      (editSpanM + 1.5 * offM).clamp(editSpanM, 25000.0).toDouble();
+
+  Future<(EngineRoute, EngineRoute)> _viaDetour(
+      EngineRoute base, RoutePoint p, List<double> cum, double span) async {
+    final (_, a, b) = _span(base, p, cum, span);
     final detour = (await engine.route([
       Waypoint(pointAlong(base.points, cum, a), WaypointKind.endpoint),
       Waypoint(p, WaypointKind.shape),
       Waypoint(pointAlong(base.points, cum, b), WaypointKind.endpoint),
     ], prefs))
         .first;
-    final old = sliceRoute(base, a, b, cum: cum);
+    // Neues Stueck und das Stueck der alten Route, das es ersetzt.
+    return (detour, sliceRoute(base, a, b, cum: cum));
+  }
+
+  /// Die Tour soll ueber [p] fuehren. Liegt der Punkt abseits, wird ein
+  /// laengeres Stueck neu berechnet; entsteht dabei trotzdem ein Stich
+  /// (hin und zurueck auf derselben Strasse), wird ein noch laengeres
+  /// Stueck versucht und die Variante mit weniger Doppelung genommen.
+  Future<PatchResult> via(EngineRoute base, RoutePoint p) async {
+    final cum = cumulativeDistances(base.points);
+    final off = projectOnPolyline(p, base.points, cum)?.distanceM ?? 0;
+    final s1 = viaSpan(off);
+    var (detour, old) = await _viaDetour(base, p, cum, s1);
+    var span = s1;
+    final ov1 = overlapShare(detour.points, ignoreStartM: 0, ignoreEndM: 0);
+    if (ov1 > 0.12 && s1 < 40000) {
+      try {
+        final s2 = math.min(s1 * 2, 40000.0);
+        final (d2, o2) = await _viaDetour(base, p, cum, s2);
+        final ov2 = overlapShare(d2.points, ignoreStartM: 0, ignoreEndM: 0);
+        if (ov2 < ov1 - 0.05) {
+          detour = d2;
+          old = o2;
+          span = s2;
+        }
+      } on RouteException {
+        // erste Variante bleibt
+      }
+    }
+    final (_, a, b) = _span(base, p, cum, span);
     return PatchResult(replaceSection(base, a, b, detour),
         detour.distanceM - old.distanceM, detour.durationSec - old.durationSec);
   }

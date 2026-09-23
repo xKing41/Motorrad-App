@@ -14,6 +14,24 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.21 - Tour bearbeiten verbessert, Knoepfe sichtbar
+-----------------------------------------------------------
+
+- "Tour ueber diesen Punkt fuehren": Liegt der Punkt weit neben der
+  Route, wird jetzt ein entsprechend laengeres Stueck neu berechnet
+  (bis 25 km vor und hinter der Stelle). Vorher fuhr die Tour oft auf
+  derselben Strasse hin und wieder zurueck (Stich). Entsteht trotzdem
+  ein Stich, probiert die App ein noch laengeres Stueck und nimmt die
+  bessere Variante.
+- Die gedrueckte Stelle wird mit einer Nadel markiert, bis die neue
+  Tour steht.
+- Der Titel ("Rundtour · 374 km") passt sich der neuen Laenge an.
+- Die Meldung mit RUECKGAENGIG verdeckt die Knoepfe nicht mehr.
+- Beim ersten Planen ein Hinweis, dass man die Tour per langem Druck
+  aendern kann (auch in den Routen-Details).
+- KNOEPFE AUF DER KARTE deutlich sichtbar: NAVIGATION orange
+  hinterlegt, FAHRT STARTEN/BEENDEN mit dunklem Hintergrund.
+
 VERSION 4.20 - Ankunftszeit mit echtem Verkehr (TomTom)
 -------------------------------------------------------
 

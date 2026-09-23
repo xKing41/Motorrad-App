@@ -52,13 +52,30 @@ void main() {
       final req = engine.requests.single;
       expect(req.length, 3);
       expect(req[1].kind, WaypointKind.shape);
-      expect(dist(req[0].point, pointAlong(r.points, cum, 11000)), lessThan(10));
-      expect(dist(req[2].point, pointAlong(r.points, cum, 19000)), lessThan(10));
+      expect(dist(req[0].point, pointAlong(r.points, cum, 9500)), lessThan(30));
+      expect(dist(req[2].point, pointAlong(r.points, cum, 20500)), lessThan(30));
       // Anfang und Ende der Tour unveraendert, Umweg ueber den Punkt.
       expect(dist(res.route.points.first, r.points.first), lessThan(1));
       expect(dist(res.route.points.last, r.points.last), lessThan(1));
       expect(res.route.points.any((p) => dist(p, off) < 30), isTrue);
       expect(res.extraM, greaterThan(0));
+    });
+
+    test('Punkt weit abseits: laengeres Stueck, damit kein Stich entsteht',
+        () async {
+      expect(RoutePatcher.viaSpan(0), 4000);
+      expect(RoutePatcher.viaSpan(10000), 19000);
+      expect(RoutePatcher.viaSpan(50000), 25000);
+      final engine = FakeEngine();
+      final r = lineRoute(60);
+      final cum = cumulativeDistances(r.points);
+      final off = destinationPoint(pointAlong(r.points, cum, 30000), 180, 10000);
+      await RoutePatcher(engine, const RoutingPrefs()).via(r, off);
+      final req = engine.requests.first;
+      expect(dist(req[0].point, pointAlong(r.points, cum, 11000)),
+          lessThan(300));
+      expect(dist(req[2].point, pointAlong(r.points, cum, 49000)),
+          lessThan(300));
     });
 
     test('Strasse meiden: Stellen um den Punkt werden ausgeschlossen', () async {
