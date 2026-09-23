@@ -40,6 +40,9 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
   Fahrtende – ohne Server und ohne App beim Empfänger
 - **Sicherung**: alle Fahrten und Touren in eine Datei (Drive, Mail …) und
   auf dem neuen Handy wieder einspielen
+- **Tour bearbeiten** per langem Druck auf die Karte: über einen Punkt führen,
+  Straße meiden, Stopp entfernen – nur das Stück um die Stelle wird neu
+  berechnet, mit Rückgängig
 - **Tourenbibliothek**: geplante Touren samt Stopps und Vorgaben speichern
   und ohne Neuberechnung wieder laden; die zuletzt geplante Route merkt
   sich die App selbst

@@ -13,11 +13,13 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/route_plan.dart';
 import '../services/curve_warning.dart';
 import '../services/external_nav.dart';
+import '../services/geo.dart';
 import '../services/gpx_service.dart';
 import '../services/navigation.dart';
 import '../services/offline_maps.dart';
 import '../services/poi_service.dart';
 import '../services/route_follow.dart';
+import '../services/route_patch.dart';
 import '../services/route_weather.dart';
 import '../services/smooth_position.dart';
 import '../services/speed_cameras.dart';
@@ -311,6 +313,119 @@ class _MapScreenState extends State<MapScreen>
     }
   }
 
+  // ------------------------------------------------------------------
+  // Tour auf der Karte bearbeiten
+  // ------------------------------------------------------------------
+  final List<RoutePlan> _undo = [];
+
+  Future<void> _editAt(RoutePoint p) async {
+    final r = _route;
+    if (r == null || _nav != null || _busy) {
+      if (r == null) toast(context, 'Erst eine Route planen oder laden');
+      return;
+    }
+    final cum = cumulativeDistances(r.points);
+    final hit = projectOnPolyline(p, r.points, cum);
+    final onRoute = hit != null && hit.distanceM < 150;
+    Poi? stop;
+    for (final x in r.pois.where((x) => x.source == 'stop')) {
+      if (dist(RoutePoint(x.lat, x.lon), p) < 200) stop = x;
+    }
+    final what = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: panel,
+      shape: const RoundedRectangleBorder(),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 14, 16, 4),
+            child: Text(
+              'Nur ein Stück von rund 8 km um die Stelle wird neu '
+              'berechnet - der Rest der Tour bleibt, wie er ist.',
+              style: TextStyle(fontSize: 10, color: steel, height: 1.4),
+            ),
+          ),
+          if (!onRoute)
+            ListTile(
+              leading: const Icon(Icons.add_location_alt, color: signal),
+              title: const Text('Tour über diesen Punkt führen',
+                  style: TextStyle(fontSize: 12.5, color: chalk)),
+              onTap: () => Navigator.pop(ctx, 'via'),
+            ),
+          if (onRoute)
+            ListTile(
+              leading: const Icon(Icons.do_not_disturb_on, color: amber),
+              title: const Text('Diese Straße meiden',
+                  style: TextStyle(fontSize: 12.5, color: chalk)),
+              subtitle: const Text('Baustelle, schlechter Belag, kennst du schon ...',
+                  style: TextStyle(fontSize: 10, color: steel)),
+              onTap: () => Navigator.pop(ctx, 'avoid'),
+            ),
+          if (stop != null)
+            ListTile(
+              leading: const Icon(Icons.wrong_location, color: amber),
+              title: Text('Stopp entfernen: ${stop.displayName}',
+                  style: const TextStyle(fontSize: 12.5, color: chalk)),
+              onTap: () => Navigator.pop(ctx, 'stop'),
+            ),
+        ]),
+      ),
+    );
+    if (what == null || !mounted) return;
+    final settings = await RoutingSettings.load();
+    final patcher = RoutePatcher(
+      settings.engine(),
+      r.request != null ? RoutingPrefs.of(r.request!) : const RoutingPrefs(),
+    );
+    setState(() => _busy = true);
+    try {
+      final base = engineRouteOf(r);
+      final PatchResult res;
+      var pois = r.pois;
+      switch (what) {
+        case 'via':
+          res = await patcher.via(base, p);
+        case 'avoid':
+          res = await patcher.avoidAt(base, p);
+        default:
+          res = await patcher.without(base, RoutePoint(stop!.lat, stop.lon));
+          pois = [for (final x in r.pois) if (x.id != stop.id) x];
+      }
+      if (!mounted || !identical(_route, r)) return;
+      _undo.add(r);
+      if (_undo.length > 10) _undo.removeAt(0);
+      final edited = planWith(r, res.route).copyWith(
+        pois: pois,
+        // Varianten und Verkehrslage gehoerten zur alten Linie.
+        alternatives: const [],
+        traffic: const [],
+      );
+      _setRoute(edited, keepUndo: true);
+      final km = res.extraM / 1000;
+      final sign = km >= 0 ? '+' : '−';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: panel,
+        content: Text(
+            'Tour geändert: $sign${km.abs().toStringAsFixed(1).replaceAll('.', ',')} km',
+            style: const TextStyle(color: chalk)),
+        action: SnackBarAction(
+          label: 'RÜCKGÄNGIG',
+          textColor: signal,
+          onPressed: _undoEdit,
+        ),
+      ));
+    } on RouteException catch (e) {
+      if (mounted) toast(context, 'Nicht möglich: ${e.message}');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _undoEdit() {
+    if (_undo.isEmpty || _nav != null) return;
+    _setRoute(_undo.removeLast(), keepUndo: true);
+  }
+
   Future<void> _openTours() async {
     final plan = await Navigator.push<RoutePlan>(
         context, MaterialPageRoute(builder: (_) => const ToursScreen()));
@@ -447,8 +562,11 @@ class _MapScreenState extends State<MapScreen>
     if (mounted) _loadGpx(xml);
   }
 
-  void _setRoute(RoutePlan plan, {bool keepVariants = false}) {
+  void _setRoute(RoutePlan plan,
+      {bool keepVariants = false, bool keepUndo = false}) {
     _stopNav();
+    // Neue Tour: die Bearbeitungsschritte der alten gelten nicht mehr.
+    if (!keepUndo) _undo.clear();
     setState(() {
       if (!keepVariants) {
         _variants = [plan, ...plan.alternatives];
@@ -598,6 +716,7 @@ class _MapScreenState extends State<MapScreen>
 
   void _clearRoute() {
     _stopNav();
+    _undo.clear();
     setState(() {
       _route = null;
       _cameras = const [];
@@ -785,6 +904,8 @@ class _MapScreenState extends State<MapScreen>
           options: MapOptions(
             initialCenter: center,
             initialZoom: 13,
+            // Lange druecken: Tour an dieser Stelle bearbeiten.
+            onLongPress: (_, ll) => _editAt(RoutePoint(ll.latitude, ll.longitude)),
             onMapReady: () {
               _mapReady = true;
               if (_route != null) _fitRoute(_route!);

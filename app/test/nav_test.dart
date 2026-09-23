@@ -41,6 +41,53 @@ RoutePlan planOf(EngineRoute r, {List<Poi> pois = const []}) => RoutePlan(
     );
 
 void main() {
+  group('Tour bearbeiten', () {
+    test('ueber einen Punkt: nur ein Stueck um die Stelle neu', () async {
+      final engine = FakeEngine();
+      final r = lineRoute(30);
+      final cum = cumulativeDistances(r.points);
+      final patcher = RoutePatcher(engine, const RoutingPrefs());
+      final off = destinationPoint(pointAlong(r.points, cum, 15000), 0, 1000);
+      final res = await patcher.via(r, off);
+      final req = engine.requests.single;
+      expect(req.length, 3);
+      expect(req[1].kind, WaypointKind.shape);
+      expect(dist(req[0].point, pointAlong(r.points, cum, 11000)), lessThan(10));
+      expect(dist(req[2].point, pointAlong(r.points, cum, 19000)), lessThan(10));
+      // Anfang und Ende der Tour unveraendert, Umweg ueber den Punkt.
+      expect(dist(res.route.points.first, r.points.first), lessThan(1));
+      expect(dist(res.route.points.last, r.points.last), lessThan(1));
+      expect(res.route.points.any((p) => dist(p, off) < 30), isTrue);
+      expect(res.extraM, greaterThan(0));
+    });
+
+    test('Strasse meiden: Stellen um den Punkt werden ausgeschlossen', () async {
+      final engine = FakeEngine();
+      final r = lineRoute(30);
+      final cum = cumulativeDistances(r.points);
+      final at = pointAlong(r.points, cum, 2000);
+      await RoutePatcher(engine, const RoutingPrefs()).avoidAt(r, at);
+      final avoid = engine.prefsSeen.single.avoid;
+      expect(avoid.length, 5);
+      expect(avoid.every((p) => dist(p, at) <= 151), isTrue);
+      // Am Anfang der Tour: das Stueck beginnt beim Start.
+      expect(dist(engine.requests.single.first.point, r.points.first),
+          lessThan(1));
+    });
+
+    test('Stopp entfernen: Stueck ohne Zwischenziel', () async {
+      final engine = FakeEngine();
+      final r = lineRoute(30);
+      final cum = cumulativeDistances(r.points);
+      await RoutePatcher(engine, const RoutingPrefs())
+          .without(r, pointAlong(r.points, cum, 29000));
+      final req = engine.requests.single;
+      expect(req.length, 2);
+      // Am Ende der Tour: das Stueck endet am Ziel.
+      expect(dist(req.last.point, r.points.last), lessThan(1));
+    });
+  });
+
   group('Routen zusammensetzen', () {
     test('Teilstueck behaelt passende Anweisungen und Zeitanteil', () {
       final r = lineRoute(20);

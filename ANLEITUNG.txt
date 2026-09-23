@@ -14,6 +14,21 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.17 - Tour auf der Karte bearbeiten
+--------------------------------------------
+
+- Geplante Tour: LANGE AUF DIE KARTE DRUECKEN.
+  * Neben der Route: "Tour ueber diesen Punkt fuehren" (Aussicht,
+    Cafe, Lieblingsstrasse).
+  * Auf der Route: "Diese Strasse meiden" (Baustelle, schlechter
+    Belag, kennst du schon).
+  * An einem Stopp: "Stopp entfernen".
+- Neu berechnet wird nur ein Stueck von rund 8 km um die Stelle - der
+  Rest der Tour bleibt genau so kurvig wie geplant. Unten steht, wie
+  viel laenger oder kuerzer es wird.
+- "RUECKGAENGIG" in der Meldung macht die Aenderung sofort ungeschehen
+  (bis zu 10 Schritte).
+
 VERSION 4.16 - Mein Fahrstil (persoenliche Kurvenanalyse)
 ---------------------------------------------------------
 

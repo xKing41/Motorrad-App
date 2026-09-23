@@ -171,6 +171,69 @@ class RoutePatcher {
         detour.durationSec - old.durationSec);
   }
 
+  // -------------------------------------------------------------------
+  //  Bearbeiten auf der Karte (vor der Fahrt)
+  //
+  //  Wie beim Umfahren unterwegs wird nur ein Stueck um die Stelle neu
+  //  berechnet - der Rest der Tour bleibt genau so kurvig wie geplant.
+  // -------------------------------------------------------------------
+
+  /// Laenge des Stuecks vor und hinter der Stelle, das neu berechnet
+  /// wird (m).
+  static const double editSpanM = 4000;
+
+  (double, double, double) _span(EngineRoute base, RoutePoint p,
+      List<double> cum) {
+    final hit = projectOnPolyline(p, base.points, cum);
+    final along = hit?.alongM ?? 0;
+    return (
+      along,
+      math.max(0.0, along - editSpanM),
+      math.min(cum.last, along + editSpanM),
+    );
+  }
+
+  /// Die Tour soll ueber [p] fuehren.
+  Future<PatchResult> via(EngineRoute base, RoutePoint p) async {
+    final cum = cumulativeDistances(base.points);
+    final (_, a, b) = _span(base, p, cum);
+    final detour = (await engine.route([
+      Waypoint(pointAlong(base.points, cum, a), WaypointKind.endpoint),
+      Waypoint(p, WaypointKind.shape),
+      Waypoint(pointAlong(base.points, cum, b), WaypointKind.endpoint),
+    ], prefs))
+        .first;
+    final old = sliceRoute(base, a, b, cum: cum);
+    return PatchResult(replaceSection(base, a, b, detour),
+        detour.distanceM - old.distanceM, detour.durationSec - old.durationSec);
+  }
+
+  /// Die Strasse an [p] meiden (z. B. bekannte Baustelle, schlechter
+  /// Belag).
+  Future<PatchResult> avoidAt(EngineRoute base, RoutePoint p) {
+    final cum = cumulativeDistances(base.points);
+    final (along, a, b) = _span(base, p, cum);
+    final avoid = [
+      for (var d = -150.0; d <= 150; d += 75)
+        pointAlong(base.points, cum, (along + d).clamp(0.0, cum.last)),
+    ];
+    return avoidSection(base, fromM: a, toM: b, avoid: avoid);
+  }
+
+  /// Stueck um [p] ohne Zwischenziel neu berechnen (Stopp entfernen).
+  Future<PatchResult> without(EngineRoute base, RoutePoint p) async {
+    final cum = cumulativeDistances(base.points);
+    final (_, a, b) = _span(base, p, cum);
+    final detour = (await engine.route([
+      Waypoint(pointAlong(base.points, cum, a), WaypointKind.endpoint),
+      Waypoint(pointAlong(base.points, cum, b), WaypointKind.endpoint),
+    ], prefs))
+        .first;
+    final old = sliceRoute(base, a, b, cum: cum);
+    return PatchResult(replaceSection(base, a, b, detour),
+        detour.distanceM - old.distanceM, detour.durationSec - old.durationSec);
+  }
+
   /// Fuehrt einen Fahrer, der die Route verlassen hat, auf sie zurueck.
   ///
   /// Ziel ist nicht der Punkt, an dem er abgebogen ist (dann hiesse es
