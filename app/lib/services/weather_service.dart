@@ -25,7 +25,10 @@ class WeatherService {
       '&hourly=precipitation_probability,precipitation,temperature_2m'
       '&minutely_15=precipitation'
       '&forecast_days=2'
-      '&timezone=auto',
+      // Zeitstempel als Sekunden seit 1970: eindeutig, egal in welcher
+      // Zeitzone Handy und Standort gerade sind (Urlaub, Grenzgebiet).
+      '&timeformat=unixtime'
+      '&timezone=GMT',
     );
 
     try {
@@ -41,7 +44,7 @@ class WeatherService {
       // wuerde die App still falsche Werte anzeigen.
       if (data['error'] == true) return null;
 
-      return RideWeather._parse(data);
+      return RideWeather.parse(data);
     } catch (_) {
       return null;
     }
@@ -111,7 +114,7 @@ class RideWeather {
   }
 
   // -----------------------------------------------------------------
-  static RideWeather? _parse(Map<String, dynamic> d) {
+  static RideWeather? parse(Map<String, dynamic> d) {
     final now = DateTime.now();
 
     double? asD(dynamic v) => v is num ? v.toDouble() : null;
@@ -187,8 +190,10 @@ class RideWeather {
           // Ersatz, falls es keine Viertelstundenwerte gab.
           if (rainIn == null && prec is List && i < prec.length) {
             final p = asD(prec[i]) ?? 0;
+            // Auch hier: Summe der vorangegangenen Stunde.
             if (p >= 0.2 && t.isAfter(now)) {
-              rainIn = t.difference(now).inMinutes;
+              final m = t.subtract(const Duration(hours: 1)).difference(now).inMinutes;
+              rainIn = m < 0 ? 0 : m;
             }
           }
         }
@@ -208,14 +213,11 @@ class RideWeather {
   }
 
   static DateTime? _time(dynamic v) {
-    if (v is! String) return null;
-    try {
-      // Mit timezone=auto liefert Open-Meteo Ortszeit ohne Zeitzonenangabe.
-      // DateTime.parse legt das als lokale Zeit aus - genau richtig, weil
-      // auch DateTime.now() lokal ist.
-      return DateTime.parse(v);
-    } catch (_) {
-      return null;
+    if (v is num) {
+      return DateTime.fromMillisecondsSinceEpoch((v * 1000).round());
     }
+    if (v is! String) return null;
+    // Aeltere Antwortform (Ortszeit als Text).
+    return DateTime.tryParse(v);
   }
 }

@@ -112,7 +112,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         const Spacer(),
         InkWell(
-          onTap: t.gpsDenied ? () => t.retryGps() : null,
+          onTap: (t.gpsDenied || t.gpsServiceOff || !t.hasFix)
+              ? () async {
+                  final msg = await t.retryGps();
+                  if (msg != null && mounted) toast(context, msg);
+                }
+              : null,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration:
@@ -341,8 +346,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: FlatButton2(
               label: 'NULLPUNKT SETZEN',
               onTap: () {
-                t.calibrate();
-                toast(context, 'Nullpunkt gesetzt');
+                toast(
+                    context,
+                    t.calibrate()
+                        ? 'Nullpunkt gesetzt - Motorrad dabei gerade halten'
+                        : 'Handy wackelt - im Stand erneut versuchen');
               },
             ),
           ),

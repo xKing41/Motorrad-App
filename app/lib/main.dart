@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -51,10 +53,30 @@ class _HomeShellState extends State<HomeShell> {
     t.start();
     t.addListener(_onTick);
     t.crashAlarm.addListener(_onCrashAlarm);
+    // Laufende Fahrt jede Minute sichern.
+    _backupTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      final s = t.currentSummary();
+      if (s != null) RideStore.instance.saveActive(s, List.of(t.track));
+    });
+    _recover();
+  }
+
+  Timer? _backupTimer;
+
+  /// Wurde die App beim letzten Mal waehrend einer Fahrt beendet?
+  Future<void> _recover() async {
+    final r = await RideStore.instance.recoverActive();
+    if (r == null || !mounted) return;
+    await _ridesKey.currentState?.reload();
+    if (mounted) {
+      toast(context,
+          'Unterbrochene Fahrt gerettet · ${r.distanceKm.toStringAsFixed(1)} km');
+    }
   }
 
   @override
   void dispose() {
+    _backupTimer?.cancel();
     t.removeListener(_onTick);
     t.crashAlarm.removeListener(_onCrashAlarm);
     WakelockPlus.disable();
@@ -96,6 +118,7 @@ class _HomeShellState extends State<HomeShell> {
 
     final summary = t.stopRecording();
     if (summary == null) return;
+    await RideStore.instance.clearActive();
     // Aus Versehen gestartet und gleich wieder beendet: nicht als Fahrt
     // in die Liste schreiben.
     if (summary.durationSec < 30 && summary.distanceM < 100) {
@@ -103,6 +126,8 @@ class _HomeShellState extends State<HomeShell> {
       return;
     }
     await RideStore.instance.saveRide(summary, List.of(t.track));
+    // Eine letzte Zwischensicherung koennte noch unterwegs gewesen sein.
+    await RideStore.instance.clearActive();
     await _ridesKey.currentState?.reload();
     if (mounted) {
       toast(context,

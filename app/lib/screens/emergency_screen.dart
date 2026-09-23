@@ -37,6 +37,22 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
 
   @override
   void dispose() {
+    // Eingaben nicht verlieren, wenn ohne SPEICHERN zurueckgegangen wird.
+    final changed = em.contactName != _cName.text ||
+        em.contactPhone != _cPhone.text ||
+        em.riderName != _rider.text ||
+        em.bloodGroup != _blood.text ||
+        em.medical != _medical.text ||
+        em.insurance != _insurance.text;
+    if (changed) {
+      em.contactName = _cName.text;
+      em.contactPhone = _cPhone.text;
+      em.riderName = _rider.text;
+      em.bloodGroup = _blood.text;
+      em.medical = _medical.text;
+      em.insurance = _insurance.text;
+      em.save();
+    }
     _cName.dispose();
     _cPhone.dispose();
     _rider.dispose();
@@ -91,6 +107,8 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
           _toggle(),
           const SizedBox(height: 10),
           _countdownRow(),
+          const SizedBox(height: 10),
+          _autoSendToggle(),
           const SizedBox(height: 18),
           SizedBox(
             width: double.infinity,
@@ -245,6 +263,45 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
     );
   }
 
+  Widget _autoSendToggle() {
+    return InkWell(
+      onTap: () async {
+        if (!em.autoSend) {
+          // Android fragt hier nach der Berechtigung "SMS senden".
+          final ok = await em.smsPermission(request: true);
+          if (!ok) {
+            if (mounted) {
+              toast(context, 'Ohne Berechtigung öffnet sich nur die SMS-App');
+            }
+            return;
+          }
+        }
+        setState(() => em.autoSend = !em.autoSend);
+        await em.save();
+      },
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: panel,
+          border: Border.all(color: em.autoSend ? signal : line),
+        ),
+        child: Row(children: [
+          Icon(em.autoSend ? Icons.check_box : Icons.check_box_outline_blank,
+              size: 18, color: em.autoSend ? signal : steel),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'SMS nach dem Countdown automatisch senden (empfohlen). '
+              'Sonst öffnet sich nur die SMS-App - wer bewusstlos ist, '
+              'kann dort nicht auf Senden tippen.',
+              style: TextStyle(fontSize: 11.5, color: chalk, height: 1.35),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
   Widget _countdownRow() {
     return Row(children: [
       const Expanded(
@@ -291,11 +348,12 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
             ]),
             SizedBox(height: 8),
             Text(
-              'Alarm gibt es nur, wenn drei Dinge zusammenkommen: Du warst '
-              'kurz zuvor schneller als 25 km/h, es gab einen harten Stoß, '
-              'und danach stand das Motorrad acht Sekunden still. Damit '
-              'lösen Schlaglöcher und ein umgefallenes Handy im Stand '
-              'keinen Alarm aus.',
+              'Alarm gibt es nur, wenn alles zusammenkommt: Du warst kurz '
+              'zuvor schneller als 25 km/h, es gab einen harten Stoß, danach '
+              'acht Sekunden Stillstand - und das Handy liegt danach '
+              'deutlich anders als vorher (Motorrad liegt, Handy '
+              'weggeflogen). Damit lösen Schlaglöcher, ein Schlag vor der '
+              'Ampel und ein umgefallenes Handy im Stand keinen Alarm aus.',
               style: TextStyle(fontSize: 10.5, color: steel, height: 1.55),
             ),
             SizedBox(height: 8),
@@ -308,11 +366,12 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
             ),
             SizedBox(height: 8),
             Text(
-              'Die Nachricht wird in der SMS-App vorbereitet und muss dort '
-              'abgeschickt werden. Ein stiller Versand ohne Zutun würde '
-              'eine Berechtigung brauchen, die für Fehlalarme zu '
-              'gefährlich ist. SMS statt Internet, weil im Funkloch oft '
-              'noch Netz für SMS reicht.',
+              'Mit "automatisch senden" geht die SMS mit Position nach dem '
+              'Countdown ohne weiteres Zutun raus. Ohne diese Einstellung '
+              'öffnet sich nur die SMS-App mit fertiger Nachricht. SMS '
+              'statt Internet, weil im Funkloch oft noch Netz für SMS '
+              'reicht. Ein Fehlalarm kostet eine Entwarnung per Anruf - '
+              'ein übersehener Sturz womöglich viel mehr.',
               style: TextStyle(fontSize: 10.5, color: steel, height: 1.55),
             ),
           ],

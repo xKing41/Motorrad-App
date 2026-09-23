@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io' show Platform;
 import 'dart:math' as math;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -159,10 +161,69 @@ class _MapScreenState extends State<MapScreen> {
   // ------------------------------------------------------------------
   // Aktionen
   // ------------------------------------------------------------------
-  /// GPX uebernehmen, ohne zusaetzliches Paket: Der Fahrer oeffnet die
-  /// .gpx-Datei irgendwo (Dateimanager, Mail, Messenger), kopiert den
-  /// Inhalt und fuegt ihn hier ein.
+  /// GPX laden: Datei auswaehlen (Downloads, Drive, Dateimanager) oder
+  /// den Inhalt einfuegen.
   Future<void> _importGpx() async {
+    final how = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: panel,
+      shape: const RoundedRectangleBorder(),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.folder_open, color: cool),
+            title: const Text('GPX-Datei auswählen',
+                style: TextStyle(fontSize: 12.5, color: chalk)),
+            subtitle: const Text('Downloads, Google Drive, Dateimanager ...',
+                style: TextStyle(fontSize: 10, color: steel)),
+            onTap: () => Navigator.pop(ctx, 'file'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.content_paste, color: cool),
+            title: const Text('GPX-Text einfügen',
+                style: TextStyle(fontSize: 12.5, color: chalk)),
+            onTap: () => Navigator.pop(ctx, 'paste'),
+          ),
+        ]),
+      ),
+    );
+    if (how == 'file') {
+      await _pickGpxFile();
+    } else if (how == 'paste') {
+      await _pasteGpx();
+    }
+  }
+
+  Future<void> _pickGpxFile() async {
+    PlatformFile? f;
+    try {
+      f = await FilePicker.pickFile();
+    } catch (_) {
+      if (mounted) toast(context, 'Dateiauswahl nicht möglich');
+      return;
+    }
+    if (f == null) return;
+    String xml;
+    try {
+      xml = utf8.decode(await f.readAsBytes(), allowMalformed: true);
+    } catch (_) {
+      if (mounted) toast(context, 'Datei ließ sich nicht lesen');
+      return;
+    }
+    _loadGpx(xml, fallbackTitle: f.name.replaceAll(RegExp(r'\.gpx$', caseSensitive: false), ''));
+  }
+
+  void _loadGpx(String xml, {String? fallbackTitle}) {
+    final plan = GpxService.parseRoute(xml, fallbackTitle: fallbackTitle);
+    if (plan.isEmpty) {
+      toast(context, 'Keine GPX-Punkte gefunden');
+      return;
+    }
+    _setRoute(plan);
+    toast(context, 'Route geladen: ${plan.distanceKm.toStringAsFixed(1)} km');
+  }
+
+  Future<void> _pasteGpx() async {
     final ctrl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
@@ -221,15 +282,7 @@ class _MapScreenState extends State<MapScreen> {
     final xml = ctrl.text.trim();
     if (xml.isEmpty) return;
 
-    final plan = GpxService.parseRoute(xml);
-    if (plan.isEmpty) {
-      if (mounted) toast(context, 'Keine Punkte gefunden');
-      return;
-    }
-    _setRoute(plan);
-    if (mounted) {
-      toast(context, 'Route geladen: ${plan.distanceKm.toStringAsFixed(1)} km');
-    }
+    if (mounted) _loadGpx(xml);
   }
 
   void _setRoute(RoutePlan plan, {bool keepVariants = false}) {

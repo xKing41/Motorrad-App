@@ -159,8 +159,12 @@ class RideAnalysis {
 
       distM += distanceMeters(a.lat, a.lon, b.lat, b.lon);
 
-      // --- Histogramm: Zeit je Schraeglagenbereich ---
+      // Stand (Ampel, Seitenstaender) gehoert nicht in die Auswertung -
+      // sonst dominieren Wartezeiten das Histogramm.
+      if (b.speedMs < cornerMinSpeedMs) continue;
       final absLean = b.lean.abs();
+
+      // --- Histogramm: Zeit je Schraeglagenbereich ---
       var bi = (absLean / LeanHistogram.step).floor();
       if (bi < 0) bi = 0;
       if (bi >= LeanHistogram.buckets) bi = LeanHistogram.buckets - 1;
@@ -180,6 +184,9 @@ class RideAnalysis {
       if (b.speedMs > 2) kamm.add(p);
 
       // --- Gleichmaessigkeit ---
+      // Auch der vorige Punkt muss in Fahrt sein, sonst zaehlt das
+      // Aufrichten vom Seitenstaender als hektische Bewegung.
+      if (a.speedMs < cornerMinSpeedMs) continue;
       jerkSum += (b.lean - a.lean).abs() / dt;
       jerkCount++;
 
@@ -226,12 +233,8 @@ class RideAnalysis {
     // ---------------- Radien ----------------
     double tightest = double.infinity;
     for (final c in corners) {
-      final v = c.minSpeedKmh / 3.6;
-      final t = math.tan(c.maxLean * math.pi / 180);
-      if (v > 3 && t > 0.05) {
-        final r = v * v / (_g * t);
-        if (r > 3 && r < tightest) tightest = r;
-      }
+      final r = radiusOf(c);
+      if (r > 0 && r < tightest) tightest = r;
     }
 
     final km = distM / 1000;
@@ -255,9 +258,12 @@ class RideAnalysis {
   /// Geschaetzter Radius einer einzelnen Kurve in Metern.
   ///
   /// Bei stetiger Kurvenfahrt gilt r = v^2 / (g * tan(Schraeglage)).
-  /// Gibt 0 zurueck, wenn die Werte keine sinnvolle Rechnung erlauben.
+  /// Tempo und Schraeglage muessen vom SELBEN Moment stammen (Scheitel).
+  /// Vorher wurde das kleinste Tempo mit der groessten Schraeglage
+  /// verrechnet - die kommen selten gleichzeitig vor, die Radien waren
+  /// zu klein. Gibt 0 zurueck, wenn keine sinnvolle Rechnung moeglich ist.
   static double radiusOf(Corner c) {
-    final v = c.minSpeedKmh / 3.6;
+    final v = (c.apexSpeedKmh > 0 ? c.apexSpeedKmh : c.minSpeedKmh) / 3.6;
     final t = math.tan(c.maxLean * math.pi / 180);
     if (v <= 3 || t <= 0.05) return 0;
     final r = v * v / (_g * t);

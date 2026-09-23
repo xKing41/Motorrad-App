@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -20,6 +21,12 @@ class Emergency {
   bool autoDetect = true; // Sturzerkennung aktiv?
   int countdownSec = 30;
 
+  /// Nach dem Countdown die SMS direkt senden, statt nur die SMS-App zu
+  /// oeffnen. Braucht die Android-Berechtigung "SMS senden".
+  bool autoSend = false;
+
+  static const _sms = MethodChannel('schraeglage/sms');
+
   bool get hasContact => contactPhone.trim().length >= 5;
 
   // -----------------------------------------------------------------
@@ -33,6 +40,7 @@ class Emergency {
     insurance = sp.getString('em_insurance') ?? '';
     autoDetect = sp.getBool('em_auto') ?? true;
     countdownSec = sp.getInt('em_countdown') ?? 30;
+    autoSend = sp.getBool('em_auto_send') ?? false;
   }
 
   Future<void> save() async {
@@ -45,6 +53,34 @@ class Emergency {
     await sp.setString('em_insurance', insurance.trim());
     await sp.setBool('em_auto', autoDetect);
     await sp.setInt('em_countdown', countdownSec);
+    await sp.setBool('em_auto_send', autoSend);
+  }
+
+  /// Darf die App SMS selbst senden? Mit [request] wird gefragt.
+  Future<bool> smsPermission({bool request = false}) async {
+    try {
+      final ok = await _sms.invokeMethod<bool>(
+          request ? 'requestPermission' : 'hasPermission');
+      return ok ?? false;
+    } catch (_) {
+      // Anderes Betriebssystem oder aeltere Bauweise ohne diese Funktion.
+      return false;
+    }
+  }
+
+  /// Sendet die Notfall-SMS direkt. false = ging nicht (dann bleibt der
+  /// Weg ueber die SMS-App).
+  Future<bool> sendSmsDirect({double? lat, double? lon}) async {
+    if (!hasContact || !autoSend) return false;
+    try {
+      final ok = await _sms.invokeMethod<bool>('send', {
+        'phone': contactPhone.trim(),
+        'text': alertText(lat: lat, lon: lon),
+      });
+      return ok ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 
   // -----------------------------------------------------------------

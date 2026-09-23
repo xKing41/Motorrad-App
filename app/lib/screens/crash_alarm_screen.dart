@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/emergency.dart';
+import '../services/voice.dart';
 import '../theme.dart';
 
 /// Vollbild-Alarm nach einem erkannten Sturz.
@@ -32,6 +33,7 @@ class _CrashAlarmScreenState extends State<CrashAlarmScreen> {
   Timer? _timer;
   bool _fired = false;
   bool _smsOpened = false;
+  bool _smsSent = false;
 
   @override
   void initState() {
@@ -45,9 +47,26 @@ class _CrashAlarmScreenState extends State<CrashAlarmScreen> {
       HapticFeedback.heavyImpact();
       SystemSound.play(SystemSoundType.alert);
       setState(() => _left--);
+      // SystemSound bleibt auf Android meist stumm - die Sprachausgabe
+      // ist ueber Lautsprecher und Helm-Headset zu hoeren.
+      if (_left > 0 && _left % 10 == 0) _announce();
       if (_left <= 0) _fire();
     });
     HapticFeedback.heavyImpact();
+    _announce();
+  }
+
+  void _announce() {
+    final who = em.hasContact
+        ? (em.contactName.trim().isEmpty ? 'den Notfallkontakt' : em.contactName.trim())
+        : null;
+    Voice.instance.say(
+      who == null
+          ? 'Sturz erkannt. Kein Notfallkontakt hinterlegt.'
+          : 'Sturz erkannt. Nachricht an $who in $_left Sekunden. '
+              'Zum Abbrechen: Mir geht es gut.',
+      force: true,
+    );
   }
 
   @override
@@ -60,13 +79,23 @@ class _CrashAlarmScreenState extends State<CrashAlarmScreen> {
     if (_fired) return;
     _fired = true;
     _timer?.cancel();
-    final ok = await em.sendSms(lat: widget.lat, lon: widget.lon);
+    // Erst direkt senden (wenn eingeschaltet und erlaubt) - sonst die
+    // SMS-App mit fertiger Nachricht oeffnen.
+    final sent = await em.sendSmsDirect(lat: widget.lat, lon: widget.lon);
+    final ok = sent || await em.sendSms(lat: widget.lat, lon: widget.lon);
+    if (sent) {
+      Voice.instance.say('Notfallnachricht wurde gesendet.', force: true);
+    }
     if (!mounted) return;
-    setState(() => _smsOpened = ok);
+    setState(() {
+      _smsSent = sent;
+      _smsOpened = ok;
+    });
   }
 
   void _cancel() {
     _timer?.cancel();
+    Voice.instance.stop();
     Navigator.of(context).pop();
   }
 
@@ -102,14 +131,19 @@ class _CrashAlarmScreenState extends State<CrashAlarmScreen> {
                 )
               else
                 Text(
-                  _smsOpened
+                  _smsSent
+                      ? 'Notfall-SMS mit Position wurde gesendet.'
+                      : _smsOpened
                       ? 'Die SMS-App wurde geöffnet. Nachricht dort absenden.'
                       : (em.hasContact
                           ? 'SMS-App ließ sich nicht öffnen. Bitte 112 anrufen.'
                           : 'Kein Notfallkontakt hinterlegt – bitte 112 anrufen.'),
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      fontSize: 12, color: _smsOpened ? amber : redline),
+                      fontSize: 12,
+                      color: _smsSent
+                          ? signal
+                          : (_smsOpened ? amber : redline)),
                 ),
               const Spacer(),
               if (!_fired)

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/ride.dart';
@@ -14,8 +15,12 @@ import '../models/ride.dart';
 /// Bewusst dateibasiert statt SharedPreferences: Ein Track mit ein paar
 /// tausend Punkten sprengt die Preferences.
 class RideStore {
-  RideStore._();
+  RideStore._([this._dir]);
   static final RideStore instance = RideStore._();
+
+  /// Fuer Tests: Speicher in einem eigenen Ordner.
+  @visibleForTesting
+  factory RideStore.at(Directory dir) => RideStore._(dir);
 
   Directory? _dir;
 
@@ -30,37 +35,141 @@ class RideStore {
 
   Future<File> _indexFile() async => File('${(await _rideDir()).path}/index.json');
 
+  /// Schreibt erst in eine Hilfsdatei und benennt sie dann um. Stirbt die
+  /// App mitten im Schreiben (Akku leer, System beendet sie), bleibt die
+  /// alte Datei heil - vorher konnte dabei der ganze Index kaputtgehen,
+  /// und beim naechsten Speichern waren alle Fahrten aus der Liste weg.
+  static Future<void> _writeAtomic(File f, String content) async {
+    final tmp = File('${f.path}.tmp');
+    await tmp.writeAsString(content, flush: true);
+    await tmp.rename(f.path);
+  }
+
   Future<List<RideSummary>> listRides() async {
+    List<RideSummary>? out;
     try {
       final f = await _indexFile();
-      if (!await f.exists()) return [];
-      final raw = jsonDecode(await f.readAsString());
-      if (raw is! List) return [];
-      final out = raw
-          .whereType<Map<String, dynamic>>()
-          .map(RideSummary.fromJson)
-          .toList();
-      out.sort((a, b) => b.start.compareTo(a.start));
-      return out;
+      if (await f.exists()) {
+        final raw = jsonDecode(await f.readAsString());
+        if (raw is List) {
+          out = raw
+              .whereType<Map<String, dynamic>>()
+              .map(RideSummary.fromJson)
+              .toList();
+        }
+      }
     } catch (_) {
-      return [];
+      out = null;
     }
+    // Index fehlt oder ist beschaedigt: aus den Fahrtdateien neu aufbauen.
+    out ??= await _rebuildIndex();
+    out.sort((a, b) => b.start.compareTo(a.start));
+    return out;
+  }
+
+  /// Liest die Zusammenfassungen aus den einzelnen Fahrtdateien (jede
+  /// Datei traegt ihre Zusammenfassung selbst mit).
+  Future<List<RideSummary>> _rebuildIndex() async {
+    final out = <RideSummary>[];
+    try {
+      final d = await _rideDir();
+      await for (final e in d.list()) {
+        if (e is! File || !e.path.endsWith('.json')) continue;
+        final name = e.uri.pathSegments.last;
+        if (name == 'index.json' || name.startsWith('_')) continue;
+        try {
+          final raw = jsonDecode(await e.readAsString());
+          if (raw is Map && raw['summary'] is Map<String, dynamic>) {
+            out.add(RideSummary.fromJson(raw['summary'] as Map<String, dynamic>));
+          }
+        } catch (_) {
+          // Einzelne kaputte Datei ueberspringen.
+        }
+      }
+      if (out.isNotEmpty) await _writeIndex(out);
+    } catch (_) {}
+    return out;
   }
 
   Future<void> _writeIndex(List<RideSummary> rides) async {
     final f = await _indexFile();
-    await f.writeAsString(jsonEncode(rides.map((r) => r.toJson()).toList()));
+    await _writeAtomic(
+        f, jsonEncode(rides.map((r) => r.toJson()).toList()));
   }
+
+  static String _rideJson(RideSummary summary, List<TrackPoint> track) =>
+      jsonEncode({
+        'summary': summary.toJson(),
+        'track': track.map((p) => p.toJson()).toList(),
+      });
 
   Future<void> saveRide(RideSummary summary, List<TrackPoint> track) async {
     final d = await _rideDir();
-    await File('${d.path}/${summary.id}.json').writeAsString(
-      jsonEncode({'track': track.map((p) => p.toJson()).toList()}),
-    );
+    await _writeAtomic(
+        File('${d.path}/${summary.id}.json'), _rideJson(summary, track));
     final rides = await listRides();
     rides.removeWhere((r) => r.id == summary.id);
     rides.insert(0, summary);
     await _writeIndex(rides);
+  }
+
+  // -------------------------------------------------------------------
+  //  Laufende Fahrt zwischenspeichern
+  //
+  //  Beendet Android die App waehrend der Fahrt (Akku, Speicher, Absturz),
+  //  war bisher die ganze Fahrt weg - sie lag nur im Arbeitsspeicher.
+  //  Jetzt wird sie regelmaessig gesichert und beim naechsten Start als
+  //  Fahrt gespeichert.
+  // -------------------------------------------------------------------
+  Future<File> _activeFile() async =>
+      File('${(await _rideDir()).path}/_active.json');
+
+  Future<void> saveActive(RideSummary summary, List<TrackPoint> track) async {
+    try {
+      await _writeAtomic(await _activeFile(), _rideJson(summary, track));
+    } catch (_) {}
+  }
+
+  Future<void> clearActive() async {
+    try {
+      final f = await _activeFile();
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
+  }
+
+  /// Speichert eine beim letzten Mal unterbrochene Fahrt. Rueckgabe: die
+  /// gerettete Fahrt oder null.
+  Future<RideSummary?> recoverActive() async {
+    try {
+      final f = await _activeFile();
+      if (!await f.exists()) return null;
+      final raw = jsonDecode(await f.readAsString());
+      await f.delete();
+      if (raw is! Map || raw['summary'] is! Map<String, dynamic>) return null;
+      final track = ((raw['track'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(TrackPoint.fromJson)
+          .toList();
+      final s = RideSummary.fromJson(raw['summary'] as Map<String, dynamic>);
+      if (track.length < 2 && s.distanceM < 100) return null;
+      final saved = RideSummary(
+        id: s.id,
+        start: s.start,
+        durationSec: s.durationSec,
+        distanceM: s.distanceM,
+        maxLeanL: s.maxLeanL,
+        maxLeanR: s.maxLeanR,
+        maxSpeedMs: s.maxSpeedMs,
+        maxBrakeG: s.maxBrakeG,
+        maxLatG: s.maxLatG,
+        pointCount: track.length,
+        title: 'Unterbrochene Fahrt',
+      );
+      await saveRide(saved, track);
+      return saved;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<List<TrackPoint>> loadTrack(String id) async {

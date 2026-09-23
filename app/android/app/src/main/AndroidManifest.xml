@@ -5,6 +5,10 @@
     <!-- Internet fuer Karten, POI-Suche und Routing -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- Notfall-SMS nach einem erkannten Sturz direkt senden (nur wenn
+         der Fahrer das in den Notfalldaten einschaltet) -->
+    <uses-permission android:name="android.permission.SEND_SMS"/>
+    <uses-feature android:name="android.hardware.telephony" android:required="false"/>
 
     <application
         android:label="Schräglage"

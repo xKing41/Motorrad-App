@@ -4,10 +4,12 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:sensors_plus/sensors_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/ride.dart';
 import 'crash_detector.dart';
 import 'emergency.dart';
+import 'mount.dart';
 import 'weather_service.dart';
 
 /// Zentrale Messwerterfassung: Schraeglage, Tempo, G-Kraefte, Track.
@@ -75,10 +77,9 @@ class Telemetry extends ChangeNotifier {
   // --- lineare Beschleunigung ohne Schwerkraft ---
   double _lx = 0, _ly = 0, _lz = 0;
 
-  // --- Vorwaertsachse des Motorrads im Geraetesystem ---
-  double _fx = 0, _fy = 0, _fz = -1;
+  // --- Lage des Handys am Motorrad (oben, rechts, vorn) ---
+  MountFrame _frame = MountFrame.portrait;
 
-  double _accOffset = 0;
   /// Monotone Uhr fuer die Zeitschritte der Sensorfusion.
   /// DateTime.now() waere hier falsch: Die Kalenderzeit kann springen
   /// (Zeitumstellung, Abgleich mit dem Mobilfunknetz). Ein Sprung
@@ -166,8 +167,16 @@ class Telemetry extends ChangeNotifier {
     _weatherTimer = Timer.periodic(
         const Duration(minutes: 2), (_) => refreshWeather());
 
+    // Gespeicherte Lage vom letzten Nullpunkt. Ohne sie wird einmal
+    // automatisch kalibriert - dann bitte am montierten Handy den
+    // Nullpunkt neu setzen.
+    final saved = await _loadFrame();
+    if (saved != null) {
+      _frame = saved;
+      _calibrated = true;
+    }
     _autoCalTimer = Timer(const Duration(milliseconds: 1500), () {
-      if (!_calibrated && _hasAccel) calibrate();
+      if (!_calibrated && _hasAccel) calibrate(persist: false);
     });
   }
 
@@ -208,10 +217,26 @@ class Telemetry extends ChangeNotifier {
 
   /// Erneuter Versuch, GPS zu starten (z. B. nachdem der Nutzer die
   /// Berechtigung nachtraeglich erteilt hat).
-  Future<void> retryGps() async {
+  ///
+  /// Rueckgabe: Hinweis fuer den Nutzer oder null.
+  Future<String?> retryGps() async {
+    String? msg;
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        await Geolocator.openLocationSettings();
+        msg = 'Standort einschalten, dann erneut antippen';
+      } else if (await Geolocator.checkPermission() ==
+          LocationPermission.deniedForever) {
+        // Android fragt dann nicht mehr nach - nur ueber die Einstellungen.
+        await Geolocator.openAppSettings();
+        msg = 'Unter Berechtigungen den Standort erlauben';
+      }
+    } catch (_) {}
     await _posSub?.cancel();
+    _posSub = null;
     await _initGps();
     notifyListeners();
+    return msg;
   }
 
   // ---------------------------------------------------------------
@@ -245,6 +270,7 @@ class Telemetry extends ChangeNotifier {
     // geglaettete Wert wuerde jeden Aufprall wegbuegeln.
     if (Emergency.instance.autoDetect) {
       _crash.enabled = true;
+      _crash.feedGravity(_gx, _gy, _gz);
       _crash.feedAccel(e.x, e.y, e.z, _clock.elapsedMilliseconds);
     } else {
       _crash.enabled = false;
@@ -263,7 +289,7 @@ class Telemetry extends ChangeNotifier {
     _updateForces();
   }
 
-  double get _rollAcc => math.atan2(-_gx, _gy) * 180 / math.pi;
+  double get _rollAcc => _frame.rollDeg(_gx, _gy, _gz);
 
   void _onGyro(GyroscopeEvent e) {
     final us = _clock.elapsedMicroseconds;
@@ -274,7 +300,7 @@ class Telemetry extends ChangeNotifier {
     if (dt <= 0 || dt > 0.2) return;
 
     // Drehrate um die Vorwaertsachse = Schraeglagen-Aenderung
-    final rate = (e.x * _fx + e.y * _fy + e.z * _fz) * 180 / math.pi;
+    final rate = _frame.rollRate(e.x, e.y, e.z) * 180 / math.pi;
 
     final upn = math.sqrt(_gx * _gx + _gy * _gy + _gz * _gz);
     double refDeg;
@@ -286,7 +312,7 @@ class Telemetry extends ChangeNotifier {
       tau = 1.4;
       gpsReference = true;
     } else {
-      refDeg = _norm(_rollAcc - _accOffset);
+      refDeg = _norm(_rollAcc);
       tau = 2.5;
       gpsReference = false;
     }
@@ -294,7 +320,10 @@ class Telemetry extends ChangeNotifier {
     final k = tau / (tau + dt);
     roll = _norm(k * (roll + rate * dt) + (1 - k) * refDeg);
 
-    if (roll.abs() < 85) {
+    // Maximalwerte nur in Fahrt - der Seitenstaender (rund 15 Grad links)
+    // ist keine Schraeglage. Ohne GPS wird weiter alles gezaehlt.
+    final riding = !hasFix || speedMs > 3;
+    if (riding && roll.abs() < 85) {
       if (-roll > maxLeanL) maxLeanL = -roll;
       if (roll > maxLeanR) maxLeanR = roll;
     }
@@ -371,7 +400,7 @@ class Telemetry extends ChangeNotifier {
   /// G-Kraefte im Sensortakt berechnen, nicht im Anzeigetakt: Eine kurze
   /// Bremsspitze faellt sonst zwischen zwei Takte und wird nie gesehen.
   void _updateForces() {
-    longG = (_lx * _fx + _ly * _fy + _lz * _fz) / 9.81;
+    longG = _frame.forward(_lx, _ly, _lz) / 9.81;
     latG = math.tan(roll.abs() * math.pi / 180).clamp(0.0, 3.0).toDouble();
 
     final moving = hasFix ? speedMs > 1.5 : true;
@@ -428,20 +457,41 @@ class Telemetry extends ChangeNotifier {
   // Aktionen
   // ---------------------------------------------------------------
 
-  /// Setzt den Nullpunkt und bestimmt die Vorwaertsachse des Motorrads
+  /// Setzt den Nullpunkt und bestimmt die Lage des Handys am Motorrad
   /// aus der aktuellen Schwerkraftrichtung. Dadurch darf das Handy
-  /// beliebig schraeg montiert sein.
-  void calibrate() {
-    final n = math.sqrt(_gy * _gy + _gz * _gz);
-    if (n > 2) {
-      _fx = 0;
-      _fy = _gz / n;
-      _fz = -_gy / n;
-    }
-    _accOffset = _rollAcc;
+  /// hochkant, quer oder flach und beliebig schraeg montiert sein.
+  /// Das Motorrad muss dabei gerade stehen (nicht auf dem Seitenstaender).
+  ///
+  /// Rueckgabe false: Messwert unbrauchbar (Handy wird gerade bewegt).
+  bool calibrate({bool persist = true}) {
+    final f = MountFrame.fromGravity(_gx, _gy, _gz);
+    if (f == null) return false;
+    _frame = f;
     roll = 0;
     _calibrated = true;
+    if (persist) unawaited(_saveFrame(f));
     notifyListeners();
+    return true;
+  }
+
+  static const _kFrame = 'mount_frame';
+
+  Future<MountFrame?> _loadFrame() async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      final raw = sp.getStringList(_kFrame);
+      return MountFrame.fromList(raw?.map(double.parse).toList());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _saveFrame(MountFrame f) async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      await sp.setStringList(
+          _kFrame, f.toList().map((v) => v.toString()).toList());
+    } catch (_) {}
   }
 
   void resetMax() {
@@ -466,23 +516,31 @@ class Telemetry extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Zusammenfassung der laufenden Fahrt (fuer die Zwischensicherung).
+  RideSummary? currentSummary() {
+    if (!recording || rideStart == null) return null;
+    return _summary();
+  }
+
+  RideSummary _summary() => RideSummary(
+        id: 'ride_${rideStart!.millisecondsSinceEpoch}',
+        start: rideStart!,
+        durationSec: DateTime.now().difference(rideStart!).inSeconds,
+        distanceM: rideDistanceM,
+        maxLeanL: maxLeanL,
+        maxLeanR: maxLeanR,
+        maxSpeedMs: rideMaxSpeedMs,
+        maxBrakeG: maxBrakeG,
+        maxLatG: maxLatG,
+        pointCount: track.length,
+      );
+
   /// Beendet die Aufzeichnung und liefert die Zusammenfassung.
   /// Das Speichern uebernimmt der RideStore.
   RideSummary? stopRecording() {
     if (!recording || rideStart == null) return null;
     recording = false;
-    final s = RideSummary(
-      id: 'ride_${rideStart!.millisecondsSinceEpoch}',
-      start: rideStart!,
-      durationSec: DateTime.now().difference(rideStart!).inSeconds,
-      distanceM: rideDistanceM,
-      maxLeanL: maxLeanL,
-      maxLeanR: maxLeanR,
-      maxSpeedMs: rideMaxSpeedMs,
-      maxBrakeG: maxBrakeG,
-      maxLatG: maxLatG,
-      pointCount: track.length,
-    );
+    final s = _summary();
     notifyListeners();
     return s;
   }

@@ -31,8 +31,9 @@ class Voice {
 
   /// Spricht [text]. Dieselbe Ansage wird nicht innerhalb weniger
   /// Sekunden wiederholt.
-  Future<void> say(String text) async {
-    if (!enabled || text.trim().isEmpty) return;
+  /// Mit [force] auch bei abgeschalteten Navigationsansagen (Sturzalarm).
+  Future<void> say(String text, {bool force = false}) async {
+    if ((!enabled && !force) || text.trim().isEmpty) return;
     final now = DateTime.now();
     if (text == _last && now.difference(_lastAt).inSeconds < 8) return;
     _last = text;

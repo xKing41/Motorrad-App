@@ -116,6 +116,12 @@ class GpxService {
     var t = s;
     final cdata = RegExp(r'^<!\[CDATA\[(.*)\]\]>$', dotAll: true).firstMatch(t);
     if (cdata != null) return cdata.group(1)!.trim();
+    // Zahlen-Entities (&#228; / &#xE4;) - so schreiben viele Programme
+    // Umlaute in Namen.
+    t = t.replaceAllMapped(RegExp(r'&#(x?)([0-9a-fA-F]+);'), (m) {
+      final code = int.tryParse(m.group(2)!, radix: m.group(1)!.isEmpty ? 10 : 16);
+      return code == null ? m.group(0)! : String.fromCharCode(code);
+    });
     t = t
         .replaceAll('&lt;', '<')
         .replaceAll('&gt;', '>')

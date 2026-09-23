@@ -116,6 +116,7 @@ class Corner {
     required this.exitSpeedKmh,
     required this.lat,
     required this.lon,
+    this.apexSpeedKmh = 0,
   });
 
   final int startIndex;
@@ -127,6 +128,9 @@ class Corner {
   final double exitSpeedKmh;
   final double lat; // Scheitelpunkt
   final double lon;
+
+  /// Tempo am Scheitel (Punkt der groessten Schraeglage).
+  final double apexSpeedKmh;
 
   Map<String, dynamic> toJson() => {
         'i0': startIndex,
@@ -141,6 +145,10 @@ class Corner {
       };
 }
 
+/// Unter diesem Tempo zaehlt Schraeglage nicht als Kurve: Im Stand ist
+/// es der Seitenstaender oder das Abstuetzen an der Ampel.
+const double cornerMinSpeedMs = 3; // ~11 km/h
+
 /// Erkennt Kurven in einem Track: zusammenhaengende Abschnitte, in denen
 /// die Schraeglage einen Schwellwert ueberschreitet.
 List<Corner> detectCorners(List<TrackPoint> track, {double minLean = 12}) {
@@ -150,7 +158,9 @@ List<Corner> detectCorners(List<TrackPoint> track, {double minLean = 12}) {
 
   for (var i = 0; i < track.length; i++) {
     final lean = track[i].lean;
-    final abs = lean.abs();
+    // Vorher wurde jedes Parken auf dem Seitenstaender (rund 12-15 Grad
+    // links) als Linkskurve gezaehlt.
+    final abs = track[i].speedMs >= cornerMinSpeedMs ? lean.abs() : 0.0;
     final d = lean < 0 ? -1 : 1;
 
     if (abs >= minLean) {
@@ -200,6 +210,7 @@ void _addCorner(
     exitSpeedKmh: track[i1].speedMs * 3.6,
     lat: track[apex].lat,
     lon: track[apex].lon,
+    apexSpeedKmh: track[apex].speedMs * 3.6,
   ));
 }
 

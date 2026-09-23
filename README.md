@@ -17,7 +17,8 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
   `Schräglage = asin(v · Gierrate / g)` – dadurch stimmen die Werte auch in
   langen Kurven, wo reine Sensor-Apps zu wenig anzeigen
 - GPS-Tacho, Brems- und Kurven-G, Maximalwerte
-- Nullpunkt-Kalibrierung: Das Handy darf beliebig schräg montiert sein
+- Nullpunkt-Kalibrierung: Das Handy darf hochkant, quer oder flach und
+  beliebig schräg montiert sein; die Lage wird gespeichert
 - Wetterstreifen mit Regen-, Frost- und Kaltreifenwarnung
 
 **Karte und Routenplanung**
@@ -58,7 +59,8 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
   Kartendaten – erfundene Ziele sind damit ausgeschlossen
 
 **Fahrten**
-- Aufzeichnung mit Strecke, Dauer, Vmax, Maximalschräglage
+- Aufzeichnung mit Strecke, Dauer, Vmax, Maximalschräglage; die laufende
+  Fahrt wird jede Minute gesichert und nach einem Abbruch gerettet
 - Tiefenauswertung: Kurvenerkennung, Radien, Schräglagen-Histogramm,
   Kammscher Kreis, Fahrstil-Bewertung
 
@@ -66,7 +68,10 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
 - Sturzerkennung: schlägt nur an, wenn drei Dinge zusammenkommen – vorher
   schneller als 25 km/h, harter Stoß über 4 g, danach acht Sekunden
   Stillstand
-- Countdown mit großer Abbruchtaste, danach SMS mit Koordinaten
+- Zusätzlich muss das Handy danach anders liegen als vorher (Motorrad
+  liegt) – kein Fehlalarm nach einem Schlag vor der Ampel
+- Countdown mit großer Abbruchtaste und Sprachansage, danach SMS mit
+  Koordinaten – auf Wunsch automatisch gesendet (Berechtigung „SMS senden“)
 - Notfallkarte mit Blutgruppe, Medikamenten, Versicherung
 
 ### Eine bewusste Entscheidung zur Bewertung

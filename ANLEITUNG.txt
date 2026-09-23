@@ -14,6 +14,43 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.3.1 - Durchsicht der Grundfunktionen
+----------------------------------------------
+
+- NULLPUNKT: Das Handy darf jetzt hochkant, QUER oder FLACH (Tank-
+  rucksack) montiert sein. Einmal am montierten Handy bei gerade
+  stehendem Motorrad (nicht auf dem Seitenstaender!) "Nullpunkt
+  setzen" - die Lage wird gespeichert und gilt auch nach dem
+  Neustart der App.
+- STURZERKENNUNG:
+  * Lief in den ersten 2 Minuten nach App-Start gar nicht (behoben).
+  * Kein Fehlalarm mehr, wenn man nach einem harten Schlag
+    (Bordstein, Schlagloch) an der Ampel steht: Alarm nur, wenn das
+    Handy danach deutlich anders liegt (Motorrad umgefallen, Handy
+    weggeflogen).
+  * Funktioniert auch, wenn das GPS nach dem Sturz weg ist.
+  * Alarm wird angesagt (Lautsprecher/Headset) - der Signalton war
+    auf Android meist stumm.
+  * NEU einschaltbar unter Notfall: "SMS automatisch senden". Dann
+    geht die SMS mit Position nach dem Countdown ohne Zutun raus.
+    Bisher oeffnete sich nur die SMS-App - wer bewusstlos ist, kann
+    dort nicht auf Senden tippen. Android fragt dabei einmal nach der
+    Berechtigung "SMS senden".
+- FAHRTEN: Werden sicher gespeichert (kein Datenverlust mehr, wenn
+  die App beim Speichern beendet wird). Die laufende Fahrt wird jede
+  Minute gesichert - beendet Android die App unterwegs, wird sie beim
+  naechsten Start als "Unterbrochene Fahrt" gerettet.
+- AUSWERTUNG: Parken auf dem Seitenstaender zaehlte als Linkskurve
+  und als Max-Schraeglage - behoben. Kurvenradien werden aus Tempo
+  und Schraeglage am Scheitel berechnet (vorher zu klein).
+- GPX laden: jetzt direkt als Datei (Downloads, Drive ...), nicht
+  nur per Einfuegen.
+- Wetter: Regenwarnung stimmt auch in anderen Zeitzonen.
+- GPS-Feld im Cockpit antippen: oeffnet die passende Einstellung,
+  wenn Standort aus oder dauerhaft verweigert ist.
+- Notfalldaten gehen beim Zurueckgehen ohne SPEICHERN nicht mehr
+  verloren.
+
 VERSION 4.3 - Stopps, Navigation, andere Navis
 ----------------------------------------------
 

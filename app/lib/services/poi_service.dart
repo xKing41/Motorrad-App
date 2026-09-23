@@ -94,7 +94,7 @@ class PoiService {
             .post(
               Uri.parse(endpoint),
               body: {'data': query},
-              headers: {'User-Agent': 'Schraeglage/4.3 (Motorrad-App)'},
+              headers: {'User-Agent': 'Schraeglage/4.3.1 (Motorrad-App)'},
             )
             .timeout(timeout);
         if (res.statusCode != 200) continue;
@@ -122,10 +122,11 @@ class PoiService {
     final out = <Poi>[];
     for (final e in elements.whereType<Map<String, dynamic>>()) {
       final tags = (e['tags'] as Map?)?.cast<String, dynamic>() ?? {};
+      final center = e['center'] is Map ? e['center'] as Map : const {};
       final plat = (e['lat'] as num?)?.toDouble() ??
-          (e['center']?['lat'] as num?)?.toDouble();
+          (center['lat'] as num?)?.toDouble();
       final plon = (e['lon'] as num?)?.toDouble() ??
-          (e['center']?['lon'] as num?)?.toDouble();
+          (center['lon'] as num?)?.toDouble();
       if (plat == null || plon == null) continue;
 
       final kind = kindFromTags(tags);

@@ -88,4 +88,11 @@ void main() {
     expect(GpxService.safeFileName('Rundtour · 152 km.gpx'), 'Rundtour_152_km.gpx');
     expect(GpxService.safeFileName('***'), 'route.gpx');
   });
+
+  test('Umlaute als Zahlen-Entities im Namen', () {
+    const xml = '<gpx><trk><name>R&#252;ckweg &#x00FC;ber M&amp;M</name>'
+        '<trkseg><trkpt lat="51" lon="7"/><trkpt lat="51.1" lon="7"/>'
+        '</trkseg></trk></gpx>';
+    expect(GpxService.parseRoute(xml).title, 'Rückweg über M&M');
+  });
 }
