@@ -37,6 +37,9 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
 - **Tourenbibliothek**: geplante Touren samt Stopps und Vorgaben speichern
   und ohne Neuberechnung wieder laden; die zuletzt geplante Route merkt
   sich die App selbst
+- Ansagen senken Musik im Headset ab, Wiederholen per Antippen, Stopps
+  werden vorab angesagt; große Knöpfe und Beenden durch Gedrückthalten
+  (Handschuhe)
 - **Tempolimit** bei der Navigation (OpenStreetMap, auch offline), optional
   mit Ansage bei zu hohem Tempo; feste Blitzer nur bei der Planung
 - Echte Motorrad-Routen ohne Schlüssel und ohne Konto (Valhalla auf dem

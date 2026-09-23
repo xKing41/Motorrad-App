@@ -871,7 +871,7 @@ class _MapScreenState extends State<MapScreen>
                     left: 4,
                     bottom: _nav == null
                         ? 104
-                        : 215 + (_nav!.speedLimit != null ? 62 : 0)),
+                        : 237 + (_nav!.speedLimit != null ? 62 : 0)),
                 child: const MapAttribution(),
               ),
             ),
@@ -1815,16 +1815,21 @@ class _MapScreenState extends State<MapScreen>
       ));
     }
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: panel.withValues(alpha: 0.96),
-        border: Border.all(color: f?.isOffRoute == true ? amber : line),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: children,
+    // Antippen wiederholt die Ansage - mit aktueller Entfernung.
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Voice.instance.say(nav.repeatText(), repeat: true),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: panel.withValues(alpha: 0.96),
+          border: Border.all(color: f?.isOffRoute == true ? amber : line),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: children,
+        ),
       ),
     );
   }
@@ -1931,6 +1936,7 @@ class _MapScreenState extends State<MapScreen>
       Row(children: [
         Expanded(
           child: _mapBtn(
+            big: true,
             icon: Icons.block,
             label: 'SPERRUNG',
             onTap: () async {
@@ -1943,6 +1949,7 @@ class _MapScreenState extends State<MapScreen>
         if (stop != null) ...[
           Expanded(
             child: _mapBtn(
+            big: true,
               icon: Icons.skip_next,
               label: 'STOPP ÜBERSPR.',
               onTap: nav.skipNextStop,
@@ -1952,6 +1959,7 @@ class _MapScreenState extends State<MapScreen>
         ],
         Expanded(
           child: _mapBtn(
+            big: true,
             icon: Icons.refresh,
             label: 'NEU',
             onTap: nav.rerouteNow,
@@ -1960,6 +1968,7 @@ class _MapScreenState extends State<MapScreen>
         const SizedBox(width: 8),
         Expanded(
           child: _mapBtn(
+            big: true,
             icon: Icons.ios_share,
             label: 'NAVI-APP',
             onTap: _showExport,
@@ -1968,6 +1977,7 @@ class _MapScreenState extends State<MapScreen>
         const SizedBox(width: 8),
         Expanded(
           child: _mapBtn(
+            big: true,
             icon: _autoFollow ? Icons.navigation : Icons.location_searching,
             label: 'FOLGEN',
             active: _autoFollow,
@@ -1981,7 +1991,9 @@ class _MapScreenState extends State<MapScreen>
           child: FlatButton2(
             label: 'NAVIGATION BEENDEN',
             color: amber,
-            onTap: _stopNav,
+            tall: true,
+            onTap: _holdHint,
+            onLongPress: _stopNav,
           ),
         ),
         const SizedBox(width: 8),
@@ -1989,35 +2001,48 @@ class _MapScreenState extends State<MapScreen>
           child: FlatButton2(
             label: t.recording ? 'FAHRT BEENDEN' : 'FAHRT STARTEN',
             color: t.recording ? amber : signal,
-            onTap: widget.onToggleRide,
+            tall: true,
+            onTap: t.recording ? _holdHint : widget.onToggleRide,
+            onLongPress: widget.onToggleRide,
           ),
         ),
       ]),
     ]);
   }
 
+  /// Kartenknopf. Waehrend der Navigation groesser ([big]) - mit
+  /// Handschuhen trifft man kleine Flaechen schlecht.
   Widget _mapBtn({
     required IconData icon,
     required String label,
     required VoidCallback onTap,
     bool active = false,
+    bool big = false,
   }) {
     final c = active ? signal : chalk;
     return InkWell(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: EdgeInsets.symmetric(vertical: big ? 13 : 8),
         decoration: BoxDecoration(
           color: panel.withValues(alpha: 0.94),
           border: Border.all(color: active ? signal : line),
         ),
         child: Column(children: [
-          Icon(icon, size: 17, color: c),
+          Icon(icon, size: big ? 24 : 17, color: c),
           const SizedBox(height: 3),
           Text(label,
-              style: TextStyle(fontSize: 8, letterSpacing: 1.2, color: c)),
+              maxLines: 1,
+              overflow: TextOverflow.clip,
+              style: TextStyle(
+                  fontSize: big ? 8.5 : 8, letterSpacing: 1.2, color: c)),
         ]),
       ),
     );
   }
+
+  /// Beenden waehrend der Fahrt nur durch Gedrueckthalten - ein
+  /// versehentlicher Tipp mit dem Handschuh soll weder die Navigation
+  /// noch die Aufzeichnung beenden.
+  void _holdHint() => toast(context, 'Zum Beenden gedrückt halten');
 }

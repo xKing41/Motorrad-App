@@ -351,7 +351,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             label: t.recording ? 'FAHRT BEENDEN' : 'FAHRT STARTEN',
             color: t.recording ? amber : signal,
             strong: true,
-            onTap: widget.onToggleRide,
+            tall: true,
+            // Beenden nur durch Gedrueckthalten: ein Tipp mit dem
+            // Handschuh soll die Fahrt nicht teilen.
+            onTap: t.recording
+                ? () => toast(context, 'Zum Beenden gedrückt halten')
+                : widget.onToggleRide,
+            onLongPress: widget.onToggleRide,
           ),
         ),
         const SizedBox(height: 8),

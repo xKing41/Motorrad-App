@@ -322,6 +322,53 @@ void main() {
       expect(nav.rerouteFails, 0);
     });
 
+    test('Stopps werden vorab angesagt: 10 km und 1,5 km', () {
+      final r = lineRoute(30);
+      final cum = cumulativeDistances(r.points);
+      final sp = pointAlong(r.points, cum, 20000);
+      final said = <String>[];
+      final nav = NavigationSession(
+        plan: planOf(r, pois: [
+          Poi(id: 'f', kind: PoiKind.fuel, lat: sp.lat, lon: sp.lon,
+              name: 'Aral', source: 'stop'),
+        ]),
+        engine: FakeEngine(),
+        prefs: const RoutingPrefs(),
+        speak: said.add,
+      );
+      // Abbiegung "Links" liegt bei 15 km - weit genug weg halten.
+      for (final at in [5000.0, 9500.0, 10500.0, 11000.0, 18000.0, 18600.0, 18700.0]) {
+        final p = pointAlong(r.points, cum, at);
+        nav.update(p.lat, p.lon, speedMs: 20);
+      }
+      final stops = said.where((t) => t.contains('Tankstopp')).toList();
+      expect(stops, [
+        'In 10 Kilometern: Tankstopp, Aral.',
+        'In 1,5 Kilometern: Tankstopp, Aral.',
+      ]);
+    });
+
+    test('Ansage wiederholen: aktuelle Entfernung', () {
+      final r = lineRoute(30);
+      final cum = cumulativeDistances(r.points);
+      final nav = NavigationSession(
+        plan: planOf(r),
+        engine: FakeEngine(),
+        prefs: const RoutingPrefs(),
+      );
+      var p = pointAlong(r.points, cum, 14200);
+      nav.update(p.lat, p.lon, speedMs: 15);
+      expect(nav.repeatText(), startsWith('In 800 Metern: Links'));
+      p = pointAlong(r.points, cum, 2000);
+      final nav2 = NavigationSession(
+        plan: planOf(r),
+        engine: FakeEngine(),
+        prefs: const RoutingPrefs(),
+      );
+      nav2.update(p.lat, p.lon, speedMs: 15);
+      expect(nav2.repeatText(), 'Der Straße 13 Kilometer folgen, dann Links');
+    });
+
     test('Stopp auslassen', () async {
       final engine = FakeEngine();
       final r = lineRoute(30);

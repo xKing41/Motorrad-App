@@ -14,6 +14,26 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.12 - Ansagen und Bedienung mit Handschuhen
+----------------------------------------------------
+
+- MUSIK WIRD LEISER statt uebertoent: Waehrend einer Ansage wird Musik
+  im Helm-Headset kurz abgesenkt und laeuft danach normal weiter.
+- ANSAGE WIEDERHOLEN: oberes Navi-Feld antippen -> die naechste
+  Anweisung mit der aktuellen Entfernung ("In 800 Metern: rechts
+  abbiegen", "Der Strasse 13 Kilometer folgen, dann ...").
+- STOPPS WERDEN ANGESAGT: "In 10 Kilometern: Tankstopp, Aral." und
+  nochmal bei 1,5 km (auch Einkehr, Pause, Aussichtspunkt).
+- Ansagen schneiden sich nicht mehr gegenseitig ab, sie kommen
+  nacheinander.
+- Kreisverkehre: die Ausfahrt wird genannt ("nehmen Sie die 2.
+  Ausfahrt"). Spurempfehlungen liefert der kostenlose Routing-Server
+  leider nicht.
+- HANDSCHUHE: Waehrend der Navigation sind die Knoepfe groesser.
+  "NAVIGATION BEENDEN" und "FAHRT BEENDEN" (auch im Cockpit) muessen
+  GEDRUECKT GEHALTEN werden - ein versehentlicher Tipp beendet nichts
+  mehr.
+
 VERSION 4.11 - Touren speichern
 -------------------------------
 

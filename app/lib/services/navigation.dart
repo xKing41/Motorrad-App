@@ -258,7 +258,71 @@ class NavigationSession extends ChangeNotifier {
     return null;
   }
 
-  void _say(String t) => _speak(t);
+  bool _spoke = false;
+
+  void _say(String t) {
+    _spoke = true;
+    _speak(t);
+  }
+
+  /// Ansage zum Wiederholen (Antippen der Anzeige): die naechste
+  /// Anweisung mit der aktuellen Entfernung.
+  String repeatText() {
+    if (arrived) return 'Sie haben Ihr Ziel erreicht.';
+    final f = follow;
+    if (f != null && f.offRouteM > 50) {
+      return 'Sie sind abseits der Route. Bitte zur Route zurückkehren.';
+    }
+    final s = nextStep;
+    if (s == null) return 'Der Route folgen.';
+    final d = distanceToNext;
+    final then = thenStep;
+    final thenText = then != null ? ', dann ${then.alert ?? then.text}' : '';
+    if (d < 60) return '${s.verbal ?? s.text}$thenText';
+    if (d > 5000) {
+      return 'Der Straße ${spokenDistanceNom(d)} folgen, '
+          'dann ${s.alert ?? s.text}';
+    }
+    return 'In ${spokenDistance(d)}: ${s.alert ?? s.text}$thenText';
+  }
+
+  /// "800 Meter", "12 Kilometer" (ohne Dativ).
+  static String spokenDistanceNom(double m) => spokenDistance(m)
+      .replaceAll('Metern', 'Meter')
+      .replaceAll('einem Kilometer', 'einen Kilometer')
+      .replaceAll('Kilometern', 'Kilometer');
+
+  // Stopps vorab ansagen: "In 10 Kilometern: Tankstopp, Aral."
+  final Map<String, int> _stopAnnounced = {};
+  static const List<double> stopStages = [10000, 1500];
+
+  static String stopLabel(PoiKind k) => switch (k) {
+        PoiKind.fuel => 'Tankstopp',
+        PoiKind.food => 'Einkehr',
+        PoiKind.rest => 'Pause',
+        PoiKind.viewpoint => 'Aussichtspunkt',
+        PoiKind.water => 'Trinkwasser',
+        PoiKind.workshop => 'Werkstatt',
+      };
+
+  void _announceStops() {
+    final s = nextStop;
+    if (s == null) return;
+    final done = _stopAnnounced[s.poi.id] ?? 0;
+    var due = -1;
+    for (var i = 0; i < stopStages.length; i++) {
+      if (s.distanceM <= stopStages[i]) due = i;
+    }
+    if (due < 0 || due < done) return;
+    // Nie mitten in eine Abbiege-Ansage hinein - dann beim naechsten
+    // GPS-Punkt.
+    if (_spoke) return;
+    _stopAnnounced[s.poi.id] = due + 1;
+    final name = s.poi.name?.isNotEmpty == true ? ', ${s.poi.name}' : '';
+    final spoken =
+        s.distanceM < stopStages[due] * 0.8 ? s.distanceM : stopStages[due];
+    _say('In ${spokenDistance(spoken)}: ${stopLabel(s.poi.kind)}$name.');
+  }
 
   void _flash(String msg, {int seconds = 8}) {
     banner = msg;
@@ -275,6 +339,7 @@ class NavigationSession extends ChangeNotifier {
 
   /// Neue Position. [heading] in Grad, [speedMs] in m/s.
   void update(double lat, double lon, {double? heading, double speedMs = 0}) {
+    _spoke = false;
     _here = RoutePoint(lat, lon);
     _heading = heading;
     _speedMs = speedMs;
@@ -302,6 +367,7 @@ class NavigationSession extends ChangeNotifier {
         _rerouteFails = 0;
       }
       _advanceSteps();
+      _announceStops();
     }
 
     if (!arrived && f.remainingM < 40 && f.offRouteM < 60) {

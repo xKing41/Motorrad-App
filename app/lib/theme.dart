@@ -126,10 +126,16 @@ class FlatButton2 extends StatelessWidget {
     required this.onTap,
     this.color = steel,
     this.strong = false,
+    this.onLongPress,
+    this.tall = false,
   });
 
   final String label;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+
+  /// Hoeher - fuer die Bedienung mit Handschuhen waehrend der Fahrt.
+  final bool tall;
   final Color color;
   final bool strong;
 
@@ -137,10 +143,11 @@ class FlatButton2 extends StatelessWidget {
   Widget build(BuildContext context) {
     return OutlinedButton(
       onPressed: onTap,
+      onLongPress: onLongPress,
       style: OutlinedButton.styleFrom(
         foregroundColor: color,
         side: BorderSide(color: color, width: strong ? 1.4 : 1),
-        padding: EdgeInsets.symmetric(vertical: strong ? 13 : 11),
+        padding: EdgeInsets.symmetric(vertical: tall ? 18 : (strong ? 13 : 11)),
         shape: const RoundedRectangleBorder(),
       ),
       child: Text(
