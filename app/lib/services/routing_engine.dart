@@ -129,7 +129,7 @@ abstract class RoutingEngine {
 
 const Map<String, String> _headers = {
   'Content-Type': 'application/json',
-  'User-Agent': 'Schraeglage/4.4 (Motorrad-App)',
+  'User-Agent': 'Schraeglage/4.5 (Motorrad-App)',
 };
 
 // ===========================================================================

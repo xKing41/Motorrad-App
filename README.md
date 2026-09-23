@@ -20,6 +20,9 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
   Drehrate gemessen (nicht aus der Schräglage geschätzt), Brems-G per GPS
   gegengeprüft, die Schräglage um die Reifenbreite korrigiert
   (`services/dynamics.dart`)
+- Schräglage per Kalman-Filter mit Schätzung der Gyroskop-Drift,
+  Nullpunkt-Nachmessung bei jedem Halt, Reifenbreite und Bauart des
+  eigenen Motorrads einstellbar (`services/lean_filter.dart`)
 - Nullpunkt-Kalibrierung: Das Handy darf hochkant, quer oder flach und
   beliebig schräg montiert sein; die Lage wird gespeichert
 - Wetterstreifen mit Regen-, Frost- und Kaltreifenwarnung

@@ -94,3 +94,66 @@ class Dynamics {
     return (r > 3 && r < 2000) ? r : 0;
   }
 }
+
+/// Bauart des Motorrads - bestimmt die Schwerpunkthoehe mit Fahrer.
+enum BikeType { sport, naked, touring, enduro, cruiser }
+
+extension BikeTypeX on BikeType {
+  String get label => switch (this) {
+        BikeType.sport => 'Supersportler',
+        BikeType.naked => 'Naked / Allrounder',
+        BikeType.touring => 'Tourer',
+        BikeType.enduro => 'Reiseenduro',
+        BikeType.cruiser => 'Cruiser / Chopper',
+      };
+
+  /// Schwerpunkt von Motorrad und Fahrer ueber dem Boden (m).
+  double get cogHeightM => switch (this) {
+        BikeType.sport => 0.52,
+        BikeType.naked => 0.55,
+        BikeType.touring => 0.58,
+        BikeType.enduro => 0.64,
+        BikeType.cruiser => 0.50,
+      };
+}
+
+/// Daten des eigenen Motorrads fuer die Schraeglagen-Rechnung.
+class BikeProfile {
+  const BikeProfile({
+    this.type = BikeType.naked,
+    this.frontWidthMm = 120,
+    this.rearWidthMm = 180,
+  });
+
+  final BikeType type;
+  final int frontWidthMm;
+  final int rearWidthMm;
+
+  /// Rundung der Laufflaeche: etwa die halbe Reifenbreite, gemittelt
+  /// ueber beide Raeder (beide tragen das Motorrad).
+  double get tireProfileRadiusM => (frontWidthMm + rearWidthMm) / 2 / 2 / 1000;
+
+  double get cogHeightM => type.cogHeightM;
+
+  double bikeLeanDeg(double effectiveDeg) => Dynamics.bikeLeanDeg(effectiveDeg,
+      t: tireProfileRadiusM, h: cogHeightM);
+
+  BikeProfile copyWith({BikeType? type, int? frontWidthMm, int? rearWidthMm}) =>
+      BikeProfile(
+        type: type ?? this.type,
+        frontWidthMm: frontWidthMm ?? this.frontWidthMm,
+        rearWidthMm: rearWidthMm ?? this.rearWidthMm,
+      );
+
+  List<String> toList() => [type.name, '$frontWidthMm', '$rearWidthMm'];
+
+  static BikeProfile fromList(List<String>? v) {
+    if (v == null || v.length != 3) return const BikeProfile();
+    return BikeProfile(
+      type: BikeType.values
+          .firstWhere((t) => t.name == v[0], orElse: () => BikeType.naked),
+      frontWidthMm: int.tryParse(v[1]) ?? 120,
+      rearWidthMm: int.tryParse(v[2]) ?? 180,
+    );
+  }
+}

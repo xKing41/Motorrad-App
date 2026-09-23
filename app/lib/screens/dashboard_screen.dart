@@ -6,6 +6,7 @@ import '../services/emergency.dart';
 import '../services/power.dart';
 import '../services/weather_service.dart';
 import '../theme.dart';
+import 'bike_screen.dart';
 import 'emergency_screen.dart';
 import '../widgets/gauge.dart';
 
@@ -135,6 +136,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   style: const TextStyle(
                       fontSize: 10, letterSpacing: 2, color: chalk)),
             ]),
+          ),
+        ),
+        const SizedBox(width: 8),
+        // Motorrad, Reifen und Halterung - bestimmt die Messgenauigkeit.
+        InkWell(
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const BikeScreen())),
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration:
+                BoxDecoration(color: panel, border: Border.all(color: line)),
+            child: const Icon(Icons.two_wheeler, size: 16, color: steel),
           ),
         ),
         const SizedBox(width: 8),

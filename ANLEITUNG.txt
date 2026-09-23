@@ -14,6 +14,23 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.5 - Genauere Messung
+------------------------------
+
+- KALMAN-FILTER fuer die Schraeglage (wie in Profi-Loggern): schaetzt
+  neben der Schraeglage auch den Nullpunktfehler des Gyroskops und
+  zieht ihn ab. Die GPS-Rechnung wird je nach Tempo gewichtet (bei
+  100 km/h verlaesslicher als bei 15 km/h).
+- GYROSKOP-NULLPUNKT wird an jeder Ampel automatisch neu gemessen,
+  in allen drei Achsen. Das verbessert auch Kurven-G.
+- NEU im Cockpit: Motorrad-Symbol oben rechts -> "Motorrad &
+  Halterung". Bauart und Reifenbreiten eintragen (steht auf der
+  Reifenflanke, z. B. 180/55 ZR17 = 180). Damit stimmt die
+  Reifenkorrektur fuer DEIN Motorrad. Dort auch: Vibration der
+  Halterung, Status von Nullpunkt und Drift, Tipps zur Montage.
+- Beste Montage: fest an Rahmen, Tank oder Gabelbruecke. Am Lenker
+  dreht das Handy mit und vibriert mehr.
+
 VERSION 4.4.1 - Fahrphysik korrigiert
 -------------------------------------
 

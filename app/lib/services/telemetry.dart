@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/ride.dart';
 import 'crash_detector.dart';
 import 'dynamics.dart';
+import 'lean_filter.dart';
 import 'emergency.dart';
 import 'mount.dart';
 import 'weather_service.dart';
@@ -98,6 +99,18 @@ class Telemetry extends ChangeNotifier {
 
   // --- Lage des Handys am Motorrad (oben, rechts, vorn) ---
   MountFrame _frame = MountFrame.portrait;
+
+  // --- Schraeglage: Kalman-Filter und Gyro-Nullpunkt ---
+  final LeanKalman _kf = LeanKalman(qAngle: 0.12);
+  final GyroBiasTracker _gyroBias = GyroBiasTracker();
+  double _accMagG = 1;
+
+  /// Daten des eigenen Motorrads (Reifen, Bauart).
+  BikeProfile bike = const BikeProfile();
+
+  /// Wie stark das Handy in der Halterung vibriert (g, gleitender
+  /// Mittelwert) - fuer den Hinweis auf eine bessere Montage.
+  double vibrationG = 0;
 
   /// Monotone Uhr fuer die Zeitschritte der Sensorfusion.
   /// DateTime.now() waere hier falsch: Die Kalenderzeit kann springen
@@ -189,6 +202,7 @@ class Telemetry extends ChangeNotifier {
       _frame = saved;
       _calibrated = true;
     }
+    bike = await loadBike();
     _autoCalTimer = Timer(const Duration(milliseconds: 1500), () {
       if (!_calibrated && _hasAccel) calibrate(persist: false);
     });
@@ -400,6 +414,11 @@ class Telemetry extends ChangeNotifier {
     _gy += a * (e.y - _gy);
     _gz += a * (e.z - _gz);
     _hasAccel = true;
+    _accMagG = math.sqrt(e.x * e.x + e.y * e.y + e.z * e.z) / 9.80665;
+    // Vibration: Abweichung vom geglaetteten Wert, ueber ~2 s gemittelt.
+    final dx = e.x - _gx, dy = e.y - _gy, dz = e.z - _gz;
+    final vib = math.sqrt(dx * dx + dy * dy + dz * dz) / 9.80665;
+    vibrationG += _alpha(dt.clamp(0.0, 0.5), 2.0) * (vib - vibrationG);
 
     // Sturzerkennung bekommt den ROHEN Wert inklusive Schwerkraft - der
     // geglaettete Wert wuerde jeden Aufprall wegbuegeln.
@@ -434,33 +453,41 @@ class Telemetry extends ChangeNotifier {
     final dt = (us - last) / 1e6;
     if (dt <= 0 || dt > 0.2) return;
 
+    // Nullpunkt des Gyroskops in jedem Stillstand nachmessen und abziehen.
+    _gyroBias.feed(e.x, e.y, e.z, _accMagG, dt,
+        moving: hasFix && speedMs > 0.8);
+    final wx = e.x - _gyroBias.bx,
+        wy = e.y - _gyroBias.by,
+        wz = e.z - _gyroBias.bz;
+
     // Drehrate um die Vorwaertsachse = Schraeglagen-Aenderung
-    final rate = _frame.rollRate(e.x, e.y, e.z) * 180 / math.pi;
+    final rate = _frame.rollRate(wx, wy, wz) * 180 / math.pi;
 
     final upn = math.sqrt(_gx * _gx + _gy * _gy + _gz * _gz);
     double refDeg;
-    double tau;
+    double r;
     var latNow = 0.0;
     if (hasFix && speedMs > 2.5 && upn > 2) {
       // Drehrate um die (effektive) Hochachse - das Handy neigt sich mit.
-      final yaw = -(e.x * _gx + e.y * _gy + e.z * _gz) / upn;
+      final yaw = -(wx * _gx + wy * _gy + wz * _gz) / upn;
       final eff = Dynamics.effectiveLeanDeg(speedMs, yaw);
       // Das Motorrad liegt wegen des runden Reifens tiefer als die
       // effektive Linie Aufstandspunkt-Schwerpunkt.
-      refDeg = Dynamics.bikeLeanDeg(eff);
+      refDeg = bike.bikeLeanDeg(eff);
       latNow = Dynamics.lateralG(speedMs, yaw);
-      tau = 1.4;
+      r = LeanKalman.rGps(speedMs);
       gpsReference = true;
     } else {
       refDeg = _norm(_rollAcc);
-      tau = 2.5;
+      r = LeanKalman.rAccel(still: _gyroBias.isStill);
       gpsReference = false;
     }
     // Querbeschleunigung leicht geglaettet (0,3 s) gegen Vibrationen.
     latG += _alpha(dt, 0.3) * (latNow - latG);
 
-    final k = tau / (tau + dt);
-    roll = _norm(k * (roll + rate * dt) + (1 - k) * refDeg);
+    _kf.predict(rate, dt);
+    _kf.update(refDeg, r);
+    roll = _kf.angle;
 
     // Maximalwerte nur in Fahrt - der Seitenstaender (rund 15 Grad links)
     // ist keine Schraeglage. Ohne GPS wird weiter alles gezaehlt.
@@ -641,6 +668,7 @@ class Telemetry extends ChangeNotifier {
     if (f == null) return false;
     _frame = f;
     roll = 0;
+    _kf.reset(0);
     _calibrated = true;
     if (persist) unawaited(_saveFrame(f));
     notifyListeners();
@@ -648,6 +676,31 @@ class Telemetry extends ChangeNotifier {
   }
 
   static const _kFrame = 'mount_frame';
+  static const _kBike = 'bike_profile';
+
+  static Future<BikeProfile> loadBike() async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      return BikeProfile.fromList(sp.getStringList(_kBike));
+    } catch (_) {
+      return const BikeProfile();
+    }
+  }
+
+  Future<void> saveBike(BikeProfile b) async {
+    bike = b;
+    try {
+      final sp = await SharedPreferences.getInstance();
+      await sp.setStringList(_kBike, b.toList());
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  /// Wurde der Nullpunkt der Lage gesetzt (oder gespeichert geladen)?
+  bool get calibrated => _calibrated;
+
+  /// Nullpunkt des Gyroskops schon gemessen?
+  bool get gyroBiasKnown => _gyroBias.hasBias;
 
   Future<MountFrame?> _loadFrame() async {
     try {
