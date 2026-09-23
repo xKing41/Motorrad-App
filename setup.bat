@@ -142,6 +142,9 @@ REM bliebe sonst liegen, wuerde mitgebaut und kann den Build brechen.
 if exist "%PROJ%\lib" rmdir /s /q "%PROJ%\lib"
 xcopy /Y /E /I "%SRC%\lib" "%PROJ%\lib" >nul
 if exist "%SRC%\android" xcopy /Y /E /I "%SRC%\android" "%PROJ%\android" >nul
+REM Kartenstile (Vektorkarte Tag/Nacht) gehoeren in die App.
+if exist "%PROJ%\assets" rmdir /S /Q "%PROJ%\assets"
+if exist "%SRC%\assets" xcopy /Y /E /I "%SRC%\assets" "%PROJ%\assets" >nul
 REM minSdk auf 24 setzen - OHNE BOM schreiben (WriteAllText = UTF-8 ohne BOM).
 REM Repariert dabei auch Dateien, die frueher versehentlich ein BOM bekamen.
 echo [5/6] Setze Android-Versionen (compileSdk 36)...

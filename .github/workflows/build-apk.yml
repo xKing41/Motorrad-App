@@ -56,6 +56,9 @@ jobs:
           rm -rf proj/lib
           cp -r app/lib proj/lib
           cp -r app/android/. proj/android/
+          # Kartenstile und andere Dateien, die in die App gehoeren
+          rm -rf proj/assets
+          if [ -d app/assets ]; then cp -r app/assets proj/assets; fi
           # Eigene Tests statt der Beispiel-Tests aus der Vorlage
           rm -rf proj/test
           if [ -d app/test ]; then cp -r app/test proj/test; fi
