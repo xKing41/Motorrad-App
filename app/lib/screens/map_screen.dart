@@ -13,12 +13,14 @@ import '../models/route_plan.dart';
 import '../services/external_nav.dart';
 import '../services/gpx_service.dart';
 import '../services/navigation.dart';
+import '../services/offline_maps.dart';
 import '../services/poi_service.dart';
 import '../services/route_follow.dart';
 import '../services/smooth_position.dart';
 import '../services/routing_engine.dart';
 import '../services/routing_settings.dart';
 import '../services/telemetry.dart';
+import '../services/tile_cache.dart';
 import '../services/voice.dart';
 import '../theme.dart';
 import '../widgets/map_attribution.dart';
@@ -71,6 +73,9 @@ class _MapScreenState extends State<MapScreen>
   String _tomtomKey = '';
   bool _showFlow = true;
 
+  // Kartenkacheln mit Speicher auf dem Handy (Offline-Karten).
+  final _offline = OfflineMaps.instance;
+
   /// Position und Richtung des eigenen Pfeils.
   final ValueNotifier<(LatLng, double)?> _rider = ValueNotifier(null);
 
@@ -79,7 +84,14 @@ class _MapScreenState extends State<MapScreen>
     super.initState();
     _ticker = createTicker(_onFrame);
     t.addListener(_onTick);
+    _offline.addListener(_onOffline);
+    _offline.offline.addListener(_onOffline);
     _loadTrafficKey();
+    _offline.cache();
+  }
+
+  void _onOffline() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadTrafficKey() async {
@@ -90,6 +102,8 @@ class _MapScreenState extends State<MapScreen>
   @override
   void dispose() {
     t.removeListener(_onTick);
+    _offline.removeListener(_onOffline);
+    _offline.offline.removeListener(_onOffline);
     _ticker.dispose();
     _rider.dispose();
     _nav?.dispose();
@@ -384,6 +398,14 @@ class _MapScreenState extends State<MapScreen>
       _autoFollow = false;
     });
     _fitRoute(plan);
+    // Karte entlang der Route vorab aufs Handy laden - fuer Funkloecher.
+    _autoSaveRoute(plan);
+  }
+
+  Future<void> _autoSaveRoute(RoutePlan plan) async {
+    await _offline.cache();
+    if (!_offline.autoRoute || !identical(_route, plan)) return;
+    _offline.saveRoute(plan.points, label: plan.title ?? 'Route');
   }
 
   void _nextVariant() {
@@ -593,9 +615,12 @@ class _MapScreenState extends State<MapScreen>
           ),
           children: [
             TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              urlTemplate: osmUrlTemplate,
               userAgentPackageName: 'de.schraeglage.app',
               maxNativeZoom: 19,
+              // Kacheln vom Handy, im Funkloch auch vergroesserte
+              // groebere Kacheln statt leerer Flaeche.
+              tileProvider: OfflineMaps.tiles,
             ),
             if (_tomtomKey.isNotEmpty && _showFlow)
               TileLayer(
@@ -682,6 +707,11 @@ class _MapScreenState extends State<MapScreen>
           child: _nav != null ? _navBottom(_nav!) : _bottomBar(),
         ),
 
+        Positioned(
+          right: 12,
+          top: (_nav != null ? 150 : 80) + (_tomtomKey.isNotEmpty ? 44 : 0),
+          child: _offlineButton(),
+        ),
         if (_tomtomKey.isNotEmpty)
           Positioned(
             right: 12,
@@ -713,6 +743,188 @@ class _MapScreenState extends State<MapScreen>
             ),
           ),
       ]),
+    );
+  }
+
+  // ------------------------------------------------------------------
+  // Offline-Karten
+  // ------------------------------------------------------------------
+  Widget _offlineButton() {
+    final job = _offline.job;
+    final running = job?.running == true;
+    final off = _offline.offline.value;
+    return InkWell(
+      onTap: _showOffline,
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: panel.withValues(alpha: 0.94),
+          border: Border.all(color: off ? amber : (running ? cool : line)),
+        ),
+        child: SizedBox(
+          width: 18,
+          height: 18,
+          child: running
+              ? CircularProgressIndicator(
+                  value: job!.progress,
+                  strokeWidth: 2,
+                  color: cool,
+                  backgroundColor: line,
+                )
+              : Icon(off ? Icons.cloud_off : Icons.download_for_offline,
+                  size: 18, color: off ? amber : steel),
+        ),
+      ),
+    );
+  }
+
+  void _showOffline() {
+    final visible = _mapReady ? _map.camera.visibleBounds : null;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: panel,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(),
+      builder: (ctx) => SafeArea(
+        child: ListenableBuilder(
+          listenable: _offline,
+          builder: (ctx, _) => _offlineSheet(ctx, visible),
+        ),
+      ),
+    );
+  }
+
+  Widget _offlineSheet(BuildContext ctx, LatLngBounds? visible) {
+    final job = _offline.job;
+    const small = TextStyle(fontSize: 10, color: steel, height: 1.4);
+    String areaInfo() {
+      if (visible == null) return '';
+      final z = OfflineMaps.areaMaxZoom(visible.south, visible.west,
+          visible.north, visible.east, 8);
+      final n = countTilesInBox(
+          visible.south, visible.west, visible.north, visible.east,
+          minZoom: 8, maxZoom: z);
+      return 'Bis Zoomstufe $z · ca. ${formatBytes(n * avgTileBytes)}';
+    }
+
+    String routeInfo(RoutePlan r) {
+      final n = _offline.routeTiles(r.points).length;
+      return 'Streifen entlang der Tour · ca. ${formatBytes(n * avgTileBytes)}';
+    }
+
+    String jobText(OfflineJob j) {
+      final r = j.result;
+      if (r == null) {
+        return '${j.label}: ${j.done} von ${j.total} Kacheln';
+      }
+      if (r.cancelled && r.failed > 0) {
+        return '${j.label}: abgebrochen - kein Netz? '
+            '${r.loaded + r.skipped} von ${j.total} gespeichert.';
+      }
+      if (r.cancelled) return '${j.label}: abgebrochen.';
+      return '${j.label}: fertig, ${r.loaded + r.skipped} Kacheln auf dem Handy'
+          '${r.failed > 0 ? ' (${r.failed} fehlgeschlagen)' : ''}.';
+    }
+
+    return ListView(
+      shrinkWrap: true,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      children: [
+        const Text('OFFLINE-KARTEN',
+            style: TextStyle(fontSize: 12, letterSpacing: 2, color: chalk)),
+        const SizedBox(height: 4),
+        const Text(
+          'Jede angesehene Karte bleibt auf dem Handy. Vorab geladene '
+          'Strecken und Gebiete funktionieren auch im Funkloch - die '
+          'Navigation läuft mit der gespeicherten Route weiter.',
+          style: small,
+        ),
+        if (_offline.offline.value) ...[
+          const SizedBox(height: 6),
+          const Text('Gerade kein Netz - Karte kommt vom Handy.',
+              style: TextStyle(fontSize: 10.5, color: amber)),
+        ],
+        if (job != null) ...[
+          const SizedBox(height: 10),
+          LinearProgressIndicator(
+              value: job.progress, color: cool, backgroundColor: line),
+          const SizedBox(height: 4),
+          Row(children: [
+            Expanded(child: Text(jobText(job), style: small)),
+            if (job.running)
+              TextButton(
+                onPressed: _offline.cancel,
+                child: const Text('ABBRECHEN',
+                    style: TextStyle(fontSize: 10, color: amber)),
+              ),
+          ]),
+        ],
+        const SizedBox(height: 6),
+        if (_route != null)
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.route, color: cool, size: 20),
+            title: const Text('Route offline speichern',
+                style: TextStyle(fontSize: 12.5, color: chalk)),
+            subtitle: Text(routeInfo(_route!), style: small),
+            onTap: () => _offline.saveRoute(_route!.points,
+                label: _route!.title ?? 'Route'),
+          ),
+        if (visible != null)
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.crop_free, color: cool, size: 20),
+            title: const Text('Sichtbaren Ausschnitt speichern',
+                style: TextStyle(fontSize: 12.5, color: chalk)),
+            subtitle: Text(areaInfo(), style: small),
+            onTap: () => _offline.saveArea(
+                visible.south, visible.west, visible.north, visible.east),
+          ),
+        SwitchListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          activeTrackColor: signal,
+          inactiveTrackColor: line,
+          title: const Text('Geplante Routen automatisch speichern',
+              style: TextStyle(fontSize: 12.5, color: chalk)),
+          subtitle: const Text(
+              'Lädt die Karte entlang jeder neuen Route gleich mit. '
+              'Braucht mobile Daten - im WLAN planen spart Datenvolumen.',
+              style: small),
+          value: _offline.autoRoute,
+          onChanged: (v) => _offline.setAutoRoute(v),
+        ),
+        FutureBuilder<TileCacheStats>(
+          future: _offline.stats(),
+          builder: (ctx, snap) {
+            final s = snap.data;
+            return ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.sd_storage, color: steel, size: 20),
+              title: Text(
+                  s == null
+                      ? 'Speicher wird gezählt ...'
+                      : 'Belegt: ${formatBytes(s.bytes)} (${s.tiles} Kacheln)',
+                  style: const TextStyle(fontSize: 12, color: chalk)),
+              subtitle: const Text(
+                  'Höchstens 600 MB - älteste Kacheln werden automatisch '
+                  'gelöscht.',
+                  style: small),
+              trailing: TextButton(
+                onPressed: () async {
+                  await _offline.clear();
+                  PaintingBinding.instance.imageCache.clear();
+                },
+                child: const Text('LEEREN',
+                    style: TextStyle(fontSize: 10, color: amber)),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 

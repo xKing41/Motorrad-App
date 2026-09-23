@@ -29,6 +29,9 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
 
 **Karte und Routenplanung**
 - OpenStreetMap, Live-Spur nach Schräglage eingefärbt
+- **Offline-Karten**: angesehene Karten bleiben auf dem Handy, Route
+  (automatisch beim Planen) und Kartenausschnitte vorab speichern; im
+  Funkloch vergrößerte gröbere Kacheln statt leerer Flächen
 - Echte Motorrad-Routen ohne Schlüssel und ohne Konto (Valhalla auf dem
   Server der FOSSGIS, mit eigenem Motorrad-Profil)
 - **Rundtouren**, die an deinem Standort beginnen und enden – mit
@@ -257,7 +260,9 @@ der App unter **PLANEN → EINSTELLUNGEN**).
   OpenStreetMap. Ortssuche über Photon (komoot) und Nominatim.
 - Kartenkacheln über `tile.openstreetmap.org`. Deren Nutzungsrichtlinie ist
   auf geringe Lasten ausgelegt. Für den Eigengebrauch passt das; bei vielen
-  Nutzern gehört ein eigener Kachelserver her.
+  Nutzern gehört ein eigener Kachelserver her. Das Vorab-Laden hält die
+  Regeln ein: höchstens 2 gleichzeitige Downloads, nur bis Zoomstufe 16,
+  eindeutige App-Kennung, vorhandene Kacheln werden nicht erneut geholt.
 - Wetterdaten: Open-Meteo.com, CC BY 4.0. Angabe steht im Wetterstreifen.
 - Für dieses Projekt selbst ist **noch keine Lizenz festgelegt**. Ohne
   Lizenzdatei behältst du alle Rechte, und andere dürfen den Code nicht

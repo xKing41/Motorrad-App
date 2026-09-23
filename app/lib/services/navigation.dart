@@ -78,7 +78,14 @@ class NavigationSession extends ChangeNotifier {
 
   @visibleForTesting
   set debugOffSince(DateTime? v) => _offSince = v;
+  @visibleForTesting
+  set debugNoRerouteUntil(DateTime v) => _noRerouteUntil = v;
   DateTime _noRerouteUntil = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Fehlgeschlagene Neuberechnungen in Folge (z. B. Funkloch). Dann wird
+  /// seltener versucht und nicht jedes Mal angesagt.
+  int _rerouteFails = 0;
+  int get rerouteFails => _rerouteFails;
   bool rerouting = false;
   bool arrived = false;
 
@@ -213,7 +220,10 @@ class NavigationSession extends ChangeNotifier {
       }
     } else {
       _offSince = null;
-      if (f.offRouteM < 30) _onRouteAlong = totalM - f.remainingM;
+      if (f.offRouteM < 30) {
+        _onRouteAlong = totalM - f.remainingM;
+        _rerouteFails = 0;
+      }
       _advanceSteps();
     }
 
@@ -337,16 +347,25 @@ class NavigationSession extends ChangeNotifier {
     if (h == null) return;
     rerouting = true;
     _flash('ROUTE WIRD NEU BERECHNET ...', seconds: 30);
-    _say('Route wird neu berechnet.');
+    if (_rerouteFails == 0) _say('Route wird neu berechnet.');
     notifyListeners();
     try {
       final res = await _patcher.rejoin(engineRouteOf(_plan),
           here: h, lastAlongM: _onRouteAlong, heading: _heading);
+      _rerouteFails = 0;
       _apply(res.route, 'Zurück zur Tour');
       _noRerouteUntil = DateTime.now().add(const Duration(seconds: 10));
     } on RouteException catch (e) {
-      _flash('Neuberechnung fehlgeschlagen: ${e.message}');
-      _noRerouteUntil = DateTime.now().add(const Duration(seconds: 20));
+      _rerouteFails++;
+      // Ohne Netz bleibt die gespeicherte Route auf der Karte - der
+      // Fahrer kann ihr folgen. Neuer Versuch nach 20, 40, 60 s.
+      _flash('Neuberechnung nicht möglich: ${e.message} '
+          'Die Route bleibt auf der Karte.', seconds: 12);
+      if (_rerouteFails == 1) {
+        _say('Neuberechnung nicht möglich. Bitte zur Route zurückkehren.');
+      }
+      _noRerouteUntil = DateTime.now()
+          .add(Duration(seconds: 20 * math.min(3, _rerouteFails)));
     } finally {
       rerouting = false;
       notifyListeners();

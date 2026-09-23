@@ -14,6 +14,26 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.8 - Offline-Karten
+----------------------------
+
+- Jede Karte, die einmal angezeigt wurde, bleibt auf dem Handy. Im
+  Funkloch kommt sie vom Handy statt leer zu bleiben.
+- ROUTE OFFLINE: Beim Planen (oder GPX-Laden) wird die Karte entlang
+  der Route automatisch mitgeladen - ein Streifen links und rechts,
+  Zoomstufen 11 bis 16. Fortschritt: runder Knopf rechts auf der Karte.
+  Ausschaltbar (braucht mobile Daten - im WLAN planen spart Volumen).
+- GEBIET OFFLINE: Knopf rechts auf der Karte -> "Sichtbaren Ausschnitt
+  speichern" (z. B. den Schwarzwald vor dem Urlaub, im WLAN).
+- Staerker hineingezoomt als gespeichert? Dann wird die groebere
+  Kachel vergroessert angezeigt statt einer leeren Flaeche.
+- Wolken-Symbol (orange) rechts auf der Karte = gerade kein Netz.
+- Die Navigation laeuft im Funkloch mit der gespeicherten Route weiter.
+  Verfahren ohne Netz: EINE Ansage "Neuberechnung nicht moeglich",
+  danach neue Versuche nach 20, 40, 60 Sekunden - ohne Dauergerede.
+- Speicher hoechstens 600 MB, aelteste Kacheln werden automatisch
+  geloescht. "LEEREN" im selben Menue gibt alles frei.
+
 VERSION 4.7 - Verkehrslage aus mehreren Quellen
 -----------------------------------------------
 

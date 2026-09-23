@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../models/ride.dart';
 import '../services/gpx_service.dart';
+import '../services/offline_maps.dart';
 import '../services/ride_store.dart';
 import '../theme.dart';
 import '../widgets/map_attribution.dart';
@@ -165,9 +166,10 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                urlTemplate: osmUrlTemplate,
                 userAgentPackageName: 'de.schraeglage.app',
                 maxNativeZoom: 19,
+                tileProvider: OfflineMaps.tiles,
               ),
               PolylineLayer(polylines: _coloredTrack()),
               MarkerLayer(markers: [

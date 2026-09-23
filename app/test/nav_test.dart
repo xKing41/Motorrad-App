@@ -288,6 +288,40 @@ void main() {
       expect(nav.remainingM, lessThan(27000));
     });
 
+    test('Funkloch: Route bleibt, Ansage nur einmal, seltener versuchen',
+        () async {
+      final engine = FakeEngine(failEvery: 1);
+      final said = <String>[];
+      final r = lineRoute(30);
+      final nav = NavigationSession(
+        plan: planOf(r),
+        engine: engine,
+        prefs: const RoutingPrefs(),
+        speak: said.add,
+      );
+      final cum = cumulativeDistances(r.points);
+      final p = pointAlong(r.points, cum, 5000);
+      nav.update(p.lat, p.lon, speedMs: 15);
+      said.clear();
+      final off = destinationPoint(pointAlong(r.points, cum, 5500), 0, 400);
+      for (var i = 0; i < 2; i++) {
+        nav.debugOffSince = DateTime.now().subtract(const Duration(seconds: 7));
+        nav.debugNoRerouteUntil = DateTime.fromMillisecondsSinceEpoch(0);
+        nav.update(off.lat, off.lon, speedMs: 15);
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(engine.calls, 2);
+      expect(nav.rerouteFails, 2);
+      // Die geplante Route ist unveraendert.
+      expect(nav.plan.points.length, r.points.length);
+      expect(said.where((t) => t.contains('neu berechnet')).length, 1);
+      expect(said.where((t) => t.contains('nicht möglich')).length, 1);
+      // Zurueck auf der Route: Zaehler zurueckgesetzt.
+      final back = pointAlong(r.points, cum, 6000);
+      nav.update(back.lat, back.lon, speedMs: 15);
+      expect(nav.rerouteFails, 0);
+    });
+
     test('Stopp auslassen', () async {
       final engine = FakeEngine();
       final r = lineRoute(30);
