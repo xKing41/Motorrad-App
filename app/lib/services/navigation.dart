@@ -10,6 +10,7 @@ import 'route_follow.dart';
 import 'route_patch.dart';
 import 'routing_engine.dart';
 import 'speed_limits.dart';
+import 'traffic_eta.dart';
 import 'traffic_service.dart';
 
 /// Sprachausgabe, austauschbar fuer Tests.
@@ -44,6 +45,7 @@ class NavigationSession extends ChangeNotifier {
     required this.prefs,
     this.traffic,
     this.limits,
+    this.etaSource,
     this.speedWarning = false,
     this.curveWarning = true,
     Speak? speak,
@@ -57,6 +59,15 @@ class NavigationSession extends ChangeNotifier {
   final RoutingEngine engine;
   final RoutingPrefs prefs;
   final TrafficFeed? traffic;
+
+  /// Fahrzeit mit echtem Verkehr (TomTom). null = Schaetzung der Engine.
+  final TomTomEta? etaSource;
+
+  /// Letzte Fahrzeit mit Verkehr fuer den Rest der Strecke, und wo der
+  /// Fahrer da war.
+  TrafficEta? trafficEta;
+  double _etaFromM = 0;
+  bool _etaBusy = false;
 
   /// Tempolimits (OSM). null = keine Anzeige.
   final SpeedLimitSource? limits;
@@ -126,6 +137,8 @@ class NavigationSession extends ChangeNotifier {
   double _speedMs = 0;
 
   void _rebuild() {
+    // Fahrzeit mit Verkehr gehoerte zur alten Linie.
+    trafficEta = null;
     _follower = RouteFollower(_plan);
     _cum = cumulativeDistances(_plan.points);
     final n = _plan.points.length;
@@ -234,7 +247,22 @@ class NavigationSession extends ChangeNotifier {
   double get remainingM => follow?.remainingM ?? totalM;
 
   /// Restfahrzeit: Anteil der geplanten Zeit plus Verzug durch Staus.
+  /// Stammt die Restzeit aus echten Verkehrsdaten?
+  bool get etaWithTraffic {
+    final e = trafficEta;
+    return e != null &&
+        DateTime.now().difference(e.at) < const Duration(minutes: 20) &&
+        alongM >= _etaFromM - 200;
+  }
+
   Duration get remainingTime {
+    final e = trafficEta;
+    if (etaWithTraffic && e != null) {
+      // Seit der Abfrage gefahrene Strecke anteilig abziehen.
+      final restAtCalc = math.max(1.0, totalM - _etaFromM);
+      final share = (remainingM / restAtCalc).clamp(0.0, 1.0);
+      return Duration(seconds: (e.travelSec * share).round());
+    }
     final share = totalM > 0 ? remainingM / totalM : 0.0;
     final delay = ahead
         .where((i) => i.alongM > alongM && !_handled.contains(i.id))
@@ -544,6 +572,7 @@ class NavigationSession extends ChangeNotifier {
     _onRouteAlong = f != null ? totalM - f.remainingM : 0;
     _offSince = null;
     _flash(msg);
+    unawaited(_updateEta());
   }
 
   Future<void> _rejoin() async {
@@ -649,7 +678,26 @@ class NavigationSession extends ChangeNotifier {
       : trafficEvery;
 
   /// Fragt Meldungen fuer die naechsten 150 km ab.
+  /// Fahrzeit mit Verkehr fuer den Rest der Strecke neu holen.
+  Future<void> _updateEta() async {
+    final src = etaSource;
+    if (src == null || _etaBusy) return;
+    _etaBusy = true;
+    final from = alongM;
+    final pts = _plan.points;
+    try {
+      final e = await src.forRoute(pts, fromM: from);
+      if (e != null && identical(pts, _plan.points)) {
+        trafficEta = e;
+        _etaFromM = from;
+      }
+    } finally {
+      _etaBusy = false;
+    }
+  }
+
   Future<void> checkTraffic({bool force = false}) async {
+    unawaited(_updateEta());
     final t = traffic;
     if (t == null || _trafficBusy) return;
     if (!force &&

@@ -14,6 +14,18 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.20 - Ankunftszeit mit echtem Verkehr (TomTom)
+-------------------------------------------------------
+
+- Mit TomTom-Schluessel (PLANEN -> EINSTELLUNGEN) wird die EIGENE Tour
+  bei TomTom mit der aktuellen Verkehrslage nachgerechnet - dieselben
+  Strassen, nicht eine andere, schnellere Route.
+- Routen-Details: "Fahrzeit mit Verkehr jetzt: 2 h 35 (+12 min Stau)".
+- Navigation: Die Ankunftszeit ("AN 17:42") kommt dann aus den
+  Verkehrsdaten (kleines Ampel-Symbol davor) und wird unterwegs mit der
+  Verkehrslage alle 2-5 Minuten aktualisiert.
+- Ohne Schluessel: Schaetzung wie bisher.
+
 VERSION 4.19 - Deine Hauskurven
 -------------------------------
 

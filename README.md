@@ -41,6 +41,8 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
   Fahrtende – ohne Server und ohne App beim Empfänger
 - **Sicherung**: alle Fahrten und Touren in eine Datei (Drive, Mail …) und
   auf dem neuen Handy wieder einspielen
+- **Ankunftszeit mit echtem Verkehr** (TomTom-Schlüssel): die eigene Tour
+  wird mit aktueller Verkehrslage nachgerechnet
 - **Spritpreise** an den Tankstopps (Deutschland, Tankerkönig, optional)
 - **Tour bearbeiten** per langem Druck auf die Karte: über einen Punkt führen,
   Straße meiden, Stopp entfernen – nur das Stück um die Stelle wird neu
@@ -254,7 +256,7 @@ tools/check_dart.py             Strukturprüfung aller Dart-Dateien
 | Spritpreise an Tankstopps (DE) | Tankerkönig / MTS-K | ja, optional (kostenlos) |
 | Ortssuche | Photon (komoot), Nominatim | nein |
 | Zwischenstopps | Overpass | nein |
-| Verkehrslage (Staus, Sperrungen), Verkehrsfluss-Karte | TomTom Traffic API | ja, optional (kostenlos, 2.500 Abfragen/Tag) |
+| Verkehrslage (Staus, Sperrungen), Verkehrsfluss-Karte, Ankunftszeit mit Verkehr | TomTom Traffic + Routing API | ja, optional (kostenlos, 2.500 Abfragen/Tag) |
 | Verkehrslage, zweite Quelle | HERE Traffic API v7 | ja, optional |
 | Baustellen, Sperrungen, Staus auf Autobahnen | Autobahn GmbH (verkehr.autobahn.de) | nein |
 | Sprachansagen | Sprachausgabe des Handys | nein |

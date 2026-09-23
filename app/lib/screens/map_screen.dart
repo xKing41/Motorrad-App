@@ -29,6 +29,7 @@ import '../services/routing_engine.dart';
 import '../services/routing_settings.dart';
 import '../services/telemetry.dart';
 import '../services/tour_store.dart';
+import '../services/traffic_eta.dart';
 import '../services/tile_cache.dart';
 import '../services/voice.dart';
 import '../theme.dart';
@@ -206,6 +207,9 @@ class _MapScreenState extends State<MapScreen>
           : const RoutingPrefs(),
       traffic: settings.trafficFeed(),
       limits: settings.limitSource(),
+      etaSource: settings.tomtomKey.trim().isEmpty
+          ? null
+          : TomTomEta(settings.tomtomKey.trim()),
       speedWarning: settings.speedWarn,
       curveWarning: settings.curveWarn,
       speak: settings.voice ? (s) => Voice.instance.say(s) : null,
@@ -589,8 +593,22 @@ class _MapScreenState extends State<MapScreen>
     _loadCameras(plan);
     _loadWeather(plan);
     _loadFuelPrices(plan);
+    _loadTrafficEta(plan);
     // Zuletzt geplante Route merken - uebersteht einen Neustart.
     TourStore.open().then((s) => s.saveLast(plan)).catchError((_) {});
+  }
+
+  // ------------------------------------------------------------------
+  // Fahrzeit mit Verkehr (TomTom)
+  // ------------------------------------------------------------------
+  TrafficEta? _planEta;
+
+  Future<void> _loadTrafficEta(RoutePlan plan) async {
+    _planEta = null;
+    final key = (await RoutingSettings.load()).tomtomKey.trim();
+    if (key.isEmpty || !identical(_route, plan)) return;
+    final e = await TomTomEta(key).forRoute(plan.points);
+    if (mounted && identical(_route, plan)) setState(() => _planEta = e);
   }
 
   // ------------------------------------------------------------------
@@ -1655,6 +1673,11 @@ class _MapScreenState extends State<MapScreen>
               row('Länge', _fmtKm(r.distanceM)),
               if (r.durationSec > 0)
                 row('Fahrzeit (Schätzung)', _fmtDuration(r.durationSec)),
+              if (_planEta != null)
+                row(
+                    'Fahrzeit mit Verkehr jetzt',
+                    '${_fmtDuration(_planEta!.travelSec)}'
+                        '${_planEta!.delaySec >= 60 ? ' (+${(_planEta!.delaySec / 60).round()} min Stau)' : ''}'),
               if (st != null) ...[
                 row('Kurvigkeit', st.curvLabel),
                 row('Kurven je km',
@@ -2066,9 +2089,13 @@ class _MapScreenState extends State<MapScreen>
 
   Widget _navBottom(NavigationSession nav) {
     final stop = nav.nextStop;
-    final delay = nav.ahead
-        .where((i) => i.alongM > nav.alongM)
-        .fold<int>(0, (s, i) => s + i.delaySec);
+    // Mit TomTom-Schluessel: Verzoegerung aus der Fahrzeitberechnung
+    // mit Verkehr, sonst Summe der gemeldeten Staus.
+    final delay = nav.etaWithTraffic
+        ? nav.trafficEta!.delaySec
+        : nav.ahead
+            .where((i) => i.alongM > nav.alongM)
+            .fold<int>(0, (s, i) => s + i.delaySec);
     final limit = nav.speedLimit;
     final curve = nav.curveAhead;
     return Column(mainAxisSize: MainAxisSize.min, children: [
@@ -2098,6 +2125,11 @@ class _MapScreenState extends State<MapScreen>
               Text(_fmtDuration(nav.remainingTime.inSeconds),
                   style: const TextStyle(fontSize: 12, color: steel)),
               const Spacer(),
+              if (nav.etaWithTraffic)
+                const Padding(
+                  padding: EdgeInsets.only(right: 6),
+                  child: Icon(Icons.traffic, size: 14, color: signal),
+                ),
               Text('AN ${_fmtClock(nav.eta)}',
                   style: const TextStyle(
                       fontSize: 15, fontWeight: FontWeight.w700, color: signal)),
