@@ -24,9 +24,36 @@ import 'routing_engine.dart';
 //  (kurvig, ohne Autobahn ...) wie die Tour selbst.
 // ---------------------------------------------------------------------------
 
-class TrafficService {
+/// Eine Quelle fuer Verkehrsmeldungen entlang einer Route.
+abstract class TrafficFeed {
+  /// Name fuer die Anzeige.
+  String get label;
+
+  /// Letzter Fehler (Schluessel falsch ...), null wenn alles gut ging.
+  String? get lastError;
+
+  /// Meldungen AUF der Route zwischen [fromM] und [toM], mit ihrer Lage.
+  /// [steps]: Abbiegeanweisungen der Route - daraus erkennt die Autobahn-
+  /// Quelle, welche Autobahnen befahren werden.
+  /// null = Quelle nicht erreichbar.
+  Future<List<TrafficIncident>?> alongRoute(
+    List<RoutePoint> pts, {
+    double fromM = 0,
+    double? toM,
+    int maxBoxes = 25,
+    List<RouteStep> steps = const [],
+  });
+}
+
+class TrafficService implements TrafficFeed {
   TrafficService(this.apiKey, {http.Client? client, this.timeout = const Duration(seconds: 15)})
       : _client = client;
+
+  @override
+  String get label => 'TomTom';
+
+  @override
+  String? lastError;
 
   final String apiKey;
   final Duration timeout;
@@ -133,12 +160,15 @@ class TrafficService {
   /// eine Sperrung auf der Parallelstrasse interessiert nicht.
   ///
   /// null = keine Verbindung zum Dienst.
+  @override
   Future<List<TrafficIncident>?> alongRoute(
     List<RoutePoint> pts, {
     double fromM = 0,
     double? toM,
     int maxBoxes = 25,
+    List<RouteStep> steps = const [],
   }) async {
+    lastError = null;
     if (pts.length < 2) return const [];
     final cum = cumulativeDistances(pts);
     final end = math.min(toM ?? cum.last, cum.last);
@@ -230,8 +260,10 @@ class TrafficService {
 }
 
 class TrafficKeyException implements Exception {
+  TrafficKeyException([this.source = 'TomTom']);
+  final String source;
   @override
-  String toString() => 'TomTom-Schlüssel wurde nicht akzeptiert.';
+  String toString() => '$source-Schlüssel wurde nicht akzeptiert.';
 }
 
 /// Plant Umfahrungen um schwere Verkehrsmeldungen.
@@ -279,14 +311,14 @@ class TrafficPlanCheck {
   /// Hinweis an.
   static Future<RoutePlan> apply(
     RoutePlan plan,
-    TrafficService traffic,
+    TrafficFeed traffic,
     RoutePatcher patcher, {
     void Function(String)? say,
   }) async {
     say?.call('Verkehrslage wird geprüft ...');
     List<TrafficIncident>? list;
     try {
-      list = await traffic.alongRoute(plan.points);
+      list = await traffic.alongRoute(plan.points, steps: plan.steps);
     } on TrafficKeyException catch (e) {
       return plan.copyWith(notes: [...plan.notes, 'Verkehrslage: $e']);
     }
@@ -295,6 +327,10 @@ class TrafficPlanCheck {
         ...plan.notes,
         'Verkehrslage konnte nicht abgerufen werden.',
       ]);
+    }
+    final problem = traffic.lastError;
+    if (problem != null) {
+      plan = plan.copyWith(notes: [...plan.notes, 'Verkehrslage: $problem']);
     }
     var route = engineRouteOf(plan);
     final notes = <String>[...plan.notes];

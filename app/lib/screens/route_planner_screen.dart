@@ -60,6 +60,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
   final _ghUrlCtrl = TextEditingController();
   final _ghKeyCtrl = TextEditingController();
   final _tomtomCtrl = TextEditingController();
+  final _hereCtrl = TextEditingController();
   bool _voice = true;
   RoutingService _serviceSel = RoutingService.valhalla;
 
@@ -76,6 +77,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
     _ghUrlCtrl.dispose();
     _ghKeyCtrl.dispose();
     _tomtomCtrl.dispose();
+    _hereCtrl.dispose();
     super.dispose();
   }
 
@@ -95,6 +97,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       _ghUrlCtrl.text = routing.ghUrl;
       _ghKeyCtrl.text = routing.ghKey;
       _tomtomCtrl.text = routing.tomtomKey;
+      _hereCtrl.text = routing.hereKey;
       _voice = routing.voice;
       // Letzte eigene Vorgaben wieder herstellen.
       _distanceKm = (sp.getDouble('plan_km') ?? 150).clamp(20, 600).toDouble();
@@ -129,6 +132,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       ghUrl: _ghUrlCtrl.text.trim(),
       ghKey: _ghKeyCtrl.text.trim(),
       tomtomKey: _tomtomCtrl.text.trim(),
+      hereKey: _hereCtrl.text.trim(),
       voice: _voice,
     );
     if (r.service == RoutingService.graphhopper && r.ghUrl.isEmpty) {
@@ -215,11 +219,12 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
         if (mounted) setState(() => _status = m);
       });
 
-      // Staus und Sperrungen gleich beim Planen umfahren.
-      if (_routing.hasTraffic) {
+      // Staus und Sperrungen gleich beim Planen umfahren. Die amtlichen
+      // Autobahn-Meldungen gibt es auch ohne Schluessel.
+      {
         plan = await TrafficPlanCheck.apply(
           plan,
-          TrafficService(_routing.tomtomKey),
+          _routing.trafficFeed(),
           RoutePatcher(engine, RoutingPrefs.of(req)),
           say: (m) {
             if (mounted) setState(() => _status = m);
@@ -903,16 +908,25 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
         ),
         const SizedBox(height: 6),
         const Text(
-          'Aktuelle Staus, Sperrungen und Baustellen gibt es nicht frei '
-          'und ohne Schlüssel. Mit einem kostenlosen TomTom-Schlüssel '
-          '(developer.tomtom.com, 2.500 Abfragen am Tag) werden sie beim '
-          'Planen und während der Fahrt umfahren.',
+          'Immer dabei (kostenlos): amtliche Baustellen, Sperrungen und '
+          'Staus der Autobahn GmbH auf deutschen Autobahnen.\n'
+          'Für Staus und Sperrungen auf ALLEN Straßen und in ganz Europa: '
+          'TomTom-Schlüssel (developer.tomtom.com, 2.500 Abfragen am Tag '
+          'frei). Zusätzlich HERE (developer.here.com) als zweite Quelle - '
+          'dieselbe Meldung aus mehreren Quellen erscheint nur einmal. '
+          'Mit TomTom färbt die Karte außerdem Straßen nach Verkehrsfluss.',
           style: TextStyle(fontSize: 10, color: steel, height: 1.4),
         ),
         const SizedBox(height: 8),
         _field(
-          label: 'TOMTOM-SCHLÜSSEL (leer = ohne Verkehrslage)',
+          label: 'TOMTOM-SCHLÜSSEL (Hauptquelle)',
           controller: _tomtomCtrl,
+          hint: 'API-Key',
+          obscure: true,
+        ),
+        _field(
+          label: 'HERE-SCHLÜSSEL (optional, zweite Quelle)',
+          controller: _hereCtrl,
           hint: 'API-Key',
           obscure: true,
         ),

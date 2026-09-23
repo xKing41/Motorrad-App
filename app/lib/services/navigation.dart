@@ -51,7 +51,7 @@ class NavigationSession extends ChangeNotifier {
 
   final RoutingEngine engine;
   final RoutingPrefs prefs;
-  final TrafficService? traffic;
+  final TrafficFeed? traffic;
   final Speak _speak;
   final bool autoAvoidClosures;
   final Duration trafficEvery;
@@ -225,7 +225,7 @@ class NavigationSession extends ChangeNotifier {
 
     final last = _lastTraffic;
     if (traffic != null &&
-        (last == null || DateTime.now().difference(last) > trafficEvery)) {
+        (last == null || DateTime.now().difference(last) > _trafficInterval)) {
       unawaited(checkTraffic());
     }
     _checkIncidentWarnings();
@@ -418,24 +418,34 @@ class NavigationSession extends ChangeNotifier {
   //  Verkehrslage
   // ---------------------------------------------------------------------
 
+  /// Wie oft die Verkehrslage geprueft wird: auf der Autobahn (ab
+  /// 85 km/h) alle 2 Minuten - dort baut sich ein Stau schnell auf und man
+  /// ist schnell dort -, sonst im eingestellten Takt.
+  Duration get _trafficInterval => _speedMs >= 23.6
+      ? const Duration(minutes: 2)
+      : trafficEvery;
+
   /// Fragt Meldungen fuer die naechsten 150 km ab.
   Future<void> checkTraffic({bool force = false}) async {
     final t = traffic;
     if (t == null || _trafficBusy) return;
     if (!force &&
         _lastTraffic != null &&
-        DateTime.now().difference(_lastTraffic!) < trafficEvery) {
+        DateTime.now().difference(_lastTraffic!) < _trafficInterval) {
       return;
     }
     _trafficBusy = true;
     _lastTraffic = DateTime.now();
     try {
       final list = await t.alongRoute(_plan.points,
-          fromM: alongM, toM: alongM + 150000, maxBoxes: 4);
+          fromM: alongM,
+          toM: alongM + 150000,
+          maxBoxes: 4,
+          steps: _plan.steps);
       if (list == null) {
         trafficError = 'Verkehrslage nicht abrufbar';
       } else {
-        trafficError = null;
+        trafficError = t.lastError;
         ahead = list;
         await _reactToTraffic();
       }

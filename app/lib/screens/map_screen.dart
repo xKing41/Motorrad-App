@@ -19,7 +19,6 @@ import '../services/smooth_position.dart';
 import '../services/routing_engine.dart';
 import '../services/routing_settings.dart';
 import '../services/telemetry.dart';
-import '../services/traffic_service.dart';
 import '../services/voice.dart';
 import '../theme.dart';
 import '../widgets/map_attribution.dart';
@@ -67,6 +66,11 @@ class _MapScreenState extends State<MapScreen>
   int _lastFrameUs = 0;
   double _zoom = 16;
 
+  // Verkehrsfluss als farbige Schicht (TomTom): gruen = frei, gelb/rot =
+  // zaeh bis Stau.
+  String _tomtomKey = '';
+  bool _showFlow = true;
+
   /// Position und Richtung des eigenen Pfeils.
   final ValueNotifier<(LatLng, double)?> _rider = ValueNotifier(null);
 
@@ -75,6 +79,12 @@ class _MapScreenState extends State<MapScreen>
     super.initState();
     _ticker = createTicker(_onFrame);
     t.addListener(_onTick);
+    _loadTrafficKey();
+  }
+
+  Future<void> _loadTrafficKey() async {
+    final s = await RoutingSettings.load();
+    if (mounted) setState(() => _tomtomKey = s.tomtomKey.trim());
   }
 
   @override
@@ -170,7 +180,7 @@ class _MapScreenState extends State<MapScreen>
       prefs: r.request != null
           ? RoutingPrefs.of(r.request!)
           : const RoutingPrefs(),
-      traffic: settings.hasTraffic ? TrafficService(settings.tomtomKey) : null,
+      traffic: settings.trafficFeed(),
       speak: settings.voice ? (s) => Voice.instance.say(s) : null,
     );
     nav.addListener(_onNavChanged);
@@ -443,6 +453,8 @@ class _MapScreenState extends State<MapScreen>
         ),
       ),
     );
+    // Schluessel koennte im Planer neu eingetragen worden sein.
+    await _loadTrafficKey();
     if (plan == null || plan.isEmpty || !mounted) return;
     _setRoute(plan);
     // Beschreibung der KI und Hinweise des Planers (z. B. "keine
@@ -585,6 +597,17 @@ class _MapScreenState extends State<MapScreen>
               userAgentPackageName: 'de.schraeglage.app',
               maxNativeZoom: 19,
             ),
+            if (_tomtomKey.isNotEmpty && _showFlow)
+              TileLayer(
+                // Verkehrsfluss relativ zur freien Fahrt; transparent
+                // ueber der Karte.
+                urlTemplate: 'https://api.tomtom.com/traffic/map/4/tile/flow/'
+                    'relative0/{z}/{x}/{y}.png?key={key}&thickness=6',
+                additionalOptions: {'key': _tomtomKey},
+                userAgentPackageName: 'de.schraeglage.app',
+                maxNativeZoom: 18,
+                tileDisplay: const TileDisplay.fadeIn(),
+              ),
             if (_routeLine.length >= 2)
               PolylineLayer(polylines: [
                 Polyline(
@@ -659,6 +682,23 @@ class _MapScreenState extends State<MapScreen>
           child: _nav != null ? _navBottom(_nav!) : _bottomBar(),
         ),
 
+        if (_tomtomKey.isNotEmpty)
+          Positioned(
+            right: 12,
+            top: _nav != null ? 150 : 80,
+            child: InkWell(
+              onTap: () => setState(() => _showFlow = !_showFlow),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: panel.withValues(alpha: 0.94),
+                  border: Border.all(color: _showFlow ? signal : line),
+                ),
+                child: Icon(Icons.traffic,
+                    size: 18, color: _showFlow ? signal : steel),
+              ),
+            ),
+          ),
         if (_busy)
           const Positioned(
             top: 70,

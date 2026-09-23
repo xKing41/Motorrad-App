@@ -57,7 +57,9 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
   Zoom nach Tempo, Ankunftszeit, nächster Stopp
 - Verfahren? Nach wenigen Sekunden neue Route – **zurück auf die Tour**,
   nicht irgendwie zum Ziel; der Rest der kurvigen Strecke bleibt erhalten
-- Staus, Sperrungen, Baustellen, Unfälle (mit TomTom-Schlüssel): schon beim
+- Staus, Sperrungen, Baustellen, Unfälle aus mehreren Quellen (Autobahn GmbH
+  immer, TomTom und HERE mit Schlüssel, doppelte Meldungen zusammengeführt),
+  Verkehrsfluss farbig auf der Karte; schon beim
   Planen umfahren, unterwegs alle 5 Minuten geprüft. Sperrungen werden
   automatisch umfahren, bei Staus wird die Umfahrung angeboten, wenn sie
   schneller ist
@@ -223,7 +225,9 @@ tools/check_dart.py             Strukturprüfung aller Dart-Dateien
 | Routing, alternativ | GraphHopper | ja, optional |
 | Ortssuche | Photon (komoot), Nominatim | nein |
 | Zwischenstopps | Overpass | nein |
-| Verkehrslage (Staus, Sperrungen) | TomTom Traffic API | ja, optional (kostenlos, 2.500 Abfragen/Tag) |
+| Verkehrslage (Staus, Sperrungen), Verkehrsfluss-Karte | TomTom Traffic API | ja, optional (kostenlos, 2.500 Abfragen/Tag) |
+| Verkehrslage, zweite Quelle | HERE Traffic API v7 | ja, optional |
+| Baustellen, Sperrungen, Staus auf Autobahnen | Autobahn GmbH (verkehr.autobahn.de) | nein |
 | Sprachansagen | Sprachausgabe des Handys | nein |
 | KI-Planung | Claude-API | ja, optional |
 

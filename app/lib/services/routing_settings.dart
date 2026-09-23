@@ -1,6 +1,8 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'routing_engine.dart';
+import 'traffic_service.dart';
+import 'traffic_sources.dart';
 
 /// Welcher Dienst die Routen berechnet.
 enum RoutingService {
@@ -20,6 +22,7 @@ class RoutingSettings {
     this.ghUrl = '',
     this.ghKey = '',
     this.tomtomKey = '',
+    this.hereKey = '',
     this.voice = true,
   });
 
@@ -36,7 +39,20 @@ class RoutingSettings {
   /// Sprachansagen bei der Navigation.
   final bool voice;
 
-  bool get hasTraffic => tomtomKey.trim().isNotEmpty;
+  /// Schluessel fuer HERE Traffic (optional, zweite Quelle).
+  final String hereKey;
+
+  /// Profi-Verkehrsdaten mit Schluessel eingerichtet?
+  bool get hasProTraffic =>
+      tomtomKey.trim().isNotEmpty || hereKey.trim().isNotEmpty;
+
+  /// Alle eingerichteten Verkehrsquellen. Die amtlichen Meldungen der
+  /// Autobahn GmbH sind immer dabei - kostenlos, ohne Schluessel.
+  TrafficFeed trafficFeed() => TrafficHub([
+        if (tomtomKey.trim().isNotEmpty) TrafficService(tomtomKey.trim()),
+        if (hereKey.trim().isNotEmpty) HereTraffic(hereKey.trim()),
+        AutobahnTraffic(),
+      ]);
 
   /// Ist die Auswahl vollstaendig? GraphHopper braucht eine Adresse.
   bool get isUsable =>
@@ -58,6 +74,7 @@ class RoutingSettings {
     String? ghUrl,
     String? ghKey,
     String? tomtomKey,
+    String? hereKey,
     bool? voice,
   }) =>
       RoutingSettings(
@@ -66,6 +83,7 @@ class RoutingSettings {
         ghUrl: ghUrl ?? this.ghUrl,
         ghKey: ghKey ?? this.ghKey,
         tomtomKey: tomtomKey ?? this.tomtomKey,
+        hereKey: hereKey ?? this.hereKey,
         voice: voice ?? this.voice,
       );
 
@@ -76,6 +94,7 @@ class RoutingSettings {
   static const _kGhUrl = 'gh_url';
   static const _kGhKey = 'gh_key';
   static const _kTomtom = 'tomtom_key';
+  static const _kHere = 'here_key';
   static const _kVoice = 'nav_voice';
 
   static Future<RoutingSettings> load() async {
@@ -99,6 +118,7 @@ class RoutingSettings {
       ghUrl: ghUrl,
       ghKey: sp.getString(_kGhKey) ?? '',
       tomtomKey: sp.getString(_kTomtom) ?? '',
+      hereKey: sp.getString(_kHere) ?? '',
       voice: sp.getBool(_kVoice) ?? true,
     );
   }
@@ -110,6 +130,7 @@ class RoutingSettings {
     await sp.setString(_kGhUrl, ghUrl.trim());
     await sp.setString(_kGhKey, ghKey.trim());
     await sp.setString(_kTomtom, tomtomKey.trim());
+    await sp.setString(_kHere, hereKey.trim());
     await sp.setBool(_kVoice, voice);
   }
 }

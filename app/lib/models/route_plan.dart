@@ -485,10 +485,15 @@ class TrafficIncident {
     this.lengthM = 0,
     this.alongM = 0,
     this.endAlongM = 0,
+    this.source = 'TomTom',
   });
 
   final String id;
   final TrafficCategory category;
+
+  /// Woher die Meldung stammt ("TomTom", "HERE", "Autobahn GmbH" oder
+  /// mehrere, wenn Quellen dasselbe melden).
+  final String source;
 
   /// Verlauf der Meldung auf der Strasse.
   final List<RoutePoint> points;
@@ -526,19 +531,31 @@ class TrafficIncident {
     return parts.join(' · ');
   }
 
-  TrafficIncident at(double along, double endAlong) => TrafficIncident(
+  TrafficIncident at(double along, double endAlong) =>
+      copyWith(alongM: along, endAlongM: endAlong);
+
+  TrafficIncident copyWith({
+    double? alongM,
+    double? endAlongM,
+    String? source,
+    int? delaySec,
+    String? description,
+    String? road,
+  }) =>
+      TrafficIncident(
         id: id,
         category: category,
         points: points,
-        description: description,
-        road: road,
+        description: description ?? this.description,
+        road: road ?? this.road,
         from: from,
         to: to,
-        delaySec: delaySec,
+        delaySec: delaySec ?? this.delaySec,
         magnitude: magnitude,
         lengthM: lengthM,
-        alongM: along,
-        endAlongM: endAlong,
+        alongM: alongM ?? this.alongM,
+        endAlongM: endAlongM ?? this.endAlongM,
+        source: source ?? this.source,
       );
 }
 

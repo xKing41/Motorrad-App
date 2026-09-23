@@ -14,6 +14,22 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.7 - Verkehrslage aus mehreren Quellen
+-----------------------------------------------
+
+- IMMER DABEI, ohne Schluessel: amtliche Meldungen der Autobahn GmbH
+  (Baustellen, Sperrungen, Staus auf deutschen Autobahnen). Werden beim
+  Planen und waehrend der Navigation beruecksichtigt.
+- TomTom (Hauptquelle, alle Strassen, ganz Europa) und NEU optional
+  HERE als zweite Profi-Quelle: PLANEN -> EINSTELLUNGEN. Meldet mehr
+  als eine Quelle dasselbe, erscheint es nur einmal (mit Angabe der
+  Quellen).
+- VERKEHRSFLUSS AUF DER KARTE (mit TomTom-Schluessel): Strassen gruen
+  bis rot eingefaerbt wie bei Google Maps. Ein-/Ausschalten mit dem
+  Ampel-Knopf rechts auf der Karte.
+- Auf der Autobahn (ab 85 km/h) wird die Verkehrslage alle 2 Minuten
+  geprueft, sonst alle 5 Minuten.
+
 VERSION 4.6 - Fluessige Navigation, gestaffelte Ansagen
 ------------------------------------------------------
 
