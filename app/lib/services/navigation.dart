@@ -8,6 +8,7 @@ import 'geo.dart';
 import 'route_follow.dart';
 import 'route_patch.dart';
 import 'routing_engine.dart';
+import 'speed_limits.dart';
 import 'traffic_service.dart';
 
 /// Sprachausgabe, austauschbar fuer Tests.
@@ -41,6 +42,8 @@ class NavigationSession extends ChangeNotifier {
     required this.engine,
     required this.prefs,
     this.traffic,
+    this.limits,
+    this.speedWarning = false,
     Speak? speak,
     this.autoAvoidClosures = true,
     this.trafficEvery = const Duration(minutes: 5),
@@ -52,6 +55,12 @@ class NavigationSession extends ChangeNotifier {
   final RoutingEngine engine;
   final RoutingPrefs prefs;
   final TrafficFeed? traffic;
+
+  /// Tempolimits (OSM). null = keine Anzeige.
+  final SpeedLimitSource? limits;
+
+  /// Beim Ueberschreiten des Limits einmal ansagen.
+  final bool speedWarning;
   final Speak _speak;
   final bool autoAvoidClosures;
   final Duration trafficEvery;
@@ -78,6 +87,8 @@ class NavigationSession extends ChangeNotifier {
 
   @visibleForTesting
   set debugOffSince(DateTime? v) => _offSince = v;
+  @visibleForTesting
+  set debugOverSince(DateTime? v) => _overSince = v;
   @visibleForTesting
   set debugNoRerouteUntil(DateTime v) => _noRerouteUntil = v;
   DateTime _noRerouteUntil = DateTime.fromMillisecondsSinceEpoch(0);
@@ -125,6 +136,7 @@ class NavigationSession extends ChangeNotifier {
             case final h?)
           (p, h.alongM),
     ]..sort((a, b) => a.$2.compareTo(b.$2));
+    _loadLimits();
     // Neue Linie: Meldungen neu zuordnen.
     ahead = [
       for (final i in ahead)
@@ -133,6 +145,71 @@ class NavigationSession extends ChangeNotifier {
   }
 
   double get totalM => _cum.isEmpty ? 0 : _cum.last;
+
+  // ---------------------------------------------------------------------
+  //  Tempolimit
+  // ---------------------------------------------------------------------
+
+  List<SpeedLimit> _limits = const [];
+  List<RoutePoint>? _limitsFor;
+  SpeedLimit? _warnedFor;
+  DateTime? _overSince;
+
+  /// Tempolimits der aktuellen Route (leer, solange unbekannt).
+  List<SpeedLimit> get speedLimits => _limits;
+
+  void _loadLimits() {
+    final src = limits;
+    if (src == null) return;
+    final pts = _plan.points;
+    if (identical(pts, _limitsFor)) return;
+    _limitsFor = pts;
+    _limits = const [];
+    _warnedFor = null;
+    src.forRoute(pts).then((l) {
+      // Inzwischen neue Route? Dann gehoert das Ergebnis nicht mehr dazu.
+      if (!identical(_plan.points, pts)) return;
+      _limits = l;
+      notifyListeners();
+    }, onError: (_) {
+      if (identical(_limitsFor, pts)) _limitsFor = null;
+    });
+  }
+
+  /// Limit an der aktuellen Stelle; null, wenn unbekannt oder abseits
+  /// der Route.
+  SpeedLimit? get speedLimit {
+    final f = follow;
+    if (f == null || f.offRouteM > 40 || _limits.isEmpty) return null;
+    return limitAt(_limits, alongM);
+  }
+
+  /// Toleranz wie beim Blitzer: bis 100 km/h 3 km/h, darueber 3 %.
+  static double tolerance(int kmh) => kmh <= 100 ? 3 : kmh * 0.03;
+
+  /// Faehrt der Fahrer gerade zu schnell?
+  bool get speeding {
+    final l = speedLimit;
+    if (l == null || l.isUnlimited) return false;
+    return _speedMs * 3.6 > l.kmh + tolerance(l.kmh);
+  }
+
+  void _checkSpeed() {
+    final l = speedLimit;
+    if (!speeding || l == null) {
+      _overSince = null;
+      return;
+    }
+    _overSince ??= DateTime.now();
+    // Kurz drueber (Ueberholen, Ortsschild gerade passiert) ist noch
+    // keine Warnung wert; einmal je Abschnitt reicht.
+    if (speedWarning &&
+        !identical(_warnedFor, l) &&
+        DateTime.now().difference(_overSince!).inSeconds >= 4) {
+      _warnedFor = l;
+      _say('Tempolimit ${l.kmh}.');
+    }
+  }
 
   /// Aufsummierte Laengen der aktuellen Route (fuer die fluessige Anzeige).
   List<double> get routeCum => _cum;
@@ -239,6 +316,7 @@ class NavigationSession extends ChangeNotifier {
       unawaited(checkTraffic());
     }
     _checkIncidentWarnings();
+    _checkSpeed();
     notifyListeners();
   }
 

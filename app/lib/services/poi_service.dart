@@ -55,13 +55,17 @@ class PoiService {
     Duration timeout = const Duration(seconds: 30),
   }) async {
     if (kinds.isEmpty || route.length < 2) return [];
-    // Die Linie auf hoechstens etwa 120 Punkte ausduennen - das reicht
-    // fuer einen Suchstreifen von gut einem Kilometer voellig aus.
+    return _query(kinds, corridor(route, corridorM), limitPerKind, timeout);
+  }
+
+  /// Overpass-Suchgebiet: Streifen um die Route. Die Linie wird auf
+  /// hoechstens etwa 120 Punkte ausgeduennt - das reicht fuer einen
+  /// Suchstreifen von gut einem Kilometer voellig aus.
+  static String corridor(List<RoutePoint> route, double corridorM) {
     final len = pathLength(route);
     final simple = resample(route, math.max(300.0, len / 120));
     final coords = simple.map((p) => '${_f(p.lat)},${_f(p.lon)}').join(',');
-    final area = '(around:${corridorM.round()},$coords)';
-    return _query(kinds, area, limitPerKind, timeout);
+    return '(around:${corridorM.round()},$coords)';
   }
 
   static String _f(double v) => v.toStringAsFixed(5);
@@ -87,14 +91,22 @@ class PoiService {
     int limitPerKind,
     Duration timeout,
   ) async {
-    final query = buildQuery(kinds, area, limitPerKind);
+    final data = await overpass(buildQuery(kinds, area, limitPerKind),
+        timeout: timeout);
+    return data == null ? null : parseElements(data, kinds);
+  }
+
+  /// Fuehrt eine Overpass-Abfrage aus; probiert bei Ueberlastung den
+  /// naechsten Server. null = fehlgeschlagen.
+  static Future<Map<String, dynamic>?> overpass(String query,
+      {Duration timeout = const Duration(seconds: 30)}) async {
     for (final endpoint in _endpoints) {
       try {
         final res = await http
             .post(
               Uri.parse(endpoint),
               body: {'data': query},
-              headers: {'User-Agent': 'Schraeglage/4.8 (Motorrad-App)'},
+              headers: {'User-Agent': 'Schraeglage/4.9 (Motorrad-App)'},
             )
             .timeout(timeout);
         if (res.statusCode != 200) continue;
@@ -106,7 +118,7 @@ class PoiService {
         if (remark.contains('timed out') || remark.contains('runtime error')) {
           continue;
         }
-        return parseElements(data, kinds);
+        if (data is Map<String, dynamic>) return data;
       } catch (_) {
         // naechsten Server probieren
       }

@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'routing_engine.dart';
+import 'speed_limits.dart';
 import 'traffic_service.dart';
 import 'traffic_sources.dart';
 
@@ -24,6 +25,9 @@ class RoutingSettings {
     this.tomtomKey = '',
     this.hereKey = '',
     this.voice = true,
+    this.showLimits = true,
+    this.speedWarn = false,
+    this.showCameras = false,
   });
 
   final RoutingService service;
@@ -38,6 +42,25 @@ class RoutingSettings {
 
   /// Sprachansagen bei der Navigation.
   final bool voice;
+
+  /// Tempolimit bei der Navigation anzeigen.
+  final bool showLimits;
+
+  /// Bei zu hohem Tempo einmal ansagen.
+  final bool speedWarn;
+
+  /// Feste Blitzer bei der Planung zeigen (waehrend der Fahrt nie).
+  final bool showCameras;
+
+  /// Quelle fuer die Tempolimits (derselbe Valhalla-Server wie fuers
+  /// Routing, falls ein eigener eingetragen ist).
+  SpeedLimitSource? limitSource() {
+    if (!showLimits) return null;
+    final base = ValhallaEngine.normalizeUrl(valhallaUrl);
+    return base == ValhallaEngine.publicUrl
+        ? ValhallaSpeedLimits.instance
+        : ValhallaSpeedLimits.forBase(base);
+  }
 
   /// Schluessel fuer HERE Traffic (optional, zweite Quelle).
   final String hereKey;
@@ -76,6 +99,9 @@ class RoutingSettings {
     String? tomtomKey,
     String? hereKey,
     bool? voice,
+    bool? showLimits,
+    bool? speedWarn,
+    bool? showCameras,
   }) =>
       RoutingSettings(
         service: service ?? this.service,
@@ -85,6 +111,9 @@ class RoutingSettings {
         tomtomKey: tomtomKey ?? this.tomtomKey,
         hereKey: hereKey ?? this.hereKey,
         voice: voice ?? this.voice,
+        showLimits: showLimits ?? this.showLimits,
+        speedWarn: speedWarn ?? this.speedWarn,
+        showCameras: showCameras ?? this.showCameras,
       );
 
   static const _kService = 'routing_service';
@@ -96,6 +125,9 @@ class RoutingSettings {
   static const _kTomtom = 'tomtom_key';
   static const _kHere = 'here_key';
   static const _kVoice = 'nav_voice';
+  static const _kLimits = 'nav_limits';
+  static const _kSpeedWarn = 'nav_speed_warn';
+  static const _kCameras = 'plan_cameras';
 
   static Future<RoutingSettings> load() async {
     final sp = await SharedPreferences.getInstance();
@@ -120,6 +152,9 @@ class RoutingSettings {
       tomtomKey: sp.getString(_kTomtom) ?? '',
       hereKey: sp.getString(_kHere) ?? '',
       voice: sp.getBool(_kVoice) ?? true,
+      showLimits: sp.getBool(_kLimits) ?? true,
+      speedWarn: sp.getBool(_kSpeedWarn) ?? false,
+      showCameras: sp.getBool(_kCameras) ?? false,
     );
   }
 
@@ -132,5 +167,8 @@ class RoutingSettings {
     await sp.setString(_kTomtom, tomtomKey.trim());
     await sp.setString(_kHere, hereKey.trim());
     await sp.setBool(_kVoice, voice);
+    await sp.setBool(_kLimits, showLimits);
+    await sp.setBool(_kSpeedWarn, speedWarn);
+    await sp.setBool(_kCameras, showCameras);
   }
 }

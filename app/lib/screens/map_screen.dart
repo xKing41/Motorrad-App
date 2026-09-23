@@ -17,6 +17,8 @@ import '../services/offline_maps.dart';
 import '../services/poi_service.dart';
 import '../services/route_follow.dart';
 import '../services/smooth_position.dart';
+import '../services/speed_cameras.dart';
+import '../services/speed_limits.dart';
 import '../services/routing_engine.dart';
 import '../services/routing_settings.dart';
 import '../services/telemetry.dart';
@@ -195,6 +197,8 @@ class _MapScreenState extends State<MapScreen>
           ? RoutingPrefs.of(r.request!)
           : const RoutingPrefs(),
       traffic: settings.trafficFeed(),
+      limits: settings.limitSource(),
+      speedWarning: settings.speedWarn,
       speak: settings.voice ? (s) => Voice.instance.say(s) : null,
     );
     nav.addListener(_onNavChanged);
@@ -400,6 +404,36 @@ class _MapScreenState extends State<MapScreen>
     _fitRoute(plan);
     // Karte entlang der Route vorab aufs Handy laden - fuer Funkloecher.
     _autoSaveRoute(plan);
+    _prefetchLimits(plan);
+    _loadCameras(plan);
+  }
+
+  List<SpeedCamera> _cameras = const [];
+
+  Future<void> _loadCameras(RoutePlan plan) async {
+    _cameras = const [];
+    final s = await RoutingSettings.load();
+    if (!s.showCameras || !identical(_route, plan)) return;
+    final c = await SpeedCameras.alongRoute(plan.points);
+    if (!mounted || !identical(_route, plan) || c == null) return;
+    setState(() => _cameras = c);
+  }
+
+  /// Blitzer nur bei der Planung - nie waehrend Navigation oder
+  /// Aufzeichnung (in DE verboten, siehe speed_cameras.dart).
+  bool get _camerasVisible =>
+      _cameras.isNotEmpty && _nav == null && !t.recording;
+
+  /// Tempolimits schon beim Planen holen - dann sind sie auch im
+  /// Funkloch da, wenn die Navigation startet.
+  Future<void> _prefetchLimits(RoutePlan plan) async {
+    final src = (await RoutingSettings.load()).limitSource();
+    if (src == null || !identical(_route, plan)) return;
+    try {
+      await src.forRoute(plan.points);
+    } catch (_) {
+      // Ohne Netz: die Navigation versucht es spaeter noch einmal.
+    }
   }
 
   Future<void> _autoSaveRoute(RoutePlan plan) async {
@@ -418,6 +452,7 @@ class _MapScreenState extends State<MapScreen>
     _stopNav();
     setState(() {
       _route = null;
+      _cameras = const [];
       _routeLine = const [];
       _variants = const [];
       _variantIdx = 0;
@@ -684,7 +719,11 @@ class _MapScreenState extends State<MapScreen>
             Align(
               alignment: Alignment.bottomLeft,
               child: Padding(
-                padding: EdgeInsets.only(left: 4, bottom: _nav != null ? 215 : 104),
+                padding: EdgeInsets.only(
+                    left: 4,
+                    bottom: _nav == null
+                        ? 104
+                        : 215 + (_nav!.speedLimit != null ? 62 : 0)),
                 child: const MapAttribution(),
               ),
             ),
@@ -1014,6 +1053,24 @@ class _MapScreenState extends State<MapScreen>
       final loop = const Distance().as(LengthUnit.Meter, a, b) < 150;
       if (!loop) out.add(_flag(a, const Color(0xFF7FBF4F), Icons.trip_origin));
       out.add(_flag(b, loop ? const Color(0xFF7FBF4F) : redline, Icons.flag));
+    }
+
+    if (_camerasVisible) {
+      for (final c in _cameras) {
+        out.add(Marker(
+          point: LatLng(c.point.lat, c.point.lon),
+          width: 22,
+          height: 22,
+          child: Container(
+            decoration: BoxDecoration(
+              color: panel,
+              shape: BoxShape.circle,
+              border: Border.all(color: amber, width: 1.5),
+            ),
+            child: const Icon(Icons.photo_camera, size: 12, color: amber),
+          ),
+        ));
+      }
     }
 
     for (final inc in _nav?.ahead ?? _route?.traffic ?? const <TrafficIncident>[]) {
@@ -1586,12 +1643,60 @@ class _MapScreenState extends State<MapScreen>
     );
   }
 
+  /// Tempolimit-Schild wie an der Strasse; bei zu hohem Tempo rot
+  /// hinterlegt, daneben das eigene Tempo.
+  Widget _limitSign(SpeedLimit l, bool speeding) {
+    final sign = Container(
+      width: 54,
+      height: 54,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: speeding ? redline : Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(
+            color: l.isUnlimited ? Colors.black54 : redline, width: 5.5),
+      ),
+      child: l.isUnlimited
+          ? Transform.rotate(
+              angle: -math.pi / 4,
+              child: Container(width: 40, height: 3, color: Colors.black54),
+            )
+          : Text('${l.kmh}',
+              style: TextStyle(
+                  fontSize: l.kmh >= 100 ? 17 : 21,
+                  fontWeight: FontWeight.w800,
+                  color: speeding ? Colors.white : Colors.black)),
+    );
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      sign,
+      if (speeding) ...[
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          color: panel.withValues(alpha: 0.94),
+          child: Text('${t.speedKmh.round()}',
+              style: const TextStyle(
+                  fontSize: 20, fontWeight: FontWeight.w800, color: redline)),
+        ),
+      ],
+    ]);
+  }
+
   Widget _navBottom(NavigationSession nav) {
     final stop = nav.nextStop;
     final delay = nav.ahead
         .where((i) => i.alongM > nav.alongM)
         .fold<int>(0, (s, i) => s + i.delaySec);
+    final limit = nav.speedLimit;
     return Column(mainAxisSize: MainAxisSize.min, children: [
+      if (limit != null)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _limitSign(limit, nav.speeding),
+          ),
+        ),
       Container(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
         decoration: BoxDecoration(

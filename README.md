@@ -32,6 +32,8 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
 - **Offline-Karten**: angesehene Karten bleiben auf dem Handy, Route
   (automatisch beim Planen) und Kartenausschnitte vorab speichern; im
   Funkloch vergrößerte gröbere Kacheln statt leerer Flächen
+- **Tempolimit** bei der Navigation (OpenStreetMap, auch offline), optional
+  mit Ansage bei zu hohem Tempo; feste Blitzer nur bei der Planung
 - Echte Motorrad-Routen ohne Schlüssel und ohne Konto (Valhalla auf dem
   Server der FOSSGIS, mit eigenem Motorrad-Profil)
 - **Rundtouren**, die an deinem Standort beginnen und enden – mit
@@ -226,6 +228,8 @@ tools/check_dart.py             Strukturprüfung aller Dart-Dateien
 | Wetter | Open-Meteo | nein |
 | Routing | Valhalla (FOSSGIS) | nein |
 | Routing, alternativ | GraphHopper | ja, optional |
+| Tempolimits entlang der Route | Valhalla trace_attributes (OSM maxspeed) | nein |
+| Feste Blitzer (nur Planung) | Overpass (OSM) | nein |
 | Ortssuche | Photon (komoot), Nominatim | nein |
 | Zwischenstopps | Overpass | nein |
 | Verkehrslage (Staus, Sperrungen), Verkehrsfluss-Karte | TomTom Traffic API | ja, optional (kostenlos, 2.500 Abfragen/Tag) |

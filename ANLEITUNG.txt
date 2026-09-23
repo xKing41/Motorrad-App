@@ -14,6 +14,24 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.9 - Tempolimit, Blitzer bei der Planung
+-------------------------------------------------
+
+- TEMPOLIMIT bei der Navigation: rundes Schild unten links, wie an der
+  Strasse. Zu schnell (Toleranz wie beim Blitzer: 3 km/h, ab 100 km/h
+  3 %) -> Schild rot, daneben das eigene Tempo.
+- Quelle: OpenStreetMap (kostenlos). Die Limits werden beim Planen
+  geholt und funktionieren danach auch im Funkloch. Wo OSM kein Limit
+  kennt, zeigt die App NICHTS an statt zu raten. Wechselverkehrszeichen
+  und "bei Naesse" kennt keine freie Quelle - Schilder gehen immer vor.
+- Optional (PLANEN -> EINSTELLUNGEN): "Warnen, wenn zu schnell" - eine
+  kurze Ansage, wenn man 4 Sekunden lang zu schnell ist, einmal je
+  Abschnitt.
+- FESTE BLITZER (optional, aus OpenStreetMap): nur zur Vorbereitung auf
+  der geplanten Route sichtbar. Sobald Navigation oder Aufzeichnung
+  laufen, sind sie ausgeblendet - Blitzerwarner waehrend der Fahrt sind
+  in DE, AT und CH verboten (DE: Paragraf 23 Abs. 1c StVO).
+
 VERSION 4.8 - Offline-Karten
 ----------------------------
 

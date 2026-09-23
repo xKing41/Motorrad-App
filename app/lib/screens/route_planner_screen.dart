@@ -62,6 +62,9 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
   final _tomtomCtrl = TextEditingController();
   final _hereCtrl = TextEditingController();
   bool _voice = true;
+  bool _showLimits = true;
+  bool _speedWarn = false;
+  bool _showCameras = false;
   RoutingService _serviceSel = RoutingService.valhalla;
 
   @override
@@ -99,6 +102,9 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       _tomtomCtrl.text = routing.tomtomKey;
       _hereCtrl.text = routing.hereKey;
       _voice = routing.voice;
+      _showLimits = routing.showLimits;
+      _speedWarn = routing.speedWarn;
+      _showCameras = routing.showCameras;
       // Letzte eigene Vorgaben wieder herstellen.
       _distanceKm = (sp.getDouble('plan_km') ?? 150).clamp(20, 600).toDouble();
       _curviness = CurvinessX.parse(sp.getString('plan_curv') ?? 'curvy');
@@ -134,6 +140,9 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       tomtomKey: _tomtomCtrl.text.trim(),
       hereKey: _hereCtrl.text.trim(),
       voice: _voice,
+      showLimits: _showLimits,
+      speedWarn: _speedWarn,
+      showCameras: _showCameras,
     );
     if (r.service == RoutingService.graphhopper && r.ghUrl.isEmpty) {
       toast(context, 'Für GraphHopper fehlt die Server-Adresse');
@@ -932,6 +941,24 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
         ),
         _switchRow('Sprachansagen bei der Navigation', _voice,
             (v) => setState(() => _voice = v)),
+        _switchRow('Tempolimit anzeigen (OpenStreetMap)', _showLimits,
+            (v) => setState(() => _showLimits = v)),
+        if (_showLimits)
+          _switchRow('Warnen, wenn zu schnell (Ansage)', _speedWarn,
+              (v) => setState(() => _speedWarn = v)),
+        _switchRow('Feste Blitzer bei der Planung zeigen', _showCameras,
+            (v) => setState(() => _showCameras = v)),
+        if (_showCameras)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: Text(
+              'Nur vor der Fahrt: Sobald Navigation oder Aufzeichnung '
+              'laufen, sind die Blitzer ausgeblendet - Blitzerwarner '
+              'während der Fahrt sind in Deutschland, Österreich und der '
+              'Schweiz verboten (DE: § 23 Abs. 1c StVO).',
+              style: TextStyle(fontSize: 10, color: steel, height: 1.4),
+            ),
+          ),
         const SizedBox(height: 6),
         SizedBox(
           width: double.infinity,
