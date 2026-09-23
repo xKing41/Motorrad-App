@@ -225,6 +225,43 @@ void main() {
       expect(nav.arrived, isTrue);
     });
 
+    test('Autobahn: Ausfahrt wird gestaffelt angesagt (3 km, 1 km, 400 m)',
+        () {
+      final said = <String>[];
+      final pts = straight(home, 90, 20000, step: 100);
+      final exit = RouteStep(
+          text: 'Ausfahrt 23 nehmen',
+          alert: 'Ausfahrt 23',
+          verbal: 'Nehmen Sie die Ausfahrt 23.',
+          distanceM: 0,
+          pointIndex: 150,
+          type: ManeuverType.exitRight);
+      final nav = NavigationSession(
+        plan: RoutePlan(points: pts, distanceM: 20000, steps: [exit]),
+        engine: FakeEngine(),
+        prefs: const RoutingPrefs(),
+        speak: said.add,
+      );
+      final cum = cumulativeDistances(pts);
+      for (var m = 5000.0; m < 15100; m += 30) {
+        final p = pointAlong(pts, cum, m);
+        nav.update(p.lat, p.lon, speedMs: 33); // ~120 km/h
+      }
+      expect(said, [
+        'In 3 Kilometern: Ausfahrt 23',
+        'In einem Kilometer: Ausfahrt 23',
+        'In 400 Metern: Ausfahrt 23',
+        'Nehmen Sie die Ausfahrt 23.',
+      ]);
+    });
+
+    test('Stadt: nur kurze Vorwarnung', () {
+      expect(NavigationSession.announceStages(ManeuverType.right, 10).first,
+          250);
+      expect(NavigationSession.announceStages(ManeuverType.exitRight, 30).first,
+          3000);
+    });
+
     test('verfahren: nach einigen Sekunden zurueck auf die Tour', () async {
       final engine = FakeEngine();
       final r = lineRoute(30);

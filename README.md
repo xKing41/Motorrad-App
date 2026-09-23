@@ -50,8 +50,11 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
   (lange Touren in Abschnitten), Waze, beliebige Navi-App per „Öffnen mit“
 
 **Navigation**
-- Abbiegehinweise mit Entfernung und Sprachansagen (Vorwarnung und Ansage,
-  abhängig vom Tempo), Karte in Fahrtrichtung, Ankunftszeit, nächster Stopp
+- Abbiegehinweise mit Entfernung und gestaffelten Sprachansagen (Autobahn
+  3 km / 1 km / 400 m / davor, Landstraße 1 km / 400 m / davor, Ort 250 m /
+  davor), Karte in Fahrtrichtung, flüssig mit ~30 Bildern je Sekunde
+  (Position zwischen den GPS-Messungen auf der Route weitergerechnet),
+  Zoom nach Tempo, Ankunftszeit, nächster Stopp
 - Verfahren? Nach wenigen Sekunden neue Route – **zurück auf die Tour**,
   nicht irgendwie zum Ziel; der Rest der kurvigen Strecke bleibt erhalten
 - Staus, Sperrungen, Baustellen, Unfälle (mit TomTom-Schlüssel): schon beim

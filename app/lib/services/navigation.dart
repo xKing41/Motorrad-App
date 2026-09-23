@@ -67,6 +67,9 @@ class NavigationSession extends ChangeNotifier {
   FollowState? follow;
   int _stepIdx = 0;
   final Map<int, int> _announced = {};
+  // Ansage-Stufen je Abbiegung, beim ersten Blick darauf festgelegt -
+  // sonst wuerden sie sich mit dem Tempo verschieben und doppelt kommen.
+  final Map<int, List<double>> _stages = {};
 
   /// Letzte Position auf der Route (m ab Start), solange der Fahrer
   /// noch auf ihr war.
@@ -108,6 +111,7 @@ class NavigationSession extends ChangeNotifier {
     ];
     _stepIdx = 0;
     _announced.clear();
+    _stages.clear();
     _stops = [
       for (final p in _plan.pois.where((p) => p.source == 'stop'))
         if (projectOnPolyline(RoutePoint(p.lat, p.lon), _plan.points, _cum)
@@ -122,6 +126,12 @@ class NavigationSession extends ChangeNotifier {
   }
 
   double get totalM => _cum.isEmpty ? 0 : _cum.last;
+
+  /// Aufsummierte Laengen der aktuellen Route (fuer die fluessige Anzeige).
+  List<double> get routeCum => _cum;
+
+  /// Ist der Fahrer gerade auf der Route?
+  bool get onRoute => (follow?.offRouteM ?? 999) < 30;
   double get alongM => follow == null ? _onRouteAlong : totalM - follow!.remainingM;
   double get remainingM => follow?.remainingM ?? totalM;
 
@@ -139,8 +149,15 @@ class NavigationSession extends ChangeNotifier {
   RouteStep? get nextStep =>
       _stepIdx < _plan.steps.length ? _plan.steps[_stepIdx] : null;
 
-  double get distanceToNext =>
-      _stepIdx < _stepAlong.length ? _stepAlong[_stepIdx] - alongM : 0;
+  double get distanceToNext => distanceToNextFrom(alongM);
+
+  /// Entfernung zur naechsten Abbiegung von einer (weitergerechneten)
+  /// Position aus - fuer eine gleichmaessig laufende Anzeige.
+  double distanceToNextFrom(double along) => _stepIdx < _stepAlong.length
+      ? math.max(0, _stepAhead(along))
+      : 0;
+
+  double _stepAhead(double along) => _stepAlong[_stepIdx] - along;
 
   /// Die Anweisung danach, wenn sie gleich folgt ("dann links").
   RouteStep? get thenStep {
@@ -229,18 +246,55 @@ class NavigationSession extends ChangeNotifier {
     final s = nextStep;
     if (s == null) return;
     final d = distanceToNext;
-    final v = math.max(_speedMs, 8.0);
-    // Vorwarnung ~25 s vorher (mind. 400 m), Ansage ~6 s vorher.
-    final far = math.max(400.0, v * 25);
-    final near = math.max(70.0, v * 6);
-    final stage = _announced[_stepIdx] ?? 0;
-    if (d <= near && stage < 2) {
-      _announced[_stepIdx] = 2;
-      _say(s.verbal ?? s.text);
-    } else if (d <= far && d > near * 1.5 && stage < 1) {
-      _announced[_stepIdx] = 1;
-      _say('In ${spokenDistance(d)}: ${s.alert ?? s.text}');
+    final stages = _stages[_stepIdx] ?? announceStages(s.type, _speedMs);
+    final done = _announced[_stepIdx] ?? 0; // Anzahl erledigter Stufen
+    // Welche Stufe ist gerade dran? Die letzte, deren Entfernung schon
+    // unterschritten ist. Uebersprungene Stufen (Abbiegung kam schnell
+    // nach der vorigen) werden nicht nachgeholt.
+    var due = -1;
+    for (var i = 0; i < stages.length; i++) {
+      if (d <= stages[i]) due = i;
     }
+    if (due < 0 || due < done) return;
+    _announced[_stepIdx] = due + 1;
+    _stages[_stepIdx] = stages;
+    final last = due == stages.length - 1;
+    final then = thenStep;
+    final thenText = then != null ? ', dann ${then.alert ?? then.text}' : '';
+    if (last) {
+      _say('${s.verbal ?? s.text}$thenText');
+    } else {
+      // Die Nenn-Entfernung der Stufe ("in 3 Kilometern") - ausser die
+      // tatsaechliche liegt deutlich darunter.
+      final spoken = d < stages[due] * 0.8 ? d : stages[due];
+      _say('In ${spokenDistance(spoken)}: ${s.alert ?? s.text}');
+    }
+  }
+
+  /// Ab welchen Entfernungen (m) eine Abbiegung angesagt wird - absteigend,
+  /// die letzte ist die Ansage direkt davor.
+  ///
+  /// Autobahn (Ausfahrt, Auffahrt, Spurwahl oder ab 85 km/h): 3 km, 1 km,
+  /// 400 m und kurz davor - wie bei den grossen Navis. Landstrasse: 1 km
+  /// (ab 70 km/h), 400 m, kurz davor. Ort: 250 m und kurz davor.
+  static List<double> announceStages(int type, double speedMs) {
+    final v = math.max(speedMs, 5.0);
+    final highwayManeuver = type == ManeuverType.rampRight ||
+        type == ManeuverType.rampLeft ||
+        type == ManeuverType.exitRight ||
+        type == ManeuverType.exitLeft ||
+        type == ManeuverType.stayLeft ||
+        type == ManeuverType.stayRight ||
+        type == ManeuverType.stayStraight ||
+        type == ManeuverType.merge;
+    // "Kurz davor": etwa 6 Sekunden, auf der Autobahn etwas mehr.
+    if (v >= 23.6 || (highwayManeuver && v >= 16)) {
+      return [3000, 1000, 400, math.max(150.0, v * 6)];
+    }
+    if (v >= 13.9) {
+      return [if (v >= 19.4) 1000, 400, math.max(80.0, v * 6)];
+    }
+    return [250, math.max(40.0, v * 5)];
   }
 
   /// "800 Metern", "1,5 Kilometern" - fuer die Ansage.

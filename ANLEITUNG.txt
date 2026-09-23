@@ -14,6 +14,23 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.6 - Fluessige Navigation, gestaffelte Ansagen
+------------------------------------------------------
+
+- Die Karte laeuft jetzt FLUESSIG mit (rund 30 Bilder je Sekunde)
+  statt einmal je Sekunde zu springen: Zwischen den GPS-Messungen wird
+  die Position auf der Route weitergerechnet - der Pfeil faehrt um
+  Kurven herum und springt nie zurueck. Karte und Pfeil drehen weich.
+- Der Zoom passt sich dem Tempo an: in der Stadt nah, auf der
+  Autobahn weiter weg.
+- Die Entfernung zur naechsten Abbiegung zaehlt gleichmaessig herunter.
+- ANSAGEN GESTAFFELT:
+  * Autobahn (Ausfahrt, Auffahrt, Spurwechsel oder ab 85 km/h):
+    3 km, 1 km, 400 m und direkt davor.
+  * Landstrasse: 1 km (ab 70 km/h), 400 m, direkt davor.
+  * Ort: 250 m und direkt davor.
+  Folgt gleich die naechste Abbiegung, heisst es "..., dann links".
+
 VERSION 4.5 - Genauere Messung
 ------------------------------
 

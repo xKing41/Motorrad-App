@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -14,6 +15,7 @@ import '../services/gpx_service.dart';
 import '../services/navigation.dart';
 import '../services/poi_service.dart';
 import '../services/route_follow.dart';
+import '../services/smooth_position.dart';
 import '../services/routing_engine.dart';
 import '../services/routing_settings.dart';
 import '../services/telemetry.dart';
@@ -34,7 +36,8 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> {
+class _MapScreenState extends State<MapScreen>
+    with SingleTickerProviderStateMixin {
   final t = Telemetry.instance;
   final _map = MapController();
 
@@ -56,17 +59,54 @@ class _MapScreenState extends State<MapScreen> {
   /// Laufende Navigation (null = nur Route anzeigen).
   NavigationSession? _nav;
 
+  // Fluessige Anzeige: zwischen den GPS-Messungen (1 je Sekunde) wird mit
+  // rund 30 Bildern je Sekunde weitergerechnet.
+  final SmoothTracker _tracker = SmoothTracker();
+  late final Ticker _ticker;
+  int _lastSeq = -1;
+  int _lastFrameUs = 0;
+  double _zoom = 16;
+
+  /// Position und Richtung des eigenen Pfeils.
+  final ValueNotifier<(LatLng, double)?> _rider = ValueNotifier(null);
+
   @override
   void initState() {
     super.initState();
+    _ticker = createTicker(_onFrame);
     t.addListener(_onTick);
   }
 
   @override
   void dispose() {
     t.removeListener(_onTick);
+    _ticker.dispose();
+    _rider.dispose();
     _nav?.dispose();
     super.dispose();
+  }
+
+  bool get _smooth => t.foreground && (_nav != null || t.recording);
+
+  void _onFrame(Duration _) {
+    final now = DateTime.now().microsecondsSinceEpoch;
+    // 30 Bilder je Sekunde reichen fuer eine fluessige Karte und sparen
+    // gegenueber 60 die Haelfte an Rechenzeit.
+    if (now - _lastFrameUs < 33000) return;
+    _lastFrameUs = now;
+    final nav = _nav;
+    _tracker.frame(now,
+        route: nav?.plan.points, cum: nav?.routeCum);
+    final p = _tracker.pos;
+    if (p == null) return;
+    final ll = LatLng(p.lat, p.lon);
+    _rider.value = (ll, _tracker.heading);
+    if (!_autoFollow || !_mapReady) return;
+    if (nav != null) {
+      _followCourseUp(ll, _tracker.heading);
+    } else {
+      _map.move(ll, _map.camera.zoom);
+    }
   }
 
   void _onTick() {
@@ -78,27 +118,42 @@ class _MapScreenState extends State<MapScreen> {
     } else if (_follower != null && t.lat != null) {
       _follow = _follower!.update(t.lat!, t.lon!);
     }
+    // Neue GPS-Messung an die fluessige Anzeige geben.
+    if (t.lat != null && t.fixSeq != _lastSeq) {
+      _lastSeq = t.fixSeq;
+      _tracker.onFix(RoutePoint(t.lat!, t.lon!), t.speedMs, t.headingDeg,
+          DateTime.now().microsecondsSinceEpoch,
+          alongM: (nav != null && nav.onRoute) ? nav.alongM : null);
+    }
     // Karte bewegen und neu zeichnen nur, wenn sie jemand sieht.
-    if (!t.foreground) return;
-    if (_autoFollow && _mapReady && t.lat != null) {
-      if (nav != null) {
-        _followCourseUp();
-      } else {
-        _map.move(LatLng(t.lat!, t.lon!), _map.camera.zoom);
+    if (!t.foreground) {
+      if (_ticker.isActive) _ticker.stop();
+      return;
+    }
+    if (_smooth) {
+      if (!_ticker.isActive) _ticker.start();
+    } else {
+      if (_ticker.isActive) _ticker.stop();
+      if (t.lat != null) {
+        final ll = LatLng(t.lat!, t.lon!);
+        _rider.value = (ll, t.headingDeg ?? 0);
+        if (_autoFollow && _mapReady) _map.move(ll, _map.camera.zoom);
       }
     }
     setState(() {});
   }
 
   /// Karte in Fahrtrichtung drehen, Position im unteren Drittel - so
-  /// sieht man, was kommt, wie bei jedem Navi.
-  void _followCourseUp() {
-    final heading = t.headingDeg ?? 0;
-    final zoom = _map.camera.zoom;
-    final mpp = 156543.03 * math.cos(t.lat! * math.pi / 180) / math.pow(2, zoom);
+  /// sieht man, was kommt, wie bei jedem Navi. Der Zoom passt sich weich
+  /// dem Tempo an.
+  void _followCourseUp(LatLng at, double heading) {
+    final target = SmoothTracker.zoomForSpeed(t.speedMs);
+    _zoom += (target - _zoom) * 0.03;
+    final mpp =
+        156543.03 * math.cos(at.latitude * math.pi / 180) / math.pow(2, _zoom);
     final ahead = mpp * MediaQuery.of(context).size.height * 0.22;
-    final c = const Distance().offset(LatLng(t.lat!, t.lon!), ahead, heading);
-    _map.moveAndRotate(c, zoom, -heading);
+    final c = const Distance().offset(at, ahead, heading);
+    _map.moveAndRotate(c, _zoom, -heading);
   }
 
   // ------------------------------------------------------------------
@@ -125,8 +180,9 @@ class _MapScreenState extends State<MapScreen> {
       _nav = nav;
       _autoFollow = true;
     });
+    _zoom = SmoothTracker.zoomForSpeed(t.speedMs);
     if (_mapReady && t.lat != null) {
-      _map.move(LatLng(t.lat!, t.lon!), 16);
+      _map.move(LatLng(t.lat!, t.lon!), _zoom);
     }
     nav.start();
     // Navigation ohne Aufzeichnung waere schade - die Fahrt gleich mit
@@ -539,6 +595,42 @@ class _MapScreenState extends State<MapScreen> {
               ]),
             PolylineLayer(polylines: _liveTrackPolylines()),
             MarkerLayer(markers: _markers()),
+            // Eigene Position: eigene Schicht, die sich 30-mal je Sekunde
+            // bewegt, ohne dass die ganze Karte neu aufgebaut wird.
+            ValueListenableBuilder<(LatLng, double)?>(
+              valueListenable: _rider,
+              builder: (context, r, _) => r == null
+                  ? const SizedBox.shrink()
+                  : MarkerLayer(markers: [
+                      Marker(
+                        point: r.$1,
+                        width: 34,
+                        height: 34,
+                        child: _nav != null || t.speedKmh > 5
+                            // Pfeil in Fahrtrichtung (dreht mit der Karte).
+                            ? Transform.rotate(
+                                angle: r.$2 * math.pi / 180,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: panel,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: chalk, width: 2),
+                                  ),
+                                  child: const Icon(Icons.navigation,
+                                      size: 22, color: signal),
+                                ),
+                              )
+                            : Container(
+                                margin: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: signal,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: chalk, width: 2.5),
+                                ),
+                              ),
+                      ),
+                    ]),
+            ),
             // Pflichtangabe zur Kartenquelle. Liegt oberhalb des
             // Tastenbands, damit sie nicht verdeckt wird.
             Align(
@@ -718,20 +810,6 @@ class _MapScreenState extends State<MapScreen> {
       ));
     }
 
-    if (t.lat != null) {
-      out.add(Marker(
-        point: LatLng(t.lat!, t.lon!),
-        width: 26,
-        height: 26,
-        child: Container(
-          decoration: BoxDecoration(
-            color: signal,
-            shape: BoxShape.circle,
-            border: Border.all(color: chalk, width: 2.5),
-          ),
-        ),
-      ));
-    }
     return out;
   }
 
@@ -1142,7 +1220,10 @@ class _MapScreenState extends State<MapScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(_fmtDist(nav.distanceToNext),
+              Text(
+                  _fmtDist(nav.onRoute && _tracker.shownAlongM != null
+                      ? nav.distanceToNextFrom(_tracker.shownAlongM!)
+                      : nav.distanceToNext),
                   style: const TextStyle(
                       fontSize: 26,
                       fontWeight: FontWeight.w700,

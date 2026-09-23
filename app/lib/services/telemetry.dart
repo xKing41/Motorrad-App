@@ -503,8 +503,12 @@ class Telemetry extends ChangeNotifier {
     if (_leanLive) lean.value = roll;
   }
 
+  /// Zaehlt die GPS-Messungen - so erkennt die Karte eine neue.
+  int fixSeq = 0;
+
   void _onPos(Position p) {
     _fixTime = DateTime.now();
+    fixSeq++;
     gpsServiceOff = false;
     lat = p.latitude;
     lon = p.longitude;
