@@ -14,6 +14,28 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.4 - Hintergrundbetrieb und Akku
+-----------------------------------------
+
+- Die Fahrt laeuft jetzt auch bei AUSGESCHALTETEM Bildschirm und in
+  anderen Apps weiter: Aufzeichnung, Navigation mit Ansagen und
+  Sturzerkennung. Solange eine Fahrt laeuft, steht in der
+  Benachrichtigungsleiste "Schräglage – Fahrt läuft".
+- Akku sparen:
+  * Ohne Fahrt wird im Hintergrund ALLES abgeschaltet (GPS, Sensoren,
+    Wetter). Bei offener App ohne Fahrt laeuft das GPS nur sparsam.
+  * Der Bildschirm bleibt nicht mehr dauernd an - nur noch waehrend
+    einer Fahrt (abschaltbar im Cockpit: "Akku sparen: Display geht
+    während der Fahrt aus") und immer waehrend der Navigation.
+- Bei der ERSTEN Fahrt fragt Android nach "Benachrichtigungen" (bitte
+  erlauben) und die App bietet an, die "Akku-Optimierung" fuer
+  Schräglage auszuschalten. Das kostet keinen Akku, verhindert aber,
+  dass Samsung, Xiaomi, Huawei & Co. die Aufzeichnung unterwegs
+  beenden.
+- Weiterhin gilt: App NICHT aus der Liste der offenen Apps wegwischen,
+  solange die Fahrt laeuft - das beendet sie (die Fahrt wird dann beim
+  naechsten Start gerettet, bis zur letzten Minute).
+
 VERSION 4.3.1 - Durchsicht der Grundfunktionen
 ----------------------------------------------
 

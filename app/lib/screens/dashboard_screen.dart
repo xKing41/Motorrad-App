@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../services/telemetry.dart';
 import '../services/emergency.dart';
+import '../services/power.dart';
 import '../services/weather_service.dart';
 import '../theme.dart';
 import 'emergency_screen.dart';
@@ -365,10 +366,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
         ]),
+        const SizedBox(height: 4),
+        _screenToggle(),
         SizedBox(height: compact ? 4 : 8),
         const Text('NÄHERUNGSWERTE · BEDIENUNG NUR IM STAND',
             style: TextStyle(fontSize: 8.5, letterSpacing: 2, color: steel)),
       ]),
+    );
+  }
+
+  /// Bildschirm waehrend der Fahrt an oder aus. Aus spart viel Akku - die
+  /// Aufzeichnung und die Sturzerkennung laufen trotzdem weiter.
+  Widget _screenToggle() {
+    final p = PowerPolicy.instance;
+    return ValueListenableBuilder<bool>(
+      valueListenable: p.screenOnWhileRiding,
+      builder: (context, on, _) => InkWell(
+        onTap: () => p.setScreenOnWhileRiding(!on),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(children: [
+            Icon(on ? Icons.light_mode : Icons.battery_saver,
+                size: 15, color: on ? signal : amber),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                on
+                    ? 'Display bleibt während der Fahrt an'
+                    : 'Akku sparen: Display geht während der Fahrt aus '
+                        '(Aufzeichnung läuft weiter)',
+                style: const TextStyle(fontSize: 10.5, color: steel),
+              ),
+            ),
+            Switch(value: on, onChanged: p.setScreenOnWhileRiding),
+          ]),
+        ),
+      ),
     );
   }
 

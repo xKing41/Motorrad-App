@@ -1,13 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'screens/dashboard_screen.dart';
 import 'screens/map_screen.dart';
 import 'screens/rides_screen.dart';
 import 'screens/crash_alarm_screen.dart';
 import 'services/emergency.dart';
+import 'services/power.dart';
 import 'services/ride_store.dart';
 import 'services/telemetry.dart';
 import 'theme.dart';
@@ -38,7 +38,7 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   final t = Telemetry.instance;
   final _ridesKey = GlobalKey<RidesScreenState>();
   int _tab = 0;
@@ -46,7 +46,8 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
-    WakelockPlus.enable();
+    WidgetsBinding.instance.addObserver(this);
+    PowerPolicy.instance.init();
     // Notfalldaten liegen auf dem Geraet und muessen vor der ersten
     // Sturzpruefung geladen sein.
     Emergency.instance.load();
@@ -79,8 +80,16 @@ class _HomeShellState extends State<HomeShell> {
     _backupTimer?.cancel();
     t.removeListener(_onTick);
     t.crashAlarm.removeListener(_onCrashAlarm);
-    WakelockPlus.disable();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// App sichtbar oder nicht - ohne Fahrt wird im Hintergrund alles
+  /// abgeschaltet (Akku).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    t.setForeground(state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.inactive);
   }
 
   bool _lastRecording = false;
@@ -113,6 +122,7 @@ class _HomeShellState extends State<HomeShell> {
     if (!t.recording) {
       t.startRecording();
       if (mounted) toast(context, 'Fahrt gestartet – gute Fahrt!');
+      await _firstRideSetup();
       return;
     }
 
@@ -133,6 +143,44 @@ class _HomeShellState extends State<HomeShell> {
       toast(context,
           'Fahrt gespeichert · ${summary.distanceKm.toStringAsFixed(1)} km');
     }
+  }
+
+  /// Vor der ersten Fahrt einmal: Benachrichtigung erlauben und auf die
+  /// Akku-Optimierung hinweisen. Manche Hersteller (Samsung, Xiaomi,
+  /// Huawei ...) beenden sonst die Aufzeichnung im Hintergrund.
+  Future<void> _firstRideSetup() async {
+    final askBattery = await PowerPolicy.instance.prepareFirstRide();
+    if (!askBattery || !mounted) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: panel,
+        shape: const RoundedRectangleBorder(side: BorderSide(color: line)),
+        title: const Text('AUFZEICHNUNG IM HINTERGRUND',
+            style: TextStyle(fontSize: 12, letterSpacing: 2, color: chalk)),
+        content: const Text(
+          'Die Fahrt läuft auch bei ausgeschaltetem Bildschirm weiter. '
+          'Manche Handys beenden Apps im Hintergrund trotzdem, um Akku zu '
+          'sparen. Wenn du "Akku-Optimierung" für Schräglage ausschaltest, '
+          'passiert das nicht.\n\nDas kostet selbst keinen Akku - '
+          'Schräglage misst nur während einer Fahrt.',
+          style: TextStyle(fontSize: 11.5, color: steel, height: 1.45),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('SPÄTER',
+                style: TextStyle(fontSize: 11, color: steel)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('EINSTELLUNG ÖFFNEN',
+                style: TextStyle(fontSize: 11, color: signal)),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await PowerPolicy.instance.openBatterySettings();
   }
 
   @override

@@ -58,6 +58,12 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
   und beschreibt das Ergebnis. Wege und Orte kommen **immer** aus echten
   Kartendaten – erfundene Ziele sind damit ausgeschlossen
 
+**Hintergrund und Akku**
+- Während einer Fahrt oder Navigation läuft alles als Android-
+  Vordergrunddienst weiter – auch bei ausgeschaltetem Bildschirm
+- Ohne Fahrt ist im Hintergrund alles aus; bei offener App läuft das GPS
+  sparsam; der Bildschirm bleibt nur während Fahrt/Navigation an
+
 **Fahrten**
 - Aufzeichnung mit Strecke, Dauer, Vmax, Maximalschräglage; die laufende
   Fahrt wird jede Minute gesichert und nach einem Abbruch gerettet

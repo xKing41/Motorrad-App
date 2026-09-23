@@ -1,8 +1,12 @@
 package com.example.schraeglage
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import android.telephony.SmsManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -62,6 +66,52 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // Hintergrundbetrieb: Benachrichtigung (fuer die Anzeige "Fahrt
+        // laeuft") und Akku-Optimierung von Android.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "schraeglage/system")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "requestNotifications" -> {
+                        if (Build.VERSION.SDK_INT < 33 ||
+                            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+                            PackageManager.PERMISSION_GRANTED
+                        ) {
+                            result.success(true)
+                        } else {
+                            requestPermissions(
+                                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                                REQUEST_NOTIFY
+                            )
+                            result.success(false)
+                        }
+                    }
+                    "isIgnoringBatteryOptimizations" -> {
+                        val pm = getSystemService(PowerManager::class.java)
+                        result.success(pm?.isIgnoringBatteryOptimizations(packageName) ?: true)
+                    }
+                    "openBatterySettings" -> {
+                        try {
+                            // Direkt die Abfrage fuer diese App. Klappt das nicht
+                            // (manche Hersteller sperren es), die Liste aller Apps.
+                            val i = Intent(
+                                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                Uri.parse("package:$packageName")
+                            )
+                            startActivity(i)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            try {
+                                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                                result.success(true)
+                            } catch (e2: Exception) {
+                                result.success(false)
+                            }
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
     }
 
     private fun hasSmsPermission(): Boolean =
@@ -83,5 +133,6 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val REQUEST_SMS = 4711
+        private const val REQUEST_NOTIFY = 4712
     }
 }

@@ -70,6 +70,23 @@ class Telemetry extends ChangeNotifier {
   Timer? _autoCalTimer;
   bool _started = false;
 
+  // --- Energie ---------------------------------------------------------
+  // Das Handy ist das ganze System - Akku ist knapp. Deshalb laeuft nur,
+  // was gerade gebraucht wird:
+  //   Fahrt/Navigation  -> volles GPS jede Sekunde, Sensoren 50 Hz, als
+  //                        Vordergrunddienst (laeuft bei Bildschirm aus
+  //                        und in anderen Apps weiter)
+  //   App offen, keine Fahrt -> sparsames GPS, Sensoren fuer die Anzeige
+  //   App im Hintergrund, keine Fahrt -> alles aus
+  bool _foreground = true;
+  bool navigating = false;
+  GpsMode _gpsMode = GpsMode.off;
+  bool _sensorsOn = false;
+
+  bool get foreground => _foreground;
+  bool get active => recording || navigating;
+  GpsMode get gpsMode => _gpsMode;
+
   // --- Schwerkraft (tiefpassgefiltert, Geraetesystem) ---
   double _gx = 0, _gy = 9.81, _gz = 0;
   bool _hasAccel = false;
@@ -139,23 +156,8 @@ class Telemetry extends ChangeNotifier {
     if (_started) return;
     _started = true;
 
-    // 20 ms: Fuer "wo ist unten" wuerden 50 ms reichen (die Glaettung
-    // ist zeitbasiert), aber die Sturzerkennung haengt am selben Strom.
-    // Ein Aufprall dauert oft nur 10-30 ms - bei 50 ms Abstand faellt
-    // die Spitze zwischen zwei Messwerte und wird nie gesehen.
-    _accSub = accelerometerEventStream(
-      samplingPeriod: const Duration(milliseconds: 20),
-    ).listen(_onAccel);
-
-    _linSub = userAccelerometerEventStream(
-      samplingPeriod: const Duration(milliseconds: 20),
-    ).listen(_onLinear);
-
-    _gyroSub = gyroscopeEventStream(
-      samplingPeriod: const Duration(milliseconds: 20),
-    ).listen(_onGyro);
-
-    await _initGps();
+    await _checkGpsPermission();
+    await _applyPowerMode();
 
     // 200 ms genuegen fuer Zahlen und Kacheln. Der Zeiger haengt nicht
     // mehr an diesem Takt, sondern am ValueNotifier oben.
@@ -182,36 +184,155 @@ class Telemetry extends ChangeNotifier {
 
   Future<void> stop() async {
     _started = false;
-    await _accSub?.cancel();
-    await _linSub?.cancel();
-    await _gyroSub?.cancel();
+    await _stopSensors();
     await _posSub?.cancel();
+    _posSub = null;
+    _gpsMode = GpsMode.off;
     _uiTimer?.cancel();
     _autoCalTimer?.cancel();
     _weatherTimer?.cancel();
   }
 
-  Future<void> _initGps() async {
+  /// App kommt in den Vordergrund oder geht in den Hintergrund.
+  Future<void> setForeground(bool v) async {
+    if (_foreground == v) return;
+    _foreground = v;
+    await _applyPowerMode();
+  }
+
+  /// Navigation laeuft (auch ohne Aufzeichnung: GPS muss weiterlaufen).
+  Future<void> setNavigating(bool v) async {
+    if (navigating == v) return;
+    navigating = v;
+    await _applyPowerMode();
+    notifyListeners();
+  }
+
+  /// Welcher GPS-Modus zum aktuellen Zustand passt.
+  static GpsMode gpsModeFor(
+          {required bool active, required bool foreground}) =>
+      active
+          ? GpsMode.ride
+          : (foreground ? GpsMode.idle : GpsMode.off);
+
+  bool _applying = false;
+  bool _applyAgain = false;
+
+  Future<void> _applyPowerMode() async {
+    if (!_started) return;
+    // Nicht zwei Umschaltungen gleichzeitig - sonst laufen am Ende zwei
+    // GPS-Abos.
+    if (_applying) {
+      _applyAgain = true;
+      return;
+    }
+    _applying = true;
+    try {
+      do {
+        _applyAgain = false;
+        final wantSensors = active || _foreground;
+        if (wantSensors && !_sensorsOn) _startSensors();
+        if (!wantSensors && _sensorsOn) await _stopSensors();
+        final mode = gpsModeFor(active: active, foreground: _foreground);
+        if (mode != _gpsMode) await _startGps(mode);
+      } while (_applyAgain);
+    } finally {
+      _applying = false;
+    }
+  }
+
+  void _startSensors() {
+    _sensorsOn = true;
+    // 20 ms: Fuer "wo ist unten" wuerden 50 ms reichen (die Glaettung
+    // ist zeitbasiert), aber die Sturzerkennung haengt am selben Strom.
+    // Ein Aufprall dauert oft nur 10-30 ms - bei 50 ms Abstand faellt
+    // die Spitze zwischen zwei Messwerte und wird nie gesehen.
+    _lastAccUs = 0;
+    _lastLinUs = 0;
+    _lastGyroUs = 0;
+    _accSub = accelerometerEventStream(
+      samplingPeriod: const Duration(milliseconds: 20),
+    ).listen(_onAccel, onError: (_) {});
+    _linSub = userAccelerometerEventStream(
+      samplingPeriod: const Duration(milliseconds: 20),
+    ).listen(_onLinear, onError: (_) {});
+    _gyroSub = gyroscopeEventStream(
+      samplingPeriod: const Duration(milliseconds: 20),
+    ).listen(_onGyro, onError: (_) {});
+  }
+
+  Future<void> _stopSensors() async {
+    _sensorsOn = false;
+    await _accSub?.cancel();
+    await _linSub?.cancel();
+    await _gyroSub?.cancel();
+    _accSub = null;
+    _linSub = null;
+    _gyroSub = null;
+  }
+
+  Future<void> _checkGpsPermission() async {
     try {
       gpsServiceOff = !await Geolocator.isLocationServiceEnabled();
       var p = await Geolocator.checkPermission();
       if (p == LocationPermission.denied) {
         p = await Geolocator.requestPermission();
       }
-      if (p == LocationPermission.denied ||
-          p == LocationPermission.deniedForever) {
-        gpsDenied = true;
-        return;
-      }
-      gpsDenied = false;
-      _posSub = Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.bestForNavigation,
-          distanceFilter: 0,
-        ),
-      ).listen(_onPos, onError: (_) => gpsServiceOff = true);
+      gpsDenied = p == LocationPermission.denied ||
+          p == LocationPermission.deniedForever;
     } catch (_) {
       gpsDenied = true;
+    }
+  }
+
+  /// Einstellungen je Modus. Fahrt: jede Sekunde, hoechste Genauigkeit,
+  /// als Vordergrunddienst mit Benachrichtigung. Ohne Fahrt: alle paar
+  /// Sekunden und nur bei Bewegung - das spart deutlich Akku.
+  static LocationSettings settingsFor(GpsMode mode, {bool android = true}) {
+    if (!android) {
+      return LocationSettings(
+        accuracy: mode == GpsMode.ride
+            ? LocationAccuracy.bestForNavigation
+            : LocationAccuracy.high,
+        distanceFilter: mode == GpsMode.ride ? 0 : 10,
+      );
+    }
+    if (mode == GpsMode.ride) {
+      return AndroidSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0,
+        intervalDuration: const Duration(seconds: 1),
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: 'Schräglage – Fahrt läuft',
+          notificationText:
+              'Aufzeichnung, Navigation und Sturzerkennung laufen weiter.',
+          notificationChannelName: 'Fahrt',
+          // Haelt die CPU wach - sonst setzen die Sensoren (Schraeglage,
+          // Sturzerkennung) bei ausgeschaltetem Bildschirm aus.
+          enableWakeLock: true,
+          setOngoing: true,
+        ),
+      );
+    }
+    return AndroidSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10,
+      intervalDuration: const Duration(seconds: 3),
+    );
+  }
+
+  Future<void> _startGps(GpsMode mode) async {
+    await _posSub?.cancel();
+    _posSub = null;
+    _gpsMode = mode;
+    if (mode == GpsMode.off || gpsDenied) return;
+    try {
+      _posSub = Geolocator.getPositionStream(
+        locationSettings: settingsFor(mode,
+            android: defaultTargetPlatform == TargetPlatform.android),
+      ).listen(_onPos, onError: (_) => gpsServiceOff = true);
+    } catch (_) {
+      gpsServiceOff = true;
     }
   }
 
@@ -234,7 +355,9 @@ class Telemetry extends ChangeNotifier {
     } catch (_) {}
     await _posSub?.cancel();
     _posSub = null;
-    await _initGps();
+    _gpsMode = GpsMode.off;
+    await _checkGpsPermission();
+    await _applyPowerMode();
     notifyListeners();
     return msg;
   }
@@ -412,7 +535,9 @@ class Telemetry extends ChangeNotifier {
   }
 
   /// Langsamer Takt: nur noch Kacheln und Texte auffrischen.
+  /// Im Hintergrund ohne Fahrt gibt es nichts zu tun.
   void _tick() {
+    if (!_foreground && !active) return;
     _crash.tick(_clock.elapsedMilliseconds);
     notifyListeners();
   }
@@ -424,6 +549,8 @@ class Telemetry extends ChangeNotifier {
   /// das Wetter aendert sich nicht im Sekundentakt, und jeder Aufruf
   /// kostet Akku und Datenvolumen.
   Future<void> refreshWeather({bool force = false}) async {
+    // Im Hintergrund ohne Fahrt sieht niemand das Wetter.
+    if (!_foreground && !active) return;
     final la = lat, lo = lon;
     if (la == null || lo == null) return;
     if (_weatherBusy) return;
@@ -504,6 +631,7 @@ class Telemetry extends ChangeNotifier {
 
   void startRecording() {
     recording = true;
+    unawaited(_applyPowerMode());
     rideStart = DateTime.now();
     rideDistanceM = 0;
     rideMaxSpeedMs = 0;
@@ -540,8 +668,21 @@ class Telemetry extends ChangeNotifier {
   RideSummary? stopRecording() {
     if (!recording || rideStart == null) return null;
     recording = false;
+    unawaited(_applyPowerMode());
     final s = _summary();
     notifyListeners();
     return s;
   }
+}
+
+/// Wie das GPS gerade laeuft.
+enum GpsMode {
+  /// Aus (App im Hintergrund, keine Fahrt).
+  off,
+
+  /// Sparsam: App offen, keine Fahrt.
+  idle,
+
+  /// Voll, als Vordergrunddienst: Fahrt oder Navigation.
+  ride,
 }

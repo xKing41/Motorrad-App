@@ -73,10 +73,13 @@ class _MapScreenState extends State<MapScreen> {
     if (!mounted) return;
     final nav = _nav;
     if (nav != null && t.lat != null) {
+      // Laeuft auch im Hintergrund weiter: Ansagen, Neuberechnung.
       nav.update(t.lat!, t.lon!, heading: t.headingDeg, speedMs: t.speedMs);
     } else if (_follower != null && t.lat != null) {
       _follow = _follower!.update(t.lat!, t.lon!);
     }
+    // Karte bewegen und neu zeichnen nur, wenn sie jemand sieht.
+    if (!t.foreground) return;
     if (_autoFollow && _mapReady && t.lat != null) {
       if (nav != null) {
         _followCourseUp();
@@ -117,6 +120,7 @@ class _MapScreenState extends State<MapScreen> {
     );
     nav.addListener(_onNavChanged);
     if (!mounted) return;
+    await t.setNavigating(true);
     setState(() {
       _nav = nav;
       _autoFollow = true;
@@ -133,6 +137,17 @@ class _MapScreenState extends State<MapScreen> {
   void _onNavChanged() {
     final nav = _nav;
     if (nav == null || !mounted) return;
+    if (!t.foreground) {
+      // Nach einer Neuberechnung im Hintergrund die Linie trotzdem
+      // uebernehmen - gezeichnet wird beim naechsten Hinsehen.
+      if (!identical(nav.plan, _route)) {
+        _route = nav.plan;
+        _routeLine = nav.plan.points
+            .map((p) => LatLng(p.lat, p.lon))
+            .toList(growable: false);
+      }
+      return;
+    }
     // Nach einer Neuberechnung die neue Linie zeigen.
     if (!identical(nav.plan, _route)) {
       _route = nav.plan;
@@ -150,6 +165,7 @@ class _MapScreenState extends State<MapScreen> {
     nav.removeListener(_onNavChanged);
     nav.dispose();
     Voice.instance.stop();
+    t.setNavigating(false);
     setState(() {
       _nav = null;
       _follower = _route != null ? RouteFollower(_route!) : null;

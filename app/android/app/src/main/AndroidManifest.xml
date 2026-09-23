@@ -5,6 +5,14 @@
     <!-- Internet fuer Karten, POI-Suche und Routing -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- Fahrt im Hintergrund weiter aufzeichnen (Bildschirm aus, andere
+         App offen): Vordergrunddienst mit Benachrichtigung "Fahrt laeuft".
+         Laeuft nur waehrend einer Fahrt oder Navigation. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
     <!-- Notfall-SMS nach einem erkannten Sturz direkt senden (nur wenn
          der Fahrer das in den Notfalldaten einschaltet) -->
     <uses-permission android:name="android.permission.SEND_SMS"/>
