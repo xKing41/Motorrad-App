@@ -30,10 +30,12 @@ import '../services/routing_engine.dart';
 import '../services/routing_settings.dart';
 import '../services/telemetry.dart';
 import '../services/tour_store.dart';
+import '../services/vector_map.dart';
 import '../services/traffic_eta.dart';
 import '../services/tile_cache.dart';
 import '../services/voice.dart';
 import '../theme.dart';
+import '../widgets/base_map.dart';
 import '../widgets/map_attribution.dart';
 import 'route_planner_screen.dart';
 import 'tours_screen.dart';
@@ -98,6 +100,8 @@ class _MapScreenState extends State<MapScreen>
     t.addListener(_onTick);
     _offline.addListener(_onOffline);
     _offline.offline.addListener(_onOffline);
+    VectorMap.instance.addListener(_onOffline);
+    VectorMap.instance.init();
     _loadTrafficKey();
     _offline.cache();
   }
@@ -116,11 +120,17 @@ class _MapScreenState extends State<MapScreen>
     t.removeListener(_onTick);
     _offline.removeListener(_onOffline);
     _offline.offline.removeListener(_onOffline);
+    VectorMap.instance.removeListener(_onOffline);
     _ticker.dispose();
     _rider.dispose();
     _nav?.dispose();
     super.dispose();
   }
+
+  /// Nachtkarte? Nach Einstellung, bei "automatisch" nach Sonnenstand
+  /// am eigenen Standort.
+  bool get _night =>
+      VectorMap.instance.nightAt(DateTime.now(), t.lat, t.lon);
 
   bool get _smooth => t.foreground && (_nav != null || t.recording);
 
@@ -994,14 +1004,7 @@ class _MapScreenState extends State<MapScreen>
             ),
           ),
           children: [
-            TileLayer(
-              urlTemplate: osmUrlTemplate,
-              userAgentPackageName: 'de.schraeglage.app',
-              maxNativeZoom: 19,
-              // Kacheln vom Handy, im Funkloch auch vergroesserte
-              // groebere Kacheln statt leerer Flaeche.
-              tileProvider: OfflineMaps.tiles,
-            ),
+            baseMapLayer(night: _night),
             if (_tomtomKey.isNotEmpty && _showFlow)
               TileLayer(
                 // Verkehrsfluss relativ zur freien Fahrt; transparent
@@ -1106,6 +1109,11 @@ class _MapScreenState extends State<MapScreen>
           top: (_nav != null ? 150 : 80) + (_tomtomKey.isNotEmpty ? 44 : 0),
           child: _offlineButton(),
         ),
+        Positioned(
+          right: 12,
+          top: (_nav != null ? 150 : 80) + (_tomtomKey.isNotEmpty ? 88 : 44),
+          child: _styleButton(),
+        ),
         if (_tomtomKey.isNotEmpty)
           Positioned(
             right: 12,
@@ -1172,6 +1180,80 @@ class _MapScreenState extends State<MapScreen>
     );
   }
 
+  // ------------------------------------------------------------------
+  // Kartendarstellung (Vektor hell/dunkel, klassisch)
+  // ------------------------------------------------------------------
+  Widget _styleButton() {
+    final night = _night && VectorMap.instance.useVector;
+    return InkWell(
+      onTap: _showStyles,
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: panel.withValues(alpha: 0.94),
+          border: Border.all(color: line),
+        ),
+        child: Icon(night ? Icons.dark_mode : Icons.layers,
+            size: 18, color: steel),
+      ),
+    );
+  }
+
+  void _showStyles() {
+    final vm = VectorMap.instance;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: panel,
+      shape: const RoundedRectangleBorder(),
+      builder: (ctx) => SafeArea(
+        child: ListenableBuilder(
+          listenable: vm,
+          builder: (ctx, _) => Column(mainAxisSize: MainAxisSize.min, children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 14, 16, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('KARTE',
+                    style: TextStyle(
+                        fontSize: 12, letterSpacing: 2, color: chalk)),
+              ),
+            ),
+            for (final m in MapStyle.values)
+              ListTile(
+                dense: true,
+                leading: Icon(
+                    vm.style == m
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_unchecked,
+                    color: vm.style == m ? signal : steel,
+                    size: 20),
+                title: Text(m.label,
+                    style: const TextStyle(fontSize: 12.5, color: chalk)),
+                onTap: () => vm.setStyle(m),
+              ),
+            if (!vm.ready && vm.style != MapStyle.classic)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Text(
+                  'Die Vektorkarte braucht einmal Internet, bis dahin '
+                  'zeigt die App die klassische Karte.',
+                  style: TextStyle(fontSize: 10, color: amber, height: 1.4),
+                ),
+              ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Text(
+                'Vektorkarte: scharf in jeder Zoomstufe, nachts dunkel '
+                '(blendet nicht im Helm), offline deutlich kleiner.',
+                style: TextStyle(fontSize: 10, color: steel, height: 1.4),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
   void _showOffline() {
     final visible = _mapReady ? _map.camera.visibleBounds : null;
     showModalBottomSheet<void>(
@@ -1194,16 +1276,17 @@ class _MapScreenState extends State<MapScreen>
     String areaInfo() {
       if (visible == null) return '';
       final z = OfflineMaps.areaMaxZoom(visible.south, visible.west,
-          visible.north, visible.east, 8);
+          visible.north, visible.east, 8,
+          top: _offline.sourceMaxZoom);
       final n = countTilesInBox(
           visible.south, visible.west, visible.north, visible.east,
           minZoom: 8, maxZoom: z);
-      return 'Bis Zoomstufe $z · ca. ${formatBytes(n * avgTileBytes)}';
+      return 'Bis Zoomstufe $z · ca. ${formatBytes(n * _offline.tileBytes)}';
     }
 
     String routeInfo(RoutePlan r) {
       final n = _offline.routeTiles(r.points).length;
-      return 'Streifen entlang der Tour · ca. ${formatBytes(n * avgTileBytes)}';
+      return 'Streifen entlang der Tour · ca. ${formatBytes(n * _offline.tileBytes)}';
     }
 
     String jobText(OfflineJob j) {

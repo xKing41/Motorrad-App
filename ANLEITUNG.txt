@@ -14,6 +14,22 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.22 - Vektorkarte mit Nachtmodus
+-----------------------------------------
+
+- Neue Karte (OpenFreeMap, kostenlos, ohne Schluessel): scharf in
+  jeder Zoomstufe, Strassen und Namen klar lesbar.
+- NACHTMODUS: dunkle Karte, blendet nicht im Helm. Standard ist
+  "Automatisch": nach Sonnenstand am eigenen Standort (dunkel ab
+  Daemmerung, hell ab Morgengrauen).
+- Umschalten: Ebenen-Knopf rechts auf der Karte -> Automatisch,
+  hell, dunkel oder die klassische OSM-Karte wie bisher.
+- Offline: Die Vektorkarte braucht nur Daten bis Zoomstufe 14 - eine
+  gespeicherte Route ist dadurch viel kleiner. Offline-Speichern nimmt
+  automatisch die gerade gewaehlte Karte.
+- Erster Start ganz ohne Internet: bis die App einmal online war,
+  kommt die klassische Karte.
+
 VERSION 4.21 - Tour bearbeiten verbessert, Knoepfe sichtbar
 -----------------------------------------------------------
 

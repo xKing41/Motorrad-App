@@ -4,9 +4,10 @@ import 'package:latlong2/latlong.dart';
 
 import '../models/ride.dart';
 import '../services/gpx_service.dart';
-import '../services/offline_maps.dart';
+import '../services/vector_map.dart';
 import '../services/ride_store.dart';
 import '../theme.dart';
+import '../widgets/base_map.dart';
 import '../widgets/map_attribution.dart';
 import 'ride_analysis_screen.dart';
 
@@ -165,12 +166,8 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
               ),
             ),
             children: [
-              TileLayer(
-                urlTemplate: osmUrlTemplate,
-                userAgentPackageName: 'de.schraeglage.app',
-                maxNativeZoom: 19,
-                tileProvider: OfflineMaps.tiles,
-              ),
+              baseMapLayer(
+                  night: VectorMap.instance.nightAt(DateTime.now(), null, null)),
               PolylineLayer(polylines: _coloredTrack()),
               MarkerLayer(markers: [
                 Marker(

@@ -11,6 +11,7 @@ import 'services/emergency.dart';
 import 'services/power.dart';
 import 'services/ride_store.dart';
 import 'services/telemetry.dart';
+import 'services/vector_map.dart';
 import 'theme.dart';
 
 void main() {
@@ -52,6 +53,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     // Notfalldaten liegen auf dem Geraet und muessen vor der ersten
     // Sturzpruefung geladen sein.
     Emergency.instance.load();
+    // Vektorkarte vorbereiten (Stile laden, Kachel-Adresse holen).
+    VectorMap.instance.init();
     t.start();
     t.addListener(_onTick);
     t.crashAlarm.addListener(_onCrashAlarm);

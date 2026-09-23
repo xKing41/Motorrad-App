@@ -12,10 +12,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/route_plan.dart';
 import 'tile_cache.dart';
+import 'vector_map.dart';
 
 /// Kartenquelle (OpenStreetMap-Standardkarte).
 const String osmUrlTemplate = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-const String osmUserAgent = 'Schraeglage/4.21 (de.schraeglage.app)';
+const String osmUserAgent = 'Schraeglage/4.22 (de.schraeglage.app)';
 
 /// Stand eines Vorab-Downloads.
 class OfflineJob {
@@ -100,27 +101,48 @@ class OfflineMaps extends ChangeNotifier {
     return res.bodyBytes;
   }
 
-  void _markOnline(bool ok) {
+  void markOnline(bool ok) {
     if (offline.value == ok) offline.value = !ok;
   }
 
+  /// Welche Karte gerade gezeigt wird - die wird offline gespeichert.
+  /// Vektorkarte: Daten nur bis Stufe 14 (darueber wird gezeichnet),
+  /// dadurch viel weniger und kleinere Downloads.
+  bool get _vector =>
+      VectorMap.instance.useVector && VectorMap.instance.provider != null;
+
+  int get sourceMaxZoom => _vector ? VectorMap.maxDataZoom : maxPrefetchZoom;
+
+  /// Geschaetzte Groesse einer Kachel der aktiven Karte.
+  int get tileBytes => _vector ? 30 * 1024 : avgTileBytes;
+
+  Future<TileCache> _activeCache() => _vector ? VectorMap.instance.cache() : cache();
+
+  Future<Uint8List> Function(TileKey) get _activeFetch =>
+      _vector ? VectorMap.instance.provider!.fetch : fetch;
+
   /// Kacheln entlang einer Route (Streifen links und rechts).
   Set<TileKey> routeTiles(List<RoutePoint> pts) {
-    var keys = tilesAlongRoute(pts);
-    // Sehr lange Touren: Streifen schmaler, notfalls ohne Stufe 16.
+    final top = sourceMaxZoom;
+    final minZ = _vector ? 8 : 11;
+    final buf = _vector ? 600.0 : 300.0;
+    var keys = tilesAlongRoute(pts, minZoom: minZ, maxZoom: top, bufferM: buf);
+    // Sehr lange Touren: Streifen schmaler, notfalls eine Stufe weniger.
     if (keys.length > maxJobTiles) {
-      keys = tilesAlongRoute(pts, bufferM: 150);
+      keys = tilesAlongRoute(pts, minZoom: minZ, maxZoom: top, bufferM: buf / 2);
     }
     if (keys.length > maxJobTiles) {
-      keys = tilesAlongRoute(pts, maxZoom: 15, bufferM: 200);
+      keys = tilesAlongRoute(pts,
+          minZoom: minZ, maxZoom: top - 1, bufferM: buf * 2 / 3);
     }
     return keys;
   }
 
   /// Hoechste Zoomstufe, bei der der Ausschnitt in [maxJobTiles] passt.
   static int areaMaxZoom(
-      double south, double west, double north, double east, int minZoom) {
-    var z = maxPrefetchZoom;
+      double south, double west, double north, double east, int minZoom,
+      {int top = maxPrefetchZoom}) {
+    var z = top;
     while (z > minZoom &&
         countTilesInBox(south, west, north, east,
                 minZoom: minZoom, maxZoom: z) >
@@ -140,7 +162,7 @@ class OfflineMaps extends ChangeNotifier {
   Future<PrefetchResult?> saveArea(
       double south, double west, double north, double east,
       {int minZoom = 8}) async {
-    final z = areaMaxZoom(south, west, north, east, minZoom);
+    final z = areaMaxZoom(south, west, north, east, minZoom, top: sourceMaxZoom);
     final keys =
         tilesInBox(south, west, north, east, minZoom: minZoom, maxZoom: z);
     return _run('Kartenausschnitt', prefetchOrder(keys));
@@ -155,14 +177,15 @@ class OfflineMaps extends ChangeNotifier {
       }
     }
     _cancel = false;
-    final c = await cache();
+    final c = await _activeCache();
+    final fetchTile = _activeFetch;
     final j = OfflineJob(label, keys.length);
     job = j;
     notifyListeners();
     var lastNotify = 0;
     final res = await c.prefetch(
       keys,
-      fetch,
+      fetchTile,
       fresh: const Duration(days: 30),
       cancelled: () => _cancel,
       onProgress: (done, _) {
@@ -175,7 +198,7 @@ class OfflineMaps extends ChangeNotifier {
       },
     );
     j.result = res;
-    if (res.loaded > 0) _markOnline(true);
+    if (res.loaded > 0) markOnline(true);
     notifyListeners();
     unawaited(c.trim());
     return res;
@@ -185,11 +208,17 @@ class OfflineMaps extends ChangeNotifier {
     _cancel = true;
   }
 
-  Future<TileCacheStats> stats() async => (await cache()).stats();
+  /// Belegter Speicher beider Karten (Bild- und Vektorkacheln).
+  Future<TileCacheStats> stats() async {
+    final a = await (await cache()).stats();
+    final b = await (await VectorMap.instance.cache()).stats();
+    return TileCacheStats(a.tiles + b.tiles, a.bytes + b.bytes);
+  }
 
   Future<void> clear() async {
     cancel();
     await (await cache()).clear();
+    await (await VectorMap.instance.cache()).clear();
     notifyListeners();
   }
 }
@@ -256,9 +285,9 @@ class CachedTileImage extends ImageProvider<CachedTileImage> {
           type.startsWith('image/')) {
         net = res.bodyBytes;
       }
-      om._markOnline(true);
+      om.markOnline(true);
     } catch (_) {
-      om._markOnline(false);
+      om.markOnline(false);
     }
     if (net != null) {
       unawaited(cache.write(key, net));

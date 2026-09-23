@@ -30,6 +30,8 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
   gegen 15:30“), Vorschlag für eine trockenere Abfahrtszeit
 
 **Karte und Routenplanung**
+- **Vektorkarte** (OpenFreeMap) mit automatischem **Nachtmodus** nach
+  Sonnenstand; klassische OSM-Karte wählbar
 - OpenStreetMap, Live-Spur nach Schräglage eingefärbt
 - **Offline-Karten**: angesehene Karten bleiben auf dem Handy, Route
   (automatisch beim Planen) und Kartenausschnitte vorab speichern; im
@@ -247,7 +249,7 @@ tools/check_dart.py             Strukturprüfung aller Dart-Dateien
 
 | Zweck | Dienst | Schlüssel nötig |
 |---|---|---|
-| Karte | OpenStreetMap | nein |
+| Karte | OpenFreeMap (Vektor, OpenMapTiles), OpenStreetMap (klassisch) | nein |
 | Wetter | Open-Meteo | nein |
 | Routing | Valhalla (FOSSGIS) | nein |
 | Routing, alternativ | GraphHopper | ja, optional |
