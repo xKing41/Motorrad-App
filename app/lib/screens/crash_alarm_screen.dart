@@ -56,7 +56,9 @@ class _CrashAlarmScreenState extends State<CrashAlarmScreen> {
     _announce();
   }
 
-  void _announce() {
+  Future<void> _announce() async {
+    // Wartende Navigationsansagen verwerfen - der Alarm geht vor.
+    await Voice.instance.stop();
     final who = em.hasContact
         ? (em.contactName.trim().isEmpty ? 'den Notfallkontakt' : em.contactName.trim())
         : null;
