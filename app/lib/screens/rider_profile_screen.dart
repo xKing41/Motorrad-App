@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/ride.dart';
 import '../services/ride_store.dart';
@@ -15,6 +16,7 @@ class RiderProfileScreen extends StatefulWidget {
 
 class _RiderProfileScreenState extends State<RiderProfileScreen> {
   RiderProfile? _p;
+  List<HomeCorner> _home = const [];
 
   /// So viele Fahrten werden ausgewertet (die neuesten).
   static const int maxRides = 30;
@@ -36,7 +38,13 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
       await Future<void>.delayed(Duration.zero);
     }
     final p = RiderProfile.of(input);
-    if (mounted) setState(() => _p = p);
+    final home = RiderProfile.homeCorners(input);
+    if (mounted) {
+      setState(() {
+        _p = p;
+        _home = home;
+      });
+    }
   }
 
   static String _deg(CornerStats? s) =>
@@ -96,6 +104,18 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
                     const SizedBox(height: 6),
                     _table(p),
                     const SizedBox(height: 16),
+                    if (_home.isNotEmpty) ...[
+                      const TinyLabel('DEINE HAUSKURVEN'),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Kurven, die du in mindestens drei Fahrten gefahren '
+                        'bist. Deine eigene Bestenliste - ohne Stoppuhr.',
+                        style: TextStyle(fontSize: 10, color: steel),
+                      ),
+                      const SizedBox(height: 6),
+                      for (final h in _home) _homeTile(h),
+                      const SizedBox(height: 16),
+                    ],
                     if (p.trend.length >= 3) ...[
                       const TinyLabel('MITTLERE SCHRÄGLAGE JE FAHRT'),
                       const SizedBox(height: 6),
@@ -111,6 +131,49 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
                     ),
                   ],
                 ),
+    );
+  }
+
+  Widget _homeTile(HomeCorner h) {
+    final delta = h.last - h.first;
+    final trend = delta.abs() < 1.5
+        ? 'gleichbleibend'
+        : (delta > 0 ? '+${delta.round()}° seit dem ersten Mal'
+            : '${delta.round()}° seit dem ersten Mal');
+    return InkWell(
+      onTap: () => launchUrl(
+        Uri.parse('https://www.openstreetmap.org/?mlat=${h.lat.toStringAsFixed(5)}'
+            '&mlon=${h.lon.toStringAsFixed(5)}#map=17/'
+            '${h.lat.toStringAsFixed(5)}/${h.lon.toStringAsFixed(5)}'),
+        mode: LaunchMode.externalApplication,
+      ),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.all(10),
+        decoration:
+            BoxDecoration(color: panel, border: Border.all(color: line)),
+        child: Row(children: [
+          Icon(h.right ? Icons.turn_right : Icons.turn_left,
+              size: 20, color: signal),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                    '${h.right ? 'Rechtskurve' : 'Linkskurve'} · '
+                    '${h.count}× gefahren',
+                    style: const TextStyle(fontSize: 12, color: chalk)),
+                Text(
+                    'Beste ${h.best.round()}° · zuletzt ${h.last.round()}° · '
+                    '$trend · Streuung ±${h.spread.round()}°',
+                    style: const TextStyle(fontSize: 10, color: steel)),
+              ],
+            ),
+          ),
+          const Icon(Icons.map_outlined, size: 16, color: steel),
+        ]),
+      ),
     );
   }
 

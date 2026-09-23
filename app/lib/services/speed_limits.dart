@@ -176,7 +176,7 @@ class ValhallaSpeedLimits implements SpeedLimitSource {
     final uri = Uri.parse('$base/trace_attributes');
     const headers = {
       'Content-Type': 'application/json',
-      'User-Agent': 'Schraeglage/4.18 (Motorrad-App)',
+      'User-Agent': 'Schraeglage/4.19 (Motorrad-App)',
     };
     final c = _client;
     final res = await (c != null

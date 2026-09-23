@@ -35,7 +35,8 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
   (automatisch beim Planen) und Kartenausschnitte vorab speichern; im
   Funkloch vergrößerte gröbere Kacheln statt leerer Flächen
 - **Mein Fahrstil**: persönliche Kurvenanalyse über viele Fahrten (links/rechts,
-  eng/mittel/weit, Verlauf) mit konkreten Hinweisen
+  eng/mittel/weit, Verlauf) mit konkreten Hinweisen; „Hauskurven“ als
+  persönliche Bestenliste ohne Zeiten
 - **Begleit-SMS** an Angehörige: Losfahren, Position in festen Abständen,
   Fahrtende – ohne Server und ohne App beim Empfänger
 - **Sicherung**: alle Fahrten und Touren in eine Datei (Drive, Mail …) und

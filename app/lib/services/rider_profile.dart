@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../models/ride.dart';
 import 'dynamics.dart';
 import 'ride_analysis.dart';
@@ -79,6 +81,33 @@ class RideCorners {
   final List<Corner> corners;
 }
 
+/// Eine Kurve, die du mehrfach gefahren bist - deine eigene
+/// "Bestenliste" ohne Stoppuhr: Wie tief, wie gleichmaessig, und wie
+/// hat es sich entwickelt?
+class HomeCorner {
+  HomeCorner(this.lat, this.lon, this.right, this.passes);
+
+  final double lat;
+  final double lon;
+  final bool right;
+
+  /// Durchfahrten (Zeitpunkt der Fahrt, Schraeglage), aelteste zuerst.
+  final List<(DateTime, double)> passes;
+
+  int get count => passes.length;
+  double get best => passes.map((p) => p.$2).reduce((a, b) => a > b ? a : b);
+  double get last => passes.last.$2;
+  double get first => passes.first.$2;
+
+  /// Streuung der Schraeglage (Grad) - klein = gleichmaessig.
+  double get spread {
+    final m = passes.fold<double>(0, (s, p) => s + p.$2) / count;
+    final v = passes.fold<double>(0, (s, p) => s + (p.$2 - m) * (p.$2 - m)) /
+        count;
+    return math.sqrt(v);
+  }
+}
+
 class RiderProfile {
   RiderProfile({
     required this.rides,
@@ -106,6 +135,56 @@ class RiderProfile {
 
   /// Mindestzahl Kurven je Gruppe, damit ein Vergleich etwas aussagt.
   static const int minGroup = 8;
+
+  /// Kurven, die in mindestens [minCount] verschiedenen Fahrten
+  /// vorkamen (Scheitel naeher als etwa 40 m, gleiche Richtung),
+  /// haeufigste zuerst.
+  static List<HomeCorner> homeCorners(List<RideCorners> input,
+      {int minCount = 3, int max = 15}) {
+    final rides = [...input]
+      ..sort((a, b) => a.summary.start.compareTo(b.summary.start));
+    // Raster von ca. 40 m; Nachbarzellen werden mitgeprueft.
+    const cell = 0.00036;
+    final groups = <(int, int, int), List<(double, double, DateTime, double, String)>>{};
+    for (final r in rides) {
+      for (final c in r.corners) {
+        final gx = (c.lat / cell).floor(), gy = (c.lon / cell).floor();
+        // Vorhandene Gruppe in der Naehe suchen.
+        (int, int, int)? key;
+        for (var dx = -1; dx <= 1 && key == null; dx++) {
+          for (var dy = -1; dy <= 1 && key == null; dy++) {
+            final k = (gx + dx, gy + dy, c.direction);
+            if (groups.containsKey(k)) key = k;
+          }
+        }
+        key ??= (gx, gy, c.direction);
+        final g = groups.putIfAbsent(key, () => []);
+        // Dieselbe Kurve zweimal in einer Fahrt (Hin und Rueck, Runde)
+        // zaehlt einmal - mit der tieferen Schraeglage.
+        final i = g.indexWhere((e) => e.$5 == r.summary.id);
+        if (i >= 0) {
+          if (c.maxLean > g[i].$4) {
+            g[i] = (c.lat, c.lon, r.summary.start, c.maxLean, r.summary.id);
+          }
+        } else {
+          g.add((c.lat, c.lon, r.summary.start, c.maxLean, r.summary.id));
+        }
+      }
+    }
+    final out = <HomeCorner>[
+      for (final e in groups.entries)
+        if (e.value.length >= minCount)
+          HomeCorner(
+            e.value.fold<double>(0, (s, x) => s + x.$1) / e.value.length,
+            e.value.fold<double>(0, (s, x) => s + x.$2) / e.value.length,
+            e.key.$3 > 0,
+            [for (final x in e.value) (x.$3, x.$4)],
+          ),
+    ]..sort((a, b) => b.count != a.count
+        ? b.count.compareTo(a.count)
+        : b.best.compareTo(a.best));
+    return out.take(max).toList();
+  }
 
   static RiderProfile of(List<RideCorners> input) {
     final rides = [...input]

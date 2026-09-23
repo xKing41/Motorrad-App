@@ -78,4 +78,39 @@ void main() {
     ]);
     expect(p.insights, isEmpty);
   });
+
+  test('Hauskurven: dieselbe Kurve ueber mehrere Fahrten', () {
+    Corner at(double lat, double lon, int dir, double lean) => Corner(
+          startIndex: 0,
+          endIndex: 1,
+          maxLean: lean,
+          direction: dir,
+          entrySpeedKmh: 60,
+          minSpeedKmh: 50,
+          exitSpeedKmh: 55,
+          lat: lat,
+          lon: lon,
+          apexSpeedKmh: 50,
+        );
+    final rides = [
+      for (var d = 1; d <= 4; d++)
+        RideCorners(ride(d), [
+          // Gleiche Kurve, Scheitel um ein paar Meter versetzt.
+          at(48.5 + d * 0.00005, 9.1, 1, 20.0 + d * 3),
+          // Gleicher Ort, andere Richtung (Rueckweg) - eigene Kurve.
+          at(48.5, 9.1, -1, 18),
+          // Einmalige Kurve.
+          at(48.0 + d, 9.0, 1, 30),
+        ]),
+    ];
+    final h = RiderProfile.homeCorners(rides);
+    expect(h.length, 2);
+    final right = h.firstWhere((x) => x.right);
+    expect(right.count, 4);
+    expect(right.first, 23);
+    expect(right.last, 32);
+    expect(right.best, 32);
+    final left = h.firstWhere((x) => !x.right);
+    expect(left.spread, 0);
+  });
 }

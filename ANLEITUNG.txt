@@ -14,6 +14,16 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.19 - Deine Hauskurven
+-------------------------------
+
+- FAHRTEN -> MEIN FAHRSTIL -> "DEINE HAUSKURVEN": Kurven, die du in
+  mindestens drei Fahrten gefahren bist - wie oft, beste und letzte
+  Schraeglage, Entwicklung seit dem ersten Mal und wie gleichmaessig
+  (Streuung). Antippen zeigt die Kurve auf der Karte.
+- Deine eigene Bestenliste, bewusst OHNE Zeiten und Tempo: Auf
+  oeffentlichen Strassen gibt es keinen Wettbewerb.
+
 VERSION 4.18 - Spritpreise an den Tankstopps
 --------------------------------------------
 

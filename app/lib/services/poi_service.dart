@@ -106,7 +106,7 @@ class PoiService {
             .post(
               Uri.parse(endpoint),
               body: {'data': query},
-              headers: {'User-Agent': 'Schraeglage/4.18 (Motorrad-App)'},
+              headers: {'User-Agent': 'Schraeglage/4.19 (Motorrad-App)'},
             )
             .timeout(timeout);
         if (res.statusCode != 200) continue;
