@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 
 import '../models/route_plan.dart';
+import 'curve_warning.dart';
 import 'geo.dart';
 import 'route_follow.dart';
 import 'route_patch.dart';
@@ -44,6 +45,7 @@ class NavigationSession extends ChangeNotifier {
     this.traffic,
     this.limits,
     this.speedWarning = false,
+    this.curveWarning = true,
     Speak? speak,
     this.autoAvoidClosures = true,
     this.trafficEvery = const Duration(minutes: 5),
@@ -61,6 +63,9 @@ class NavigationSession extends ChangeNotifier {
 
   /// Beim Ueberschreiten des Limits einmal ansagen.
   final bool speedWarning;
+
+  /// Vor engen Kurven warnen, wenn das Tempo zu hoch ist.
+  final bool curveWarning;
   final Speak _speak;
   final bool autoAvoidClosures;
   final Duration trafficEvery;
@@ -137,6 +142,15 @@ class NavigationSession extends ChangeNotifier {
           (p, h.alongM),
     ]..sort((a, b) => a.$2.compareTo(b.$2));
     _loadLimits();
+    _curves = curveWarning
+        ? CurveFinder.find(_plan.points, skipNear: [
+            for (var i = 0; i < _plan.steps.length; i++)
+              if (_plan.steps[i].type != ManeuverType.start) _stepAlong[i],
+          ])
+        : const [];
+    _curveIdx = 0;
+    _curveWarned.clear();
+    curveAhead = null;
     // Neue Linie: Meldungen neu zuordnen.
     ahead = [
       for (final i in ahead)
@@ -292,6 +306,50 @@ class NavigationSession extends ChangeNotifier {
       .replaceAll('einem Kilometer', 'einen Kilometer')
       .replaceAll('Kilometern', 'Kilometer');
 
+  // ---------------------------------------------------------------------
+  //  Kurven-Vorwarnung
+  // ---------------------------------------------------------------------
+  List<RoadCurve> _curves = const [];
+  int _curveIdx = 0;
+  final Set<int> _curveWarned = {};
+
+  /// Enge Kurve voraus, vor der gerade gewarnt wird (mit Entfernung bis
+  /// zum Kurvenbeginn) - sonst null.
+  (RoadCurve, double)? curveAhead;
+
+  List<RoadCurve> get curves => _curves;
+
+  void _checkCurves() {
+    curveAhead = null;
+    if (_curves.isEmpty) return;
+    final along = alongM;
+    while (_curveIdx < _curves.length && _curves[_curveIdx].endM < along) {
+      _curveIdx++;
+    }
+    // Die naechsten zwei Kurven pruefen (eine harmlose kann vor einer
+    // engen liegen).
+    for (var k = _curveIdx; k < math.min(_curves.length, _curveIdx + 3); k++) {
+      final c = _curves[k];
+      final d = c.startM - along;
+      if (d > 1500) break;
+      // Schon in der Kurve: Anzeige bleibt bis zum Scheitel.
+      final inCurve = d < 0 && along < c.apexM;
+      if (inCurve && _curveWarned.contains(k)) {
+        curveAhead = (c, 0);
+        return;
+      }
+      if (!CurveFinder.shouldWarn(c, d, _speedMs)) continue;
+      curveAhead = (c, d);
+      if (!_curveWarned.contains(k) && !_spoke) {
+        _curveWarned.add(k);
+        _say(d < 80
+            ? 'Achtung, ${c.label}!'
+            : 'Achtung, ${c.label} in ${spokenDistance(d)}.');
+      }
+      return;
+    }
+  }
+
   // Stopps vorab ansagen: "In 10 Kilometern: Tankstopp, Aral."
   final Map<String, int> _stopAnnounced = {};
   static const List<double> stopStages = [10000, 1500];
@@ -354,6 +412,7 @@ class NavigationSession extends ChangeNotifier {
 
     // Abseits der Route?
     if (f.offRouteM > 50) {
+      curveAhead = null;
       _offSince ??= DateTime.now();
       final long = DateTime.now().difference(_offSince!).inSeconds >= 6;
       if (long && !rerouting && speedMs > 1.5 &&
@@ -368,6 +427,7 @@ class NavigationSession extends ChangeNotifier {
       }
       _advanceSteps();
       _announceStops();
+      _checkCurves();
     }
 
     if (!arrived && f.remainingM < 40 && f.offRouteM < 60) {

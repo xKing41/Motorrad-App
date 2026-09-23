@@ -65,6 +65,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
   bool _showLimits = true;
   bool _speedWarn = false;
   bool _showCameras = false;
+  bool _curveWarn = true;
   RoutingService _serviceSel = RoutingService.valhalla;
 
   @override
@@ -105,6 +106,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       _showLimits = routing.showLimits;
       _speedWarn = routing.speedWarn;
       _showCameras = routing.showCameras;
+      _curveWarn = routing.curveWarn;
       // Letzte eigene Vorgaben wieder herstellen.
       _distanceKm = (sp.getDouble('plan_km') ?? 150).clamp(20, 600).toDouble();
       _curviness = CurvinessX.parse(sp.getString('plan_curv') ?? 'curvy');
@@ -143,6 +145,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       showLimits: _showLimits,
       speedWarn: _speedWarn,
       showCameras: _showCameras,
+      curveWarn: _curveWarn,
     );
     if (r.service == RoutingService.graphhopper && r.ghUrl.isEmpty) {
       toast(context, 'Für GraphHopper fehlt die Server-Adresse');
@@ -941,6 +944,8 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
         ),
         _switchRow('Sprachansagen bei der Navigation', _voice,
             (v) => setState(() => _voice = v)),
+        _switchRow('Vor engen Kurven warnen (wenn zu schnell)', _curveWarn,
+            (v) => setState(() => _curveWarn = v)),
         _switchRow('Tempolimit anzeigen (OpenStreetMap)', _showLimits,
             (v) => setState(() => _showLimits = v)),
         if (_showLimits)

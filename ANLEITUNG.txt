@@ -14,6 +14,22 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.13 - Kurven-Vorwarnung
+--------------------------------
+
+- Enge Kurven und Spitzkehren auf der Route werden vorab erkannt (aus
+  der Linie der Route: Radius und Richtungsaenderung).
+- Faehrst du deutlich schneller darauf zu, als die Kurve entspannt
+  hergibt, erscheint unten ein gelbes Feld ("SPITZKEHRE RECHTS · 150 m
+  · ca. 25 km/h") und EINE Ansage ("Achtung, Spitzkehre rechts in
+  150 Metern"). Wer schon passend langsam ist, hoert nichts.
+- Richttempo: sportlich-entspannt (etwa 20 Grad Schraeglage). Die
+  Warnung kommt so frueh, dass sanftes Bremsen reicht.
+- Abbiegen an Kreuzungen zaehlt nicht - das sagt die Navigation an.
+- Abschaltbar: PLANEN -> EINSTELLUNGEN -> "Vor engen Kurven warnen".
+- Ein Hinweis, kein Ersatz fuer den Blick: Die Kartenlinie ist nicht
+  zentimetergenau, Rollsplitt und Gegenverkehr kennt sie nicht.
+
 VERSION 4.12 - Ansagen und Bedienung mit Handschuhen
 ----------------------------------------------------
 

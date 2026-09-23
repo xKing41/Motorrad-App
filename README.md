@@ -40,6 +40,8 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
 - Ansagen senken Musik im Headset ab, Wiederholen per Antippen, Stopps
   werden vorab angesagt; große Knöpfe und Beenden durch Gedrückthalten
   (Handschuhe)
+- **Kurven-Vorwarnung**: enge Kurven und Spitzkehren voraus, nur wenn das
+  Tempo zu hoch ist, mit Richttempo
 - **Tempolimit** bei der Navigation (OpenStreetMap, auch offline), optional
   mit Ansage bei zu hohem Tempo; feste Blitzer nur bei der Planung
 - Echte Motorrad-Routen ohne Schlüssel und ohne Konto (Valhalla auf dem

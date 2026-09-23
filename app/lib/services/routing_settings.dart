@@ -28,6 +28,7 @@ class RoutingSettings {
     this.showLimits = true,
     this.speedWarn = false,
     this.showCameras = false,
+    this.curveWarn = true,
   });
 
   final RoutingService service;
@@ -48,6 +49,9 @@ class RoutingSettings {
 
   /// Bei zu hohem Tempo einmal ansagen.
   final bool speedWarn;
+
+  /// Vor engen Kurven warnen, wenn man zu schnell darauf zufaehrt.
+  final bool curveWarn;
 
   /// Feste Blitzer bei der Planung zeigen (waehrend der Fahrt nie).
   final bool showCameras;
@@ -102,6 +106,7 @@ class RoutingSettings {
     bool? showLimits,
     bool? speedWarn,
     bool? showCameras,
+    bool? curveWarn,
   }) =>
       RoutingSettings(
         service: service ?? this.service,
@@ -114,6 +119,7 @@ class RoutingSettings {
         showLimits: showLimits ?? this.showLimits,
         speedWarn: speedWarn ?? this.speedWarn,
         showCameras: showCameras ?? this.showCameras,
+        curveWarn: curveWarn ?? this.curveWarn,
       );
 
   static const _kService = 'routing_service';
@@ -128,6 +134,7 @@ class RoutingSettings {
   static const _kLimits = 'nav_limits';
   static const _kSpeedWarn = 'nav_speed_warn';
   static const _kCameras = 'plan_cameras';
+  static const _kCurves = 'nav_curve_warn';
 
   static Future<RoutingSettings> load() async {
     final sp = await SharedPreferences.getInstance();
@@ -155,6 +162,7 @@ class RoutingSettings {
       showLimits: sp.getBool(_kLimits) ?? true,
       speedWarn: sp.getBool(_kSpeedWarn) ?? false,
       showCameras: sp.getBool(_kCameras) ?? false,
+      curveWarn: sp.getBool(_kCurves) ?? true,
     );
   }
 
@@ -170,5 +178,6 @@ class RoutingSettings {
     await sp.setBool(_kLimits, showLimits);
     await sp.setBool(_kSpeedWarn, speedWarn);
     await sp.setBool(_kCameras, showCameras);
+    await sp.setBool(_kCurves, curveWarn);
   }
 }

@@ -11,6 +11,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/route_plan.dart';
+import '../services/curve_warning.dart';
 import '../services/external_nav.dart';
 import '../services/gpx_service.dart';
 import '../services/navigation.dart';
@@ -203,6 +204,7 @@ class _MapScreenState extends State<MapScreen>
       traffic: settings.trafficFeed(),
       limits: settings.limitSource(),
       speedWarning: settings.speedWarn,
+      curveWarning: settings.curveWarn,
       speak: settings.voice ? (s) => Voice.instance.say(s) : null,
     );
     nav.addListener(_onNavChanged);
@@ -871,7 +873,11 @@ class _MapScreenState extends State<MapScreen>
                     left: 4,
                     bottom: _nav == null
                         ? 104
-                        : 237 + (_nav!.speedLimit != null ? 62 : 0)),
+                        : 237 +
+                            (_nav!.speedLimit != null ||
+                                    _nav!.curveAhead != null
+                                ? 62
+                                : 0)),
                 child: const MapAttribution(),
               ),
             ),
@@ -1834,6 +1840,45 @@ class _MapScreenState extends State<MapScreen>
     );
   }
 
+  /// Warnung vor einer engen Kurve: Richtung, Entfernung, Richttempo.
+  Widget _curveChip(RoadCurve c, double distM) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: amber,
+        border: Border.all(color: Colors.black26),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(
+            c.hairpin
+                ? (c.right ? Icons.u_turn_right : Icons.u_turn_left)
+                : (c.right ? Icons.turn_sharp_right : Icons.turn_sharp_left),
+            size: 26,
+            color: Colors.black),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(c.label.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black)),
+              Text(
+                  '${distM < 20 ? 'jetzt' : _fmtDist(distM)} · '
+                  'ca. ${c.adviseKmh} km/h',
+                  style: const TextStyle(fontSize: 11, color: Colors.black)),
+            ],
+          ),
+        ),
+      ]),
+    );
+  }
+
   /// Tempolimit-Schild wie an der Strasse; bei zu hohem Tempo rot
   /// hinterlegt, daneben das eigene Tempo.
   Widget _limitSign(SpeedLimit l, bool speeding) {
@@ -1879,14 +1924,16 @@ class _MapScreenState extends State<MapScreen>
         .where((i) => i.alongM > nav.alongM)
         .fold<int>(0, (s, i) => s + i.delaySec);
     final limit = nav.speedLimit;
+    final curve = nav.curveAhead;
     return Column(mainAxisSize: MainAxisSize.min, children: [
-      if (limit != null)
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _limitSign(limit, nav.speeding),
-          ),
+      if (limit != null || curve != null)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(children: [
+            if (limit != null) _limitSign(limit, nav.speeding),
+            if (limit != null && curve != null) const SizedBox(width: 8),
+            if (curve != null) Flexible(child: _curveChip(curve.$1, curve.$2)),
+          ]),
         ),
       Container(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
