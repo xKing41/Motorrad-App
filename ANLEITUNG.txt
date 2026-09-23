@@ -14,6 +14,19 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.15 - Begleit-SMS fuer Angehoerige
+-------------------------------------------
+
+- NOTFALL -> "BEGLEIT-SMS": Der Notfallkontakt bekommt eine SMS beim
+  Losfahren ("Faruk ist um 10:05 losgefahren. Start: <Kartenlink>"),
+  unterwegs alle 30/60/120 Minuten die Position mit Kartenlink und am
+  Ende "Fahrt beendet - 143 km". Wahlweise nur Start und Ende.
+- Ohne Server, ohne Konto: Der Kontakt braucht keine App, der Link
+  oeffnet eine normale Karte. SMS braucht nur Netz, kein Internet, und
+  kostet praktisch keinen Akku.
+- Braucht die Berechtigung "SMS senden" (wird beim Einschalten
+  gefragt). SMS kosten je nach Tarif Geld.
+
 VERSION 4.14 - Sicherung
 ------------------------
 

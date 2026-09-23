@@ -25,6 +25,11 @@ class Emergency {
   /// oeffnen. Braucht die Android-Berechtigung "SMS senden".
   bool autoSend = false;
 
+  /// Begleit-SMS an den Kontakt: Losfahren, Position alle
+  /// [companionEveryMin] Minuten (0 = nur Start und Ende), Fahrtende.
+  bool companion = false;
+  int companionEveryMin = 60;
+
   static const _sms = MethodChannel('schraeglage/sms');
 
   bool get hasContact => contactPhone.trim().length >= 5;
@@ -41,6 +46,8 @@ class Emergency {
     autoDetect = sp.getBool('em_auto') ?? true;
     countdownSec = sp.getInt('em_countdown') ?? 30;
     autoSend = sp.getBool('em_auto_send') ?? false;
+    companion = sp.getBool('em_companion') ?? false;
+    companionEveryMin = sp.getInt('em_companion_min') ?? 60;
   }
 
   Future<void> save() async {
@@ -54,6 +61,8 @@ class Emergency {
     await sp.setBool('em_auto', autoDetect);
     await sp.setInt('em_countdown', countdownSec);
     await sp.setBool('em_auto_send', autoSend);
+    await sp.setBool('em_companion', companion);
+    await sp.setInt('em_companion_min', companionEveryMin);
   }
 
   /// Darf die App SMS selbst senden? Mit [request] wird gefragt.
@@ -76,6 +85,21 @@ class Emergency {
       final ok = await _sms.invokeMethod<bool>('send', {
         'phone': contactPhone.trim(),
         'text': alertText(lat: lat, lon: lon),
+      });
+      return ok ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Beliebige SMS direkt an den Kontakt (Begleit-SMS). Braucht die
+  /// Berechtigung "SMS senden".
+  Future<bool> sendText(String text) async {
+    if (!hasContact) return false;
+    try {
+      final ok = await _sms.invokeMethod<bool>('send', {
+        'phone': contactPhone.trim(),
+        'text': text,
       });
       return ok ?? false;
     } catch (_) {

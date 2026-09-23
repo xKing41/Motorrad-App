@@ -6,6 +6,7 @@ import 'screens/dashboard_screen.dart';
 import 'screens/map_screen.dart';
 import 'screens/rides_screen.dart';
 import 'screens/crash_alarm_screen.dart';
+import 'services/companion.dart';
 import 'services/emergency.dart';
 import 'services/power.dart';
 import 'services/ride_store.dart';
@@ -58,11 +59,17 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _backupTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       final s = t.currentSummary();
       if (s != null) RideStore.instance.saveActive(s, List.of(t.track));
+      // Begleit-SMS: Position in festen Abstaenden.
+      if (t.recording) {
+        _companion.tick(DateTime.now(), t.rideDistanceM / 1000,
+            lat: t.lat, lon: t.lon);
+      }
     });
     _recover();
   }
 
   Timer? _backupTimer;
+  final Companion _companion = Companion(Emergency.instance);
 
   /// Wurde die App beim letzten Mal waehrend einer Fahrt beendet?
   Future<void> _recover() async {
@@ -122,12 +129,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (!t.recording) {
       t.startRecording();
       if (mounted) toast(context, 'Fahrt gestartet – gute Fahrt!');
+      unawaited(_companion.rideStarted(DateTime.now(), lat: t.lat, lon: t.lon));
       await _firstRideSetup();
       return;
     }
 
     final summary = t.stopRecording();
     if (summary == null) return;
+    unawaited(_companion.rideEnded(DateTime.now(), summary.distanceKm));
     await RideStore.instance.clearActive();
     // Aus Versehen gestartet und gleich wieder beendet: nicht als Fahrt
     // in die Liste schreiben.

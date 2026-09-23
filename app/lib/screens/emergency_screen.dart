@@ -110,6 +110,14 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
           const SizedBox(height: 10),
           _autoSendToggle(),
           const SizedBox(height: 18),
+          const TinyLabel('BEGLEIT-SMS (ICH BIN UNTERWEGS)'),
+          const SizedBox(height: 8),
+          _companionToggle(),
+          if (em.companion) ...[
+            const SizedBox(height: 10),
+            _companionInterval(),
+          ],
+          const SizedBox(height: 18),
           SizedBox(
             width: double.infinity,
             child: FlatButton2(
@@ -300,6 +308,78 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
         ]),
       ),
     );
+  }
+
+  Widget _companionToggle() {
+    return InkWell(
+      onTap: () async {
+        if (!em.companion) {
+          if (!em.hasContact) {
+            toast(context, 'Erst oben eine Telefonnummer eintragen');
+            return;
+          }
+          final ok = await em.smsPermission(request: true);
+          if (!ok) {
+            if (mounted) toast(context, 'Ohne Berechtigung "SMS senden" geht es nicht');
+            return;
+          }
+        }
+        setState(() => em.companion = !em.companion);
+        await em.save();
+      },
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: panel,
+          border: Border.all(color: em.companion ? signal : line),
+        ),
+        child: Row(children: [
+          Icon(em.companion ? Icons.check_box : Icons.check_box_outline_blank,
+              size: 18, color: em.companion ? signal : steel),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'Dem Kontakt per SMS Bescheid geben: beim Losfahren, '
+              'unterwegs mit Kartenlink zur Position und am Ende "Fahrt '
+              'beendet". Ohne Server, ohne Konto - der Kontakt braucht '
+              'keine App. SMS braucht nur Netz, kein Internet.',
+              style: TextStyle(fontSize: 11.5, color: chalk, height: 1.35),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _companionInterval() {
+    String label(int m) => m == 0 ? 'nur Start/Ende' : '$m min';
+    return Wrap(spacing: 6, runSpacing: 6, children: [
+      const Padding(
+        padding: EdgeInsets.only(top: 8, right: 4),
+        child: Text('Position alle',
+            style: TextStyle(fontSize: 11, color: steel)),
+      ),
+      for (final m in [0, 30, 60, 120])
+        InkWell(
+          onTap: () async {
+            setState(() => em.companionEveryMin = m);
+            await em.save();
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: em.companionEveryMin == m ? panel : asphalt,
+              border: Border.all(
+                  color: em.companionEveryMin == m ? signal : line),
+            ),
+            child: Text(label(m),
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: em.companionEveryMin == m ? chalk : steel)),
+          ),
+        ),
+    ]);
   }
 
   Widget _countdownRow() {
