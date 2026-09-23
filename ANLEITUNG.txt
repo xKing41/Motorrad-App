@@ -14,6 +14,21 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.11 - Touren speichern
+-------------------------------
+
+- Geplante Route speichern: Lesezeichen-Symbol oben in der Routenzeile,
+  Namen eingeben. Gespeichert wird ALLES - Linie, Abbiegehinweise,
+  Stopps und die Vorgaben (z. B. ohne Autobahn), damit Neuberechnungen
+  unterwegs genauso bleiben.
+- Karte -> TOUREN (frueher GPX) -> "Gespeicherte Touren": antippen und
+  die Tour liegt sofort wieder auf der Karte - ohne Neuberechnung, auch
+  ohne Netz. Umbenennen und Loeschen in der Liste.
+- Die zuletzt geplante Route merkt sich die App selbst ("ZULETZT
+  GEPLANT", oben in der Liste) - sie uebersteht einen Neustart des
+  Handys. Mit dem Lesezeichen daneben wird sie zur festen Tour.
+- GPX-Datei und GPX-Text laden weiterhin ueber denselben Knopf.
+
 VERSION 4.10 - Wetter entlang der Route
 ---------------------------------------
 

@@ -34,6 +34,9 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
 - **Offline-Karten**: angesehene Karten bleiben auf dem Handy, Route
   (automatisch beim Planen) und Kartenausschnitte vorab speichern; im
   Funkloch vergrößerte gröbere Kacheln statt leerer Flächen
+- **Tourenbibliothek**: geplante Touren samt Stopps und Vorgaben speichern
+  und ohne Neuberechnung wieder laden; die zuletzt geplante Route merkt
+  sich die App selbst
 - **Tempolimit** bei der Navigation (OpenStreetMap, auch offline), optional
   mit Ansage bei zu hohem Tempo; feste Blitzer nur bei der Planung
 - Echte Motorrad-Routen ohne Schlüssel und ohne Konto (Valhalla auf dem

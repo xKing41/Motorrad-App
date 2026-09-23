@@ -350,6 +350,58 @@ class RouteRequest {
         if (title != null) 'title': title,
       };
 
+  /// Vollstaendige Fassung zum Speichern auf dem Handy (mit allen
+  /// Koordinaten - anders als [toJson] fuer die KI).
+  Map<String, dynamic> toStorage() => {
+        ...toJson(),
+        if (hasVia) 'via': {'lat': viaLat, 'lon': viaLon},
+        'stops': [
+          for (final s in stops) {...s.toJson(), if (s.repeat) 'repeat': true},
+        ],
+        'fuel_km': fuelEveryKm,
+        'break_km': breakEveryKm,
+        if (destinationName != null) 'destination': destinationName,
+        if (towardsName != null) 'towards': towardsName,
+      };
+
+  static RouteRequest fromStorage(Map<String, dynamic> j) {
+    double? c(String k, String f) =>
+        ((j[k] as Map?)?[f] as num?)?.toDouble();
+    return RouteRequest(
+      startLat: c('start', 'lat') ?? 0,
+      startLon: c('start', 'lon') ?? 0,
+      endLat: c('end', 'lat'),
+      endLon: c('end', 'lon'),
+      viaLat: c('via', 'lat'),
+      viaLon: c('via', 'lon'),
+      roundTrip: j['round_trip'] as bool? ?? true,
+      distanceKm: (j['distance_km'] as num?)?.toDouble() ?? 150,
+      curviness: CurvinessX.parse(j['curviness'] as String?),
+      direction: TourDirectionX.parse(j['direction'] as String?),
+      avoidMotorways: j['avoid_motorways'] as bool? ?? true,
+      avoidTolls: j['avoid_tolls'] as bool? ?? false,
+      avoidUnpaved: j['avoid_unpaved'] as bool? ?? true,
+      stops: [
+        for (final s in ((j['stops'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>())
+          () {
+            final w = StopWish.fromJson(s);
+            return StopWish(
+                kind: w.kind,
+                afterKm: w.afterKm,
+                reason: w.reason,
+                repeat: s['repeat'] == true);
+          }(),
+      ],
+      preferKnownGoodRoads: j['prefer_known_good_roads'] as bool? ?? false,
+      title: j['title'] as String?,
+      destinationName: j['destination'] as String?,
+      towardsName: j['towards'] as String?,
+      fuelEveryKm: (j['fuel_km'] as num?)?.toDouble() ?? 150,
+      breakEveryKm: (j['break_km'] as num?)?.toDouble() ?? 100,
+    );
+  }
+
   /// Baut eine Anfrage aus dem JSON, das ein Sprachmodell liefert.
   ///
   /// Koordinaten werden bewusst NICHT aus dem Modell uebernommen - auch
@@ -426,6 +478,24 @@ class RouteStep {
   /// die B 54.") und die Vorwarnung ("In 500 Metern rechts abbiegen").
   final String? verbal;
   final String? alert;
+
+  Map<String, dynamic> toJson() => {
+        't': text,
+        'd': distanceM,
+        'i': pointIndex,
+        if (type != 0) 'k': type,
+        if (verbal != null) 'v': verbal,
+        if (alert != null) 'a': alert,
+      };
+
+  static RouteStep fromJson(Map<String, dynamic> j) => RouteStep(
+        text: j['t'] as String? ?? '',
+        distanceM: (j['d'] as num?)?.toDouble() ?? 0,
+        pointIndex: (j['i'] as num?)?.toInt() ?? 0,
+        type: (j['k'] as num?)?.toInt() ?? 0,
+        verbal: j['v'] as String?,
+        alert: j['a'] as String?,
+      );
 
   /// Dieselbe Anweisung, verschoben um [offset] Routenpunkte - beim
   /// Zusammensetzen von Routen.
@@ -608,6 +678,27 @@ class RouteStats {
 
   /// Gesamtbewertung des Planers - nur zum Vergleichen der Varianten.
   final double score;
+
+  Map<String, dynamic> toJson() => {
+        'curv': curvIndex,
+        'label': curvLabel,
+        'bends': bendsPerKm,
+        'overlap': overlapShare,
+        'known': knownShare,
+        'score': score,
+      };
+
+  static RouteStats fromJson(Map<String, dynamic> j) {
+    double d(String k) => (j[k] as num?)?.toDouble() ?? 0;
+    return RouteStats(
+      curvIndex: d('curv'),
+      curvLabel: j['label'] as String? ?? '',
+      bendsPerKm: d('bends'),
+      overlapShare: d('overlap'),
+      knownShare: d('known'),
+      score: d('score'),
+    );
+  }
 }
 
 /// Das Ergebnis der Planung: fertige Route zum Anzeigen und Abfahren.

@@ -24,11 +24,13 @@ import '../services/speed_limits.dart';
 import '../services/routing_engine.dart';
 import '../services/routing_settings.dart';
 import '../services/telemetry.dart';
+import '../services/tour_store.dart';
 import '../services/tile_cache.dart';
 import '../services/voice.dart';
 import '../theme.dart';
 import '../widgets/map_attribution.dart';
 import 'route_planner_screen.dart';
+import 'tours_screen.dart';
 
 /// Karte mit Live-Position, aufgezeichneter Spur, geladener Route
 /// und Zwischenstopps.
@@ -274,6 +276,14 @@ class _MapScreenState extends State<MapScreen>
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(
+            leading: const Icon(Icons.bookmarks, color: signal),
+            title: const Text('Gespeicherte Touren',
+                style: TextStyle(fontSize: 12.5, color: chalk)),
+            subtitle: const Text('Eigene Touren und die zuletzt geplante',
+                style: TextStyle(fontSize: 10, color: steel)),
+            onTap: () => Navigator.pop(ctx, 'tours'),
+          ),
+          ListTile(
             leading: const Icon(Icons.folder_open, color: cool),
             title: const Text('GPX-Datei auswählen',
                 style: TextStyle(fontSize: 12.5, color: chalk)),
@@ -290,11 +300,58 @@ class _MapScreenState extends State<MapScreen>
         ]),
       ),
     );
-    if (how == 'file') {
+    if (how == 'tours') {
+      await _openTours();
+    } else if (how == 'file') {
       await _pickGpxFile();
     } else if (how == 'paste') {
       await _pasteGpx();
     }
+  }
+
+  Future<void> _openTours() async {
+    final plan = await Navigator.push<RoutePlan>(
+        context, MaterialPageRoute(builder: (_) => const ToursScreen()));
+    if (plan != null && mounted) _setRoute(plan);
+  }
+
+  /// Aktuelle Route als Tour speichern.
+  Future<void> _saveTour() async {
+    final r = _route;
+    if (r == null) return;
+    final ctrl = TextEditingController(text: r.title ?? '');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: panel,
+        shape: const RoundedRectangleBorder(side: BorderSide(color: line)),
+        title: const Text('TOUR SPEICHERN',
+            style: TextStyle(fontSize: 12, letterSpacing: 2.5, color: chalk)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: const TextStyle(color: chalk),
+          decoration: const InputDecoration(hintText: 'Name der Tour'),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('ABBRECHEN',
+                style: TextStyle(fontSize: 11, color: steel)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text),
+            child: const Text('SPEICHERN',
+                style: TextStyle(fontSize: 11, color: signal)),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (name == null) return;
+    final m = await (await TourStore.open()).save(r, title: name);
+    if (mounted) toast(context, 'Gespeichert: ${m.title}');
   }
 
   Future<void> _pickGpxFile() async {
@@ -410,6 +467,8 @@ class _MapScreenState extends State<MapScreen>
     _prefetchLimits(plan);
     _loadCameras(plan);
     _loadWeather(plan);
+    // Zuletzt geplante Route merken - uebersteht einen Neustart.
+    TourStore.open().then((s) => s.saveLast(plan)).catchError((_) {});
   }
 
   // ------------------------------------------------------------------
@@ -1386,6 +1445,14 @@ class _MapScreenState extends State<MapScreen>
           ),
         if (r != null)
           IconButton(
+            tooltip: 'Tour speichern',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.bookmark_add_outlined,
+                size: 17, color: steel),
+            onPressed: _saveTour,
+          ),
+        if (r != null)
+          IconButton(
             tooltip: 'Details',
             visualDensity: VisualDensity.compact,
             icon: const Icon(Icons.info_outline, size: 17, color: steel),
@@ -1554,8 +1621,8 @@ class _MapScreenState extends State<MapScreen>
         const SizedBox(width: 8),
         Expanded(
           child: _mapBtn(
-            icon: Icons.folder_open,
-            label: 'GPX',
+            icon: Icons.bookmarks,
+            label: 'TOUREN',
             onTap: _importGpx,
           ),
         ),
