@@ -651,7 +651,11 @@ class _MapScreenState extends State<MapScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          [p.displayName, if (p.detail != null) p.detail!]
+                          [
+                            p.displayName,
+                            if (p.detail != null && p.detail != p.displayName)
+                              p.detail!,
+                          ]
                               .join(' · '),
                           style: const TextStyle(fontSize: 11, color: chalk),
                         ),

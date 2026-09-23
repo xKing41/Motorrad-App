@@ -260,6 +260,20 @@ RoutePoint pointAlong(List<RoutePoint> pts, List<double> cum, double alongM) {
   return RoutePoint(a.lat + (b.lat - a.lat) * t, a.lon + (b.lon - a.lon) * t);
 }
 
+/// Teilstueck der Linie von [fromM] bis [toM] (Meter ab Anfang).
+List<RoutePoint> subPath(
+    List<RoutePoint> pts, List<double> cum, double fromM, double toM) {
+  if (pts.length < 2) return List.of(pts);
+  final a = fromM.clamp(0.0, cum.last);
+  final b = toM.clamp(a, cum.last);
+  return [
+    pointAlong(pts, cum, a),
+    for (var i = 0; i < pts.length; i++)
+      if (cum[i] > a && cum[i] < b) pts[i],
+    pointAlong(pts, cum, b),
+  ];
+}
+
 // ---------------------------------------------------------------------------
 //  Kurvigkeit
 // ---------------------------------------------------------------------------
@@ -463,7 +477,9 @@ class SpurCut {
 SpurCut removeSpurs(
   List<RoutePoint> pts, {
   double maxSpurM = 6000,
-  double tolM = 25,
+  // 40 m: Wendet die Route an einem Kreisel, kommt sie oft auf der
+  // anderen Fahrbahn zurueck - 20-35 m neben dem Hinweg.
+  double tolM = 40,
   List<RoutePoint> keep = const [],
 }) {
   final n = pts.length;

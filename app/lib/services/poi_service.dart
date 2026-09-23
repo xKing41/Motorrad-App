@@ -99,6 +99,13 @@ class PoiService {
             .timeout(timeout);
         if (res.statusCode != 200) continue;
         final data = jsonDecode(utf8.decode(res.bodyBytes));
+        // Overpass meldet eine Zeitueberschreitung NICHT als Fehler,
+        // sondern mit Code 200, halben Daten und einem Hinweis "remark".
+        // Das sah vorher aus wie "nichts gefunden".
+        final remark = data is Map ? '${data['remark'] ?? ''}' : '';
+        if (remark.contains('timed out') || remark.contains('runtime error')) {
+          continue;
+        }
         return parseElements(data, kinds);
       } catch (_) {
         // naechsten Server probieren

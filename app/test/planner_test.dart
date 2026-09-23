@@ -267,4 +267,42 @@ void main() {
       ]);
     });
   });
+
+  group('Lange Strecken', () {
+    test('Etappenpunkte hoechstens 300 km auseinander', () {
+      const ankara = RoutePoint(39.93, 32.86);
+      final pts = TourPlanner.legPoints(home, ankara);
+      expect(pts.first, home);
+      expect(pts.last, ankara);
+      for (var i = 1; i < pts.length; i++) {
+        expect(dist(pts[i - 1], pts[i]), lessThanOrEqualTo(300001));
+      }
+    });
+
+    test('A nach B ueber 350 km wird in Etappen gerechnet', () async {
+      final engine = FakeEngine();
+      final dest = destinationPoint(home, 120, 850000);
+      final plan = await TourPlanner(engine).plan(RouteRequest(
+        startLat: home.lat,
+        startLon: home.lon,
+        endLat: dest.lat,
+        endLon: dest.lon,
+        roundTrip: false,
+      ));
+      expect(engine.calls, 3);
+      expect(engine.requests.every((r) => r.length == 2), isTrue);
+      expect(dist(plan.points.first, home), lessThan(1));
+      expect(dist(plan.points.last, dest), lessThan(1));
+      expect(plan.distanceKm, closeTo(850, 20));
+    });
+
+    test('Teilstueck einer Route', () {
+      final line = straight(home, 90, 100000, step: 1000);
+      final cum = cumulativeDistances(line);
+      final part = subPath(line, cum, 40000, 60000);
+      expect(pathLength(part), closeTo(20000, 50));
+      final clipped = subPath(line, cum, -5000, 10000);
+      expect(pathLength(clipped), closeTo(10000, 50));
+    });
+  });
 }

@@ -423,6 +423,50 @@ class TourPlanner {
   //  Von A nach B
   // -------------------------------------------------------------------------
 
+  /// Ab dieser Luftlinie wird in Etappen gerechnet.
+  static const double longTripM = 350000;
+
+  /// Etappenpunkte auf der Luftlinie, hoechstens 300 km auseinander.
+  static List<RoutePoint> legPoints(RoutePoint a, RoutePoint b) {
+    final d = dist(a, b);
+    final n = (d / 300000).ceil();
+    final brg = bearingDeg(a, b);
+    return [
+      a,
+      for (var i = 1; i < n; i++) destinationPoint(a, brg, d * i / n),
+      b,
+    ];
+  }
+
+  Future<EngineRoute> _routeInLegs(RoutePoint a, RoutePoint b,
+      RoutingPrefs prefs, void Function(String) say) async {
+    final stops = legPoints(a, b);
+    final pts = <RoutePoint>[];
+    final steps = <RouteStep>[];
+    var distM = 0.0;
+    var timeS = 0;
+    for (var i = 0; i < stops.length - 1; i++) {
+      say('Etappe ${i + 1}/${stops.length - 1} wird berechnet ...');
+      final r = (await engine.route([
+        Waypoint(stops[i], WaypointKind.endpoint),
+        Waypoint(stops[i + 1], WaypointKind.endpoint),
+      ], prefs))
+          .first;
+      final offset = pts.isEmpty ? 0 : pts.length - 1;
+      pts.addAll(pts.isEmpty ? r.points : r.points.skip(1));
+      for (final s in r.steps) {
+        steps.add(RouteStep(
+            text: s.text,
+            distanceM: s.distanceM,
+            pointIndex: s.pointIndex + offset));
+      }
+      distM += r.distanceM;
+      timeS += r.durationSec;
+    }
+    return cleanRoute(EngineRoute(
+        points: pts, distanceM: distM, durationSec: timeS, steps: steps));
+  }
+
   /// Erlaubter Umweg gegenueber der kuerzesten gefundenen Route.
   static double detourBudget(Curviness c) => switch (c) {
         Curviness.direct => 0.05,
@@ -444,6 +488,29 @@ class TourPlanner {
     }
     final prefs = RoutingPrefs.of(req);
     final via = req.hasVia ? RoutePoint(req.viaLat!, req.viaLon!) : null;
+
+    // Sehr lange Strecken rechnet der oeffentliche Server nicht am Stueck
+    // ("zu lang"). Dann in Etappen rechnen und zusammensetzen.
+    if (via == null && direct > longTripM) {
+      final r = await _routeInLegs(a, b, prefs, say);
+      return [
+        _Candidate(
+          waypoints: [
+            Waypoint(a, WaypointKind.endpoint),
+            Waypoint(b, WaypointKind.endpoint),
+          ],
+          route: r,
+          quality: RouteScoring.evaluate(
+            r.points,
+            curviness: req.curviness,
+            lengthError: 0,
+            roundTrip: false,
+            heatmap: heatmap,
+            preferKnown: req.preferKnownGoodRoads,
+          ),
+        ),
+      ];
+    }
 
     final jobs = <List<Waypoint>>[];
     if (via != null) {
@@ -520,12 +587,34 @@ class TourPlanner {
 
   Future<_Candidate> _attachStops(_Candidate c, RouteRequest req) async {
     final pts = c.route.points;
-    final kinds = req.stops.map((s) => s.kind).toSet().toList();
-    final found = await PoiService.searchAlongRoute(
-      route: pts,
-      kinds: kinds,
-      corridorM: stopCorridorM,
-    );
+    final cum = cumulativeDistances(pts);
+    final total = cum.last;
+    // Gesucht wird nur im Abschnitt um die Stelle, an der der Stopp liegen
+    // soll - erst +-15 km, bei Misserfolg +-40 km. Eine Suche entlang der
+    // GANZEN Route ist fuer den kostenlosen Kartendienst zu gross (er
+    // bricht ab), und weit entfernte Treffer werden ohnehin nicht genommen.
+    List<Poi>? found = <Poi>[];
+    var failures = 0;
+    for (var w = 0; w < req.stops.length; w++) {
+      final wish = req.stops[w];
+      final target = stopTarget(wish, w, req.stops.length, total);
+      for (final half in const [15000.0, 40000.0]) {
+        final res = await PoiService.searchAlongRoute(
+          route: subPath(pts, cum, target - half, target + half),
+          kinds: [wish.kind],
+          corridorM: stopCorridorM,
+        );
+        if (res == null) {
+          failures++;
+          break;
+        }
+        for (final p in res) {
+          if (!found.any((f) => f.id == p.id)) found.add(p);
+        }
+        if (res.any((p) => p.kind == wish.kind)) break;
+      }
+    }
+    if (failures == req.stops.length) found = null;
     if (found == null) {
       return c.copyWith(notes: [
         ...c.notes,
@@ -581,6 +670,13 @@ class TourPlanner {
     }
   }
 
+  /// Wo auf der Route (Meter ab Start) ein Stopp liegen soll: nach der
+  /// gewuenschten Kilometerzahl, sonst gleichmaessig verteilt.
+  static double stopTarget(StopWish wish, int index, int count, double total) =>
+      wish.afterKm != null
+          ? math.min(wish.afterKm! * 1000, total * 0.95)
+          : total * (index + 1) / (count + 1);
+
   /// Suchstreifen links und rechts der Route fuer Zwischenstopps.
   static const double stopCorridorM = 1500;
 
@@ -605,9 +701,7 @@ class TourPlanner {
     final chosen = <(Poi, double)>[];
     for (var w = 0; w < wishes.length; w++) {
       final wish = wishes[w];
-      final targetM = wish.afterKm != null
-          ? math.min(wish.afterKm! * 1000, total * 0.95)
-          : total * (w + 1) / (wishes.length + 1);
+      final targetM = stopTarget(wish, w, wishes.length, total);
       Poi? best;
       var bestAlong = 0.0;
       var bestCost = double.infinity;
