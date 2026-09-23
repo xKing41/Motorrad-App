@@ -30,11 +30,29 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
 - Mehrere Varianten zur Auswahl, bewertet nach Kurvigkeit, Länge und
   doppelt gefahrenen Abschnitten; Sackgassen-Stiche werden
   herausgeschnitten
-- Zwischenstopps (Tanken, Aussicht, Einkehr …) werden als echte Wegpunkte
-  in die Route eingebaut
+- Zwischenstopps über die ganze Strecke: Tanken nach Reichweite (einstellbar,
+  als Kette – nie weiter als die Reichweite, wenn es irgend geht), Pausen im
+  gewählten Abstand (Rastplatz und Einkehr im Wechsel), Aussichtspunkte
+  gleichmäßig verteilt. Alle Stopps werden als echte Wegpunkte eingebaut,
+  lange Touren stückweise
 - „Bewährte Strecken bevorzugen“: Varianten auf Straßen, die du schon
   gefahren bist, werden bevorzugt
 - GPX-Import und -Export (Export über den Teilen-Dialog des Handys)
+- **Übergabe an andere Navis**: GPX (TomTom GO, Garmin, Kurviger,
+  Calimoto, OsmAnd …), Google Maps mit bis zu 9 Zwischenpunkten auf der Tour
+  (lange Touren in Abschnitten), Waze, beliebige Navi-App per „Öffnen mit“
+
+**Navigation**
+- Abbiegehinweise mit Entfernung und Sprachansagen (Vorwarnung und Ansage,
+  abhängig vom Tempo), Karte in Fahrtrichtung, Ankunftszeit, nächster Stopp
+- Verfahren? Nach wenigen Sekunden neue Route – **zurück auf die Tour**,
+  nicht irgendwie zum Ziel; der Rest der kurvigen Strecke bleibt erhalten
+- Staus, Sperrungen, Baustellen, Unfälle (mit TomTom-Schlüssel): schon beim
+  Planen umfahren, unterwegs alle 5 Minuten geprüft. Sperrungen werden
+  automatisch umfahren, bei Staus wird die Umfahrung angeboten, wenn sie
+  schneller ist
+- Auf Zuruf: „Sperrung“ meidet die Strecke direkt voraus, „Stopp
+  überspringen“ lässt den nächsten Stopp aus
 - Optionale KI-Unterstützung: Sie übersetzt nur deinen Wunsch in Vorgaben
   und beschreibt das Ergebnis. Wege und Orte kommen **immer** aus echten
   Kartendaten – erfundene Ziele sind damit ausgeschlossen
@@ -126,7 +144,9 @@ flutter test
 
 Die Tests prüfen die Streckenlogik ohne Netz: Kurvigkeit, Sackgassen,
 Rundtour-Form, Längenkorrektur, Stoppauswahl, Valhalla-Anfragen und
--Antworten, GPX, Folgen-Modus. In der Cloud laufen sie vor jedem Build.
+-Antworten, GPX, Folgen-Modus, Tankkette, Navigation (Ansagen,
+Neuberechnung, Umfahrung), Verkehrsmeldungen, Links für andere Navis.
+In der Cloud laufen sie vor jedem Build.
 
 ---
 
@@ -153,6 +173,13 @@ app/lib/
     geocoder.dart               Ortssuche (Photon, Nominatim)
     poi_service.dart            Orte aus OpenStreetMap (Overpass)
     route_follow.dart           Folgen-Modus: Position auf der Route
+    route_patch.dart            Routen stückweise ersetzen (Umfahrung,
+                                Rückführung auf die Tour)
+    navigation.dart             Navigation: Hinweise, Ansagen,
+                                Neuberechnung, Verkehrslage
+    traffic_service.dart        Staus/Sperrungen (TomTom), Umfahrungen
+    external_nav.dart           Links für Google Maps, Waze & Co.
+    voice.dart                  Sprachansagen
     gpx_service.dart            GPX lesen, schreiben, teilen
     ride_store.dart             Fahrten dateibasiert ablegen
     ai_planner.dart             Anbindung an die Claude-API
@@ -176,6 +203,8 @@ tools/check_dart.py             Strukturprüfung aller Dart-Dateien
 | Routing, alternativ | GraphHopper | ja, optional |
 | Ortssuche | Photon (komoot), Nominatim | nein |
 | Zwischenstopps | Overpass | nein |
+| Verkehrslage (Staus, Sperrungen) | TomTom Traffic API | ja, optional (kostenlos, 2.500 Abfragen/Tag) |
+| Sprachansagen | Sprachausgabe des Handys | nein |
 | KI-Planung | Claude-API | ja, optional |
 
 **Im Code steckt kein API-Schlüssel.** Alle Zugangsdaten werden in der App

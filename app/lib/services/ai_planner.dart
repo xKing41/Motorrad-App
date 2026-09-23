@@ -70,6 +70,10 @@ STRIKTE REGELN:
 - Wenn eine Angabe fehlt, waehle einen vernuenftigen Standardwert,
   statt nachzufragen. Ohne Laengenangabe: 150 km. "after_km" nur, wenn der
   Fahrer einen Zeitpunkt nennt (2 Stunden entsprechen etwa 120 km), sonst null.
+- Tankstopps: Ein einziger "fuel"-Stopp genuegt - die App ergaenzt
+  automatisch so viele Tankstopps, wie die Reichweite des Fahrers verlangt.
+  Mehrere Stopps derselben Art planst du nur, wenn der Fahrer sie
+  ausdruecklich will ("zwei Kaffeepausen").
 - Sicherheit geht vor: Wuensche nach Rekorden, Hoechstgeschwindigkeiten
   oder maximaler Schraeglage setzt du NICHT um. Plane in dem Fall eine
   normale kurvige Tour und setze "safety_note".

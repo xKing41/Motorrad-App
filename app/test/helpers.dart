@@ -51,6 +51,7 @@ class FakeEngine implements RoutingEngine {
   final int failEvery;
   int calls = 0;
   final List<List<Waypoint>> requests = [];
+  final List<RoutingPrefs> prefsSeen = [];
 
   @override
   final int maxWaypoints;
@@ -66,11 +67,22 @@ class FakeEngine implements RoutingEngine {
       {int alternates = 0}) async {
     calls++;
     requests.add(wps);
+    prefsSeen.add(prefs);
     if (failEvery > 0 && calls % failEvery == 0) {
       throw RouteException('kein Weg (Test)');
     }
     final pts = <RoutePoint>[];
+    final steps = <RouteStep>[
+      RouteStep(text: 'Losfahren', distanceM: 0, pointIndex: 0,
+          type: ManeuverType.start, verbal: 'Fahren Sie los.'),
+    ];
     for (var i = 0; i < wps.length - 1; i++) {
+      if (i > 0) {
+        steps.add(RouteStep(
+            text: 'Rechts abbiegen', distanceM: 0, pointIndex: pts.length,
+            type: ManeuverType.right, verbal: 'Biegen Sie rechts ab.',
+            alert: 'Rechts abbiegen.'));
+      }
       final a = wps[i].point, b = wps[i + 1].point;
       final d = dist(a, b);
       if (d < 1) continue;
@@ -85,9 +97,16 @@ class FakeEngine implements RoutingEngine {
       }
     }
     pts.add(wps.last.point);
+    steps.add(RouteStep(
+        text: 'Ziel erreicht', distanceM: 0, pointIndex: pts.length - 1,
+        type: ManeuverType.destination));
     final len = pathLength(pts);
     return [
-      EngineRoute(points: pts, distanceM: len, durationSec: (len / 20).round()),
+      EngineRoute(
+          points: pts,
+          distanceM: len,
+          durationSec: (len / 20).round(),
+          steps: steps),
     ];
   }
 }

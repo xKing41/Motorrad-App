@@ -7,8 +7,10 @@ import '../services/ai_planner.dart';
 import '../services/geocoder.dart';
 import '../services/ride_store.dart';
 import '../services/route_planner.dart';
-import '../services/routing_engine.dart' show ValhallaEngine;
+import '../services/route_patch.dart';
+import '../services/routing_engine.dart';
 import '../services/routing_settings.dart';
+import '../services/traffic_service.dart';
 import '../theme.dart';
 import 'ai_connect_screen.dart';
 
@@ -37,6 +39,8 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
   bool _avoidUnpaved = true;
   bool _preferKnown = false;
   final Set<PoiKind> _stops = {};
+  double _fuelEveryKm = 150;
+  double _breakEveryKm = 100;
 
   /// Eigener Start statt GPS-Position (z. B. Tour am Urlaubsort planen).
   Place? _start;
@@ -55,6 +59,8 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
   final _valhallaCtrl = TextEditingController();
   final _ghUrlCtrl = TextEditingController();
   final _ghKeyCtrl = TextEditingController();
+  final _tomtomCtrl = TextEditingController();
+  bool _voice = true;
   RoutingService _serviceSel = RoutingService.valhalla;
 
   @override
@@ -69,6 +75,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
     _valhallaCtrl.dispose();
     _ghUrlCtrl.dispose();
     _ghKeyCtrl.dispose();
+    _tomtomCtrl.dispose();
     super.dispose();
   }
 
@@ -87,11 +94,20 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       _valhallaCtrl.text = routing.valhallaUrl;
       _ghUrlCtrl.text = routing.ghUrl;
       _ghKeyCtrl.text = routing.ghKey;
+      _tomtomCtrl.text = routing.tomtomKey;
+      _voice = routing.voice;
       // Letzte eigene Vorgaben wieder herstellen.
       _distanceKm = (sp.getDouble('plan_km') ?? 150).clamp(20, 600).toDouble();
       _curviness = CurvinessX.parse(sp.getString('plan_curv') ?? 'curvy');
       _avoidMotorways = sp.getBool('plan_no_motorway') ?? true;
       _avoidUnpaved = sp.getBool('plan_no_unpaved') ?? true;
+      _fuelEveryKm =
+          (sp.getDouble('plan_fuel_km') ?? 150).clamp(60, 400).toDouble();
+      _breakEveryKm =
+          (sp.getDouble('plan_break_km') ?? 100).clamp(40, 250).toDouble();
+      _stops.addAll((sp.getStringList('plan_stops') ?? const [])
+          .map(PoiKindX.parse)
+          .whereType<PoiKind>());
     });
   }
 
@@ -101,6 +117,9 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
     await sp.setString('plan_curv', _curviness.id);
     await sp.setBool('plan_no_motorway', _avoidMotorways);
     await sp.setBool('plan_no_unpaved', _avoidUnpaved);
+    await sp.setDouble('plan_fuel_km', _fuelEveryKm);
+    await sp.setDouble('plan_break_km', _breakEveryKm);
+    await sp.setStringList('plan_stops', _stops.map((k) => k.id).toList());
   }
 
   Future<void> _saveRouting() async {
@@ -109,6 +128,8 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       valhallaUrl: _valhallaCtrl.text.trim(),
       ghUrl: _ghUrlCtrl.text.trim(),
       ghKey: _ghKeyCtrl.text.trim(),
+      tomtomKey: _tomtomCtrl.text.trim(),
+      voice: _voice,
     );
     if (r.service == RoutingService.graphhopper && r.ghUrl.isEmpty) {
       toast(context, 'Für GraphHopper fehlt die Server-Adresse');
@@ -141,8 +162,10 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
         avoidMotorways: _avoidMotorways,
         avoidUnpaved: _avoidUnpaved,
         preferKnownGoodRoads: _preferKnown,
-        stops: _stops.map((k) => StopWish(kind: k)).toList(),
+        stops: _stops.map((k) => StopWish(kind: k, repeat: true)).toList(),
         destinationName: _dest?.name,
+        fuelEveryKm: _fuelEveryKm,
+        breakEveryKm: _breakEveryKm,
       );
 
   // ------------------------------------------------------------------
@@ -186,10 +209,23 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
         heatmap = await RideStore.instance.buildLeanHeatmap();
       }
 
-      final planner = TourPlanner(_routing.engine(), heatmap: heatmap);
+      final engine = _routing.engine();
+      final planner = TourPlanner(engine, heatmap: heatmap);
       var plan = await planner.plan(req, onProgress: (m) {
         if (mounted) setState(() => _status = m);
       });
+
+      // Staus und Sperrungen gleich beim Planen umfahren.
+      if (_routing.hasTraffic) {
+        plan = await TrafficPlanCheck.apply(
+          plan,
+          TrafficService(_routing.tomtomKey),
+          RoutePatcher(engine, RoutingPrefs.of(req)),
+          say: (m) {
+            if (mounted) setState(() => _status = m);
+          },
+        );
+      }
 
       if (_preferKnown && (heatmap == null || heatmap.isEmpty)) {
         plan = plan.copyWith(notes: [
@@ -382,6 +418,36 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
           _sectionTitle('ZWISCHENSTOPPS'),
           const SizedBox(height: 8),
           _stopChips(),
+          if (_stops.contains(PoiKind.fuel))
+            _intervalRow(
+              'TANKEN SPÄTESTENS ALLE',
+              _fuelEveryKm,
+              60,
+              400,
+              (v) => setState(() => _fuelEveryKm = v),
+              amber,
+            ),
+          if (_stops.contains(PoiKind.rest) ||
+              _stops.contains(PoiKind.food) ||
+              _stops.contains(PoiKind.water))
+            _intervalRow(
+              'PAUSE ETWA ALLE',
+              _breakEveryKm,
+              40,
+              250,
+              (v) => setState(() => _breakEveryKm = v),
+              cool,
+            ),
+          if (_stops.isNotEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text(
+                'Stopps werden über die ganze Strecke verteilt: Tanken nach '
+                'Reichweite, Pausen im gewählten Abstand (Rastplatz und '
+                'Einkehr im Wechsel), Aussichtspunkte gleichmäßig.',
+                style: TextStyle(fontSize: 9.5, color: steel, height: 1.4),
+              ),
+            ),
           const SizedBox(height: 20),
           if (_status != null) ...[
             Container(
@@ -712,6 +778,41 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
     );
   }
 
+  Widget _intervalRow(String label, double value, double min, double max,
+      ValueChanged<double> onChanged, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            TinyLabel(label),
+            const Spacer(),
+            Text('${value.round()} km',
+                style: TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w700, color: color)),
+          ]),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: color,
+              inactiveTrackColor: line,
+              thumbColor: color,
+              overlayColor: color.withValues(alpha: 0.15),
+              trackHeight: 3,
+            ),
+            child: Slider(
+              value: value.clamp(min, max),
+              min: min,
+              max: max,
+              divisions: ((max - min) / 10).round(),
+              onChanged: onChanged,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _stopChips() {
     return Wrap(
       spacing: 8,
@@ -795,10 +896,33 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
             obscure: true,
           ),
         ],
+        const SizedBox(height: 6),
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: TinyLabel('VERKEHRSLAGE (STAUS, SPERRUNGEN)'),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Aktuelle Staus, Sperrungen und Baustellen gibt es nicht frei '
+          'und ohne Schlüssel. Mit einem kostenlosen TomTom-Schlüssel '
+          '(developer.tomtom.com, 2.500 Abfragen am Tag) werden sie beim '
+          'Planen und während der Fahrt umfahren.',
+          style: TextStyle(fontSize: 10, color: steel, height: 1.4),
+        ),
+        const SizedBox(height: 8),
+        _field(
+          label: 'TOMTOM-SCHLÜSSEL (leer = ohne Verkehrslage)',
+          controller: _tomtomCtrl,
+          hint: 'API-Key',
+          obscure: true,
+        ),
+        _switchRow('Sprachansagen bei der Navigation', _voice,
+            (v) => setState(() => _voice = v)),
+        const SizedBox(height: 6),
         SizedBox(
           width: double.infinity,
           child: FlatButton2(
-            label: 'ROUTING SPEICHERN',
+            label: 'EINSTELLUNGEN SPEICHERN',
             onTap: _saveRouting,
           ),
         ),

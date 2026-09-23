@@ -19,6 +19,8 @@ class RoutingSettings {
     this.valhallaUrl = '',
     this.ghUrl = '',
     this.ghKey = '',
+    this.tomtomKey = '',
+    this.voice = true,
   });
 
   final RoutingService service;
@@ -27,6 +29,14 @@ class RoutingSettings {
   final String valhallaUrl;
   final String ghUrl;
   final String ghKey;
+
+  /// Schluessel fuer die TomTom-Verkehrslage (leer = ohne Verkehrslage).
+  final String tomtomKey;
+
+  /// Sprachansagen bei der Navigation.
+  final bool voice;
+
+  bool get hasTraffic => tomtomKey.trim().isNotEmpty;
 
   /// Ist die Auswahl vollstaendig? GraphHopper braucht eine Adresse.
   bool get isUsable =>
@@ -47,12 +57,16 @@ class RoutingSettings {
     String? valhallaUrl,
     String? ghUrl,
     String? ghKey,
+    String? tomtomKey,
+    bool? voice,
   }) =>
       RoutingSettings(
         service: service ?? this.service,
         valhallaUrl: valhallaUrl ?? this.valhallaUrl,
         ghUrl: ghUrl ?? this.ghUrl,
         ghKey: ghKey ?? this.ghKey,
+        tomtomKey: tomtomKey ?? this.tomtomKey,
+        voice: voice ?? this.voice,
       );
 
   static const _kService = 'routing_service';
@@ -61,6 +75,8 @@ class RoutingSettings {
   // bereits eingetragener GraphHopper-Zugang erhalten bleibt.
   static const _kGhUrl = 'gh_url';
   static const _kGhKey = 'gh_key';
+  static const _kTomtom = 'tomtom_key';
+  static const _kVoice = 'nav_voice';
 
   static Future<RoutingSettings> load() async {
     final sp = await SharedPreferences.getInstance();
@@ -82,6 +98,8 @@ class RoutingSettings {
       valhallaUrl: sp.getString(_kValhalla) ?? '',
       ghUrl: ghUrl,
       ghKey: sp.getString(_kGhKey) ?? '',
+      tomtomKey: sp.getString(_kTomtom) ?? '',
+      voice: sp.getBool(_kVoice) ?? true,
     );
   }
 
@@ -91,5 +109,7 @@ class RoutingSettings {
     await sp.setString(_kValhalla, valhallaUrl.trim());
     await sp.setString(_kGhUrl, ghUrl.trim());
     await sp.setString(_kGhKey, ghKey.trim());
+    await sp.setString(_kTomtom, tomtomKey.trim());
+    await sp.setBool(_kVoice, voice);
   }
 }

@@ -5,12 +5,79 @@ import '../models/ride.dart' show heatCellKey;
 import '../models/route_plan.dart';
 import 'geo.dart';
 import 'poi_service.dart';
+import 'route_patch.dart';
 import 'routing_engine.dart';
 
 export 'routing_engine.dart' show RouteException;
 
 /// Meldet dem Bildschirm, woran der Planer gerade arbeitet.
 typedef PlanProgress = void Function(String message);
+
+/// Ortssuche entlang eines Routenstuecks (austauschbar fuer Tests).
+/// null = Suche fehlgeschlagen.
+typedef PoiSearch = Future<List<Poi>?> Function(
+    List<RoutePoint> route, List<PoiKind> kinds, double corridorM);
+
+Future<List<Poi>?> _overpassSearch(
+        List<RoutePoint> route, List<PoiKind> kinds, double corridorM) =>
+    PoiService.searchAlongRoute(
+        route: route, kinds: kinds, corridorM: corridorM);
+
+/// Eine Stelle auf der Route, an der ein Stopp liegen soll.
+class StopSlot {
+  StopSlot(this.wish, this.targetM, this.loM, this.hiM);
+
+  /// Pause, Aussicht ...: Suche 20 km vor und nach der Stelle.
+  factory StopSlot.around(StopWish w, double t, double total) =>
+      StopSlot(w, t, _lo(t - 20000, total), math.min(total, t + 20000));
+
+  /// Tanken: lieber frueher als spaeter. Das Fenster reicht weit nach
+  /// vorn, damit die Kette der Tankstopps immer einen Anschluss findet.
+  factory StopSlot.fuel(StopWish w, double t, double total,
+          {double fuelEveryM = 150000}) =>
+      StopSlot(w, t, _lo(t - math.max(45000.0, fuelEveryM * 0.5), total),
+          math.min(total, t + 5000));
+
+  static double _lo(double v, double total) =>
+      math.max(v, math.min(3000.0, total * 0.05));
+
+  final StopWish wish;
+  final double targetM;
+  final double loM;
+  final double hiM;
+
+  PoiKind get kind => wish.kind;
+
+  /// Kommt der Ort fuer diese Stelle in Frage? Etwas Spielraum ueber das
+  /// Suchfenster hinaus - die Kosten bestrafen die Entfernung ohnehin.
+  bool accepts(StopCandidate k) =>
+      k.poi.kind == kind &&
+      k.alongM >= loM - 30000 &&
+      k.alongM <= hiM + 30000;
+
+  @override
+  String toString() => 'StopSlot(${kind.name} @ ${(targetM / 1000).round()} km)';
+}
+
+/// Abschnitt der Route, in dem nach Orten gesucht wird.
+class StopSection {
+  StopSection(this.loM, this.hiM, this.kinds);
+  final double loM;
+  double hiM;
+  final Set<PoiKind> kinds;
+}
+
+/// Gefundener Ort mit seiner Lage zur Route.
+class StopCandidate {
+  StopCandidate(this.poi, this.alongM, this.offM);
+  final Poi poi;
+
+  /// Position entlang der Route (m ab Start).
+  final double alongM;
+
+  /// Seitlicher Abstand zur Route in m.
+  final double offM;
+}
 
 // ---------------------------------------------------------------------------
 //  TOURENPLANER
@@ -243,7 +310,11 @@ class TourPlanner {
     this.heatmap,
     math.Random? random,
     this.maxVariants = 3,
-  }) : _rnd = random ?? math.Random();
+    PoiSearch? poiSearch,
+  })  : _rnd = random ?? math.Random(),
+        _poiSearch = poiSearch ?? _overpassSearch;
+
+  final PoiSearch _poiSearch;
 
   final RoutingEngine engine;
 
@@ -266,16 +337,21 @@ class TourPlanner {
     cands = _distinct(cands);
     // Stopps kosten je Variante eine Kartenabfrage und eine Route -
     // dann lieber weniger Varianten.
-    final keep = req.stops.isEmpty ? maxVariants : math.min(2, maxVariants);
+    // Lange Touren haben viele Stopps - dann nur fuer den besten
+    // Vorschlag suchen, sonst dauert es ewig.
+    final longTrip = cands.isNotEmpty &&
+        pathLength(cands.first.route.points) > 400000;
+    final keep = req.stops.isEmpty
+        ? maxVariants
+        : math.min(longTrip ? 1 : 2, maxVariants);
     cands = cands.take(keep).toList();
 
     if (req.stops.isNotEmpty) {
       final withStops = <_Candidate>[];
       for (var i = 0; i < cands.length; i++) {
-        say(cands.length > 1
-            ? 'Zwischenstopps werden gesucht (${i + 1}/${cands.length}) ...'
-            : 'Zwischenstopps werden gesucht ...');
-        withStops.add(await _attachStops(cands[i], req));
+        final prefix = cands.length > 1 ? 'Variante ${i + 1}: ' : '';
+        withStops.add(
+            await _attachStops(cands[i], req, (m) => say('$prefix$m')));
       }
       cands = withStops
         ..sort((a, b) => b.quality.score.compareTo(a.quality.score));
@@ -441,30 +517,16 @@ class TourPlanner {
   Future<EngineRoute> _routeInLegs(RoutePoint a, RoutePoint b,
       RoutingPrefs prefs, void Function(String) say) async {
     final stops = legPoints(a, b);
-    final pts = <RoutePoint>[];
-    final steps = <RouteStep>[];
-    var distM = 0.0;
-    var timeS = 0;
+    final parts = <EngineRoute>[];
     for (var i = 0; i < stops.length - 1; i++) {
       say('Etappe ${i + 1}/${stops.length - 1} wird berechnet ...');
-      final r = (await engine.route([
+      parts.add((await engine.route([
         Waypoint(stops[i], WaypointKind.endpoint),
         Waypoint(stops[i + 1], WaypointKind.endpoint),
       ], prefs))
-          .first;
-      final offset = pts.isEmpty ? 0 : pts.length - 1;
-      pts.addAll(pts.isEmpty ? r.points : r.points.skip(1));
-      for (final s in r.steps) {
-        steps.add(RouteStep(
-            text: s.text,
-            distanceM: s.distanceM,
-            pointIndex: s.pointIndex + offset));
-      }
-      distM += r.distanceM;
-      timeS += r.durationSec;
+          .first);
     }
-    return cleanRoute(EngineRoute(
-        points: pts, distanceM: distM, durationSec: timeS, steps: steps));
+    return cleanRoute(joinRoutes(parts));
   }
 
   /// Erlaubter Umweg gegenueber der kuerzesten gefundenen Route.
@@ -585,37 +647,54 @@ class TourPlanner {
   //  Zwischenstopps
   // -------------------------------------------------------------------------
 
-  Future<_Candidate> _attachStops(_Candidate c, RouteRequest req) async {
+  Future<_Candidate> _attachStops(
+      _Candidate c, RouteRequest req, void Function(String) say) async {
     final pts = c.route.points;
     final cum = cumulativeDistances(pts);
-    final total = cum.last;
-    // Gesucht wird nur im Abschnitt um die Stelle, an der der Stopp liegen
-    // soll - erst +-15 km, bei Misserfolg +-40 km. Eine Suche entlang der
-    // GANZEN Route ist fuer den kostenlosen Kartendienst zu gross (er
-    // bricht ab), und weit entfernte Treffer werden ohnehin nicht genommen.
-    List<Poi>? found = <Poi>[];
-    var failures = 0;
-    for (var w = 0; w < req.stops.length; w++) {
-      final wish = req.stops[w];
-      final target = stopTarget(wish, w, req.stops.length, total);
-      for (final half in const [15000.0, 40000.0]) {
-        final res = await PoiService.searchAlongRoute(
-          route: subPath(pts, cum, target - half, target + half),
-          kinds: [wish.kind],
-          corridorM: stopCorridorM,
-        );
+    final slots = planSlots(req.stops, cum.last,
+        fuelEveryKm: req.fuelEveryKm, breakEveryKm: req.breakEveryKm);
+    if (slots.isEmpty) return c;
+
+    // Gesucht wird nur in Abschnitten um die Stellen, an denen Stopps
+    // liegen sollen. Eine Suche entlang der GANZEN Route ist fuer den
+    // kostenlosen Kartendienst zu gross (er bricht ab).
+    final cands = <String, StopCandidate>{};
+    var sections = 0, failed = 0;
+    Future<void> searchPass(List<StopSlot> open, double widen) async {
+      final secs = mergeSections(open, cum.last, widenM: widen);
+      for (var i = 0; i < secs.length; i++) {
+        final s = secs[i];
+        say('Zwischenstopps werden gesucht (${i + 1}/${secs.length}) ...');
+        sections++;
+        final res = await _poiSearch(
+            subPath(pts, cum, s.loM, s.hiM), s.kinds.toList(), stopCorridorM);
         if (res == null) {
-          failures++;
-          break;
+          failed++;
+          continue;
         }
+        final from = math.max(0, indexAtOrAfter(cum, s.loM) - 1);
+        final to = indexAtOrAfter(cum, s.hiM);
         for (final p in res) {
-          if (!found.any((f) => f.id == p.id)) found.add(p);
+          if (cands.containsKey(p.id)) continue;
+          final hit = projectOnPolyline(
+              RoutePoint(p.lat, p.lon), pts, cum, from: from, to: to);
+          if (hit == null || hit.distanceM > stopCorridorM) continue;
+          cands[p.id] = StopCandidate(p, hit.alongM, hit.distanceM);
         }
-        if (res.any((p) => p.kind == wish.kind)) break;
       }
     }
-    if (failures == req.stops.length) found = null;
-    if (found == null) {
+
+    await searchPass(slots, 0);
+    // Wo nichts Passendes lag: einmal mit groesserem Fenster nachsuchen.
+    final missing = [
+      for (final s in slots)
+        if (!cands.values.any((k) => s.accepts(k))) s
+    ];
+    if (missing.isNotEmpty && failed < sections) {
+      await searchPass(missing, 30000);
+    }
+
+    if (sections > 0 && failed == sections) {
       return c.copyWith(notes: [
         ...c.notes,
         'Zwischenstopps konnten nicht gesucht werden '
@@ -624,54 +703,85 @@ class TourPlanner {
     }
 
     final notes = <String>[...c.notes];
-    final chosen = chooseStops(pts, req.stops, found);
-    for (final w in req.stops) {
-      if (!chosen.any((e) => e.$1.kind == w.kind)) {
-        notes.add('Keine ${w.kind.label} nah an der Route gefunden.');
+    if (failed > 0) {
+      notes.add('Der Kartendienst war teilweise überlastet - '
+          'einzelne Abschnitte ohne Stopps.');
+    }
+    final chosen = chooseStops(slots, cands.values.toList(),
+        fuelEveryM: req.fuelEveryKm * 1000, totalM: cum.last);
+    for (final k in PoiKind.values) {
+      final want = slots.where((s) => s.kind == k).length;
+      final got = chosen.where((e) => e.$1.kind == k).length;
+      if (want > 0 && got == 0) {
+        notes.add('Keine ${k.label} nah an der Route gefunden.');
+      } else if (got < want && k != PoiKind.fuel) {
+        notes.add('${k.label}: $got von $want gewünschten Stopps gefunden.');
       }
+    }
+    final gaps = fuelGaps(chosen, cum.last,
+        fuelEveryM: req.fuelEveryKm * 1000,
+        wanted: slots.any((s) => s.kind == PoiKind.fuel));
+    if (gaps > 0) {
+      notes.add('Achtung: $gaps Abschnitt${gaps > 1 ? 'e' : ''} länger als '
+          '${req.fuelEveryKm.round()} km ohne gefundene Tankstelle.');
     }
     if (chosen.isEmpty) return c.copyWith(notes: notes);
 
-    final room = engine.maxWaypoints - c.waypoints.length;
-    final insert = chosen.take(math.max(0, room)).toList();
-    if (insert.length < chosen.length) {
-      notes.add('Nicht alle Stopps passen in die Route (Wegpunkt-Limit '
-          'der Engine) - sie sind nur markiert.');
-    }
-    final wps = insertStops(c.waypoints, insert, pts);
-
+    // Stopps als echte Wegpunkte einbauen und die Route neu berechnen -
+    // in Stuecken, damit auch lange Touren mit vielen Stopps gehen.
     final stops = chosen.map((e) => e.$1).toList();
-    try {
-      final routes = await engine.route(wps, RoutingPrefs.of(req));
-      final r = cleanRoute(routes.first,
-          keep: [for (final p in stops) RoutePoint(p.lat, p.lon)]);
-      final len = pathLength(r.points);
-      final err = req.roundTrip
-          ? (len - req.distanceKm * 1000).abs() / (req.distanceKm * 1000)
-          : c.quality.lengthError;
-      return c.copyWith(
-        waypoints: wps,
-        route: r,
-        pois: stops,
-        notes: notes,
-        quality: RouteScoring.evaluate(
-          r.points,
-          curviness: req.curviness,
-          lengthError: err,
-          roundTrip: req.roundTrip,
-          heatmap: heatmap,
-          preferKnown: req.preferKnownGoodRoads,
-        ),
-      );
-    } on RouteException {
+    final wps = mergeWaypoints(c.waypoints, chosen, pts);
+    final chunks = chunkWaypoints(wps, pts, cum,
+        maxCount: math.max(2, engine.maxWaypoints));
+    final prefs = RoutingPrefs.of(req);
+    final parts = <EngineRoute>[];
+    var chunkFails = 0;
+    for (var i = 0; i < chunks.length; i++) {
+      final ch = chunks[i];
+      say(chunks.length > 1
+          ? 'Route über die Stopps (${i + 1}/${chunks.length}) ...'
+          : 'Route über die Stopps wird berechnet ...');
+      try {
+        final r = await engine.route([for (final w in ch) w.$1], prefs);
+        parts.add(r.first);
+      } on RouteException {
+        chunkFails++;
+        parts.add(sliceRoute(c.route, ch.first.$2, ch.last.$2, cum: cum));
+      }
+    }
+    if (chunkFails == chunks.length) {
       notes.add('Die Route über die Stopps ließ sich nicht berechnen - '
           'die Stopps sind nur markiert.');
       return c.copyWith(pois: stops, notes: notes);
     }
+    if (chunkFails > 0) {
+      notes.add('Einzelne Stopps sind nur markiert (Route dorthin '
+          'nicht berechenbar).');
+    }
+    final r = cleanRoute(joinRoutes(parts),
+        keep: [for (final p in stops) RoutePoint(p.lat, p.lon)]);
+    final len = pathLength(r.points);
+    final err = req.roundTrip
+        ? (len - req.distanceKm * 1000).abs() / (req.distanceKm * 1000)
+        : c.quality.lengthError;
+    return c.copyWith(
+      waypoints: [for (final w in wps) w.$1],
+      route: r,
+      pois: stops,
+      notes: notes,
+      quality: RouteScoring.evaluate(
+        r.points,
+        curviness: req.curviness,
+        lengthError: err,
+        roundTrip: req.roundTrip,
+        heatmap: heatmap,
+        preferKnown: req.preferKnownGoodRoads,
+      ),
+    );
   }
 
-  /// Wo auf der Route (Meter ab Start) ein Stopp liegen soll: nach der
-  /// gewuenschten Kilometerzahl, sonst gleichmaessig verteilt.
+  /// Wo auf der Route (Meter ab Start) ein einzelner Stopp liegen soll:
+  /// nach der gewuenschten Kilometerzahl, sonst gleichmaessig verteilt.
   static double stopTarget(StopWish wish, int index, int count, double total) =>
       wish.afterKm != null
           ? math.min(wish.afterKm! * 1000, total * 0.95)
@@ -680,72 +790,283 @@ class TourPlanner {
   /// Suchstreifen links und rechts der Route fuer Zwischenstopps.
   static const double stopCorridorM = 1500;
 
-  /// Waehlt zu jedem Stopp-Wunsch den passendsten Ort entlang der Route.
+  /// Hoechstzahl Stopps je Tour.
+  static const int maxStops = 40;
+
+  /// Macht aus den Stopp-Wuenschen konkrete Stellen auf der Route.
   ///
-  /// Kriterien: nah an der gewuenschten Stelle (nach X km bzw.
-  /// gleichmaessig verteilt), nah an der Strasse, und ein "guter" Ort
-  /// (benannter Aussichtspunkt statt Gipfel im Wald). Beim Tanken ist
-  /// "zu spaet" schlimmer als "zu frueh" - der Tank wird nicht voller.
-  ///
-  /// Rueckgabe: (Ort, Position entlang der Route in m), nach Position
-  /// sortiert. Wuensche ohne passenden Ort fehlen in der Liste.
-  static List<(Poi, double)> chooseStops(
-    List<RoutePoint> pts,
+  ///  * Tanken: spaetestens alle [fuelEveryKm] - auf 3000 km also nicht
+  ///    eine Tankstelle, sondern zwanzig. Auch wenn die KI nur eine
+  ///    geplant hat, wird aufgefuellt: ein leerer Tank ist kein
+  ///    Komfortproblem.
+  ///  * Pausen (Rastplatz, Einkehr, Wasser): alle [breakEveryKm]. Sind
+  ///    Rastplatz UND Einkehr gewuenscht, wechseln sie sich ab - nicht
+  ///    zwei Pausen direkt hintereinander.
+  ///  * Aussichtspunkte: gleichmaessig verteilt, hoechstens acht.
+  ///  * Werkstatt: eine.
+  static List<StopSlot> planSlots(
     List<StopWish> wishes,
-    List<Poi> found, {
-    double corridorM = stopCorridorM,
+    double totalM, {
+    double fuelEveryKm = 150,
+    double breakEveryKm = 100,
   }) {
-    if (pts.length < 2) return const [];
-    final cum = cumulativeDistances(pts);
-    final total = cum.last;
-    final chosen = <(Poi, double)>[];
-    for (var w = 0; w < wishes.length; w++) {
-      final wish = wishes[w];
-      final targetM = stopTarget(wish, w, wishes.length, total);
-      Poi? best;
-      var bestAlong = 0.0;
-      var bestCost = double.infinity;
-      for (final p in found) {
-        if (p.kind != wish.kind || chosen.any((e) => e.$1.id == p.id)) continue;
-        final hit = projectOnPolyline(RoutePoint(p.lat, p.lon), pts, cum);
-        if (hit == null || hit.distanceM > corridorM) continue;
-        var off = (hit.alongM - targetM) / 1000;
-        if (wish.kind == PoiKind.fuel && off > 0) off *= 2;
-        // Kosten in "Kilometern Umweg": 1 Punkt Qualitaet ist 3 km wert.
-        final cost =
-            off.abs() + 3 * hit.distanceM / 1000 - 3 * PoiService.stopQuality(p);
-        if (cost < bestCost) {
-          bestCost = cost;
-          best = p;
-          bestAlong = hit.alongM;
-        }
+    if (wishes.isEmpty || totalM < 2000) return const [];
+    final slots = <StopSlot>[];
+    final fuelM = math.max(30.0, fuelEveryKm) * 1000;
+    final breakM = math.max(20.0, breakEveryKm) * 1000;
+
+    // Einzelne, fest geplante Stopps (z. B. von der KI).
+    final single = wishes.where((w) => !w.repeat).toList();
+    for (var i = 0; i < single.length; i++) {
+      slots.add(StopSlot.around(
+          single[i], stopTarget(single[i], i, single.length, totalM), totalM));
+    }
+
+    final repeat = {for (final w in wishes.where((w) => w.repeat)) w.kind: w};
+    // Pausen: feste Abstaende, nicht kurz vor dem Ziel.
+    List<double> every(double step) {
+      final out = <double>[];
+      for (var t = step; t < totalM - 0.4 * step; t += step) {
+        out.add(t);
       }
-      if (best != null) {
-        chosen.add(
-            (best.copyWith(note: wish.reason, source: 'stop'), bestAlong));
+      if (out.isEmpty) out.add(totalM / 2);
+      return out;
+    }
+
+    final rest = repeat[PoiKind.rest], food = repeat[PoiKind.food];
+    if (rest != null && food != null) {
+      final pos = every(breakM);
+      for (var k = 0; k < pos.length; k++) {
+        // Jede zweite Pause ist eine Einkehr - auf kurzen Touren (eine
+        // einzige Pause) gewinnt die Einkehr.
+        final w = (k.isOdd || pos.length == 1) ? food : rest;
+        slots.add(StopSlot.around(w, pos[k], totalM));
+      }
+    } else if (rest != null) {
+      for (final t in every(breakM)) {
+        slots.add(StopSlot.around(rest, t, totalM));
+      }
+    } else if (food != null) {
+      for (final t in every(math.max(breakM, 150000))) {
+        slots.add(StopSlot.around(food, t, totalM));
       }
     }
+    final water = repeat[PoiKind.water];
+    if (water != null) {
+      for (final t in every(breakM)) {
+        slots.add(StopSlot.around(water, t, totalM));
+      }
+    }
+    final view = repeat[PoiKind.viewpoint];
+    if (view != null) {
+      final n = (totalM / 70000).round().clamp(1, 8);
+      for (var i = 1; i <= n; i++) {
+        slots.add(StopSlot.around(view, totalM * i / (n + 1), totalM));
+      }
+    }
+    final shop = repeat[PoiKind.workshop];
+    if (shop != null) slots.add(StopSlot.around(shop, totalM / 2, totalM));
+
+    // Tanken: Luecken zwischen den geplanten Tankstopps auffuellen.
+    final fuelWish = repeat[PoiKind.fuel] ??
+        single.where((w) => w.kind == PoiKind.fuel).firstOrNull;
+    if (fuelWish != null) {
+      final fixed = slots
+          .where((s) => s.kind == PoiKind.fuel)
+          .map((s) => s.targetM)
+          .toList()
+        ..sort();
+      final fill = <double>[];
+      var last = 0.0;
+      for (final next in [...fixed, totalM]) {
+        while (next - last > fuelM) {
+          last += fuelM;
+          fill.add(last);
+        }
+        last = next;
+      }
+      if (fill.isEmpty && fixed.isEmpty) fill.add(totalM / 2);
+      final w = StopWish(
+          kind: PoiKind.fuel, reason: fuelWish.reason, repeat: true);
+      for (final t in fill) {
+        slots.add(StopSlot.fuel(w, t, totalM, fuelEveryM: fuelM));
+      }
+    }
+
+    slots.sort((a, b) => a.targetM.compareTo(b.targetM));
+    if (slots.length <= maxStops) return slots;
+    // Zu viele: Tanken zuerst, dann Pausen, Aussicht zuletzt.
+    int rank(PoiKind k) => switch (k) {
+          PoiKind.fuel => 0,
+          PoiKind.food => 1,
+          PoiKind.rest => 2,
+          PoiKind.water => 3,
+          PoiKind.workshop => 4,
+          PoiKind.viewpoint => 5,
+        };
+    final keep = [...slots]..sort((a, b) => rank(a.kind).compareTo(rank(b.kind)));
+    return keep.take(maxStops).toList()
+      ..sort((a, b) => a.targetM.compareTo(b.targetM));
+  }
+
+  /// Fasst die Suchfenster benachbarter Stopps zu Abschnitten zusammen -
+  /// eine Anfrage je Abschnitt statt je Stopp.
+  static List<StopSection> mergeSections(
+    List<StopSlot> slots,
+    double totalM, {
+    double widenM = 0,
+    double maxSpanM = 120000,
+  }) {
+    final sorted = [...slots]..sort((a, b) => a.loM.compareTo(b.loM));
+    final out = <StopSection>[];
+    for (final s in sorted) {
+      final lo = math.max(0.0, s.loM - widenM);
+      final hi = math.min(totalM, s.hiM + widenM);
+      final cur = out.isEmpty ? null : out.last;
+      if (cur != null && lo <= cur.hiM + 5000 && hi - cur.loM <= maxSpanM) {
+        cur.hiM = math.max(cur.hiM, hi);
+        cur.kinds.add(s.kind);
+      } else {
+        out.add(StopSection(lo, hi, {s.kind}));
+      }
+    }
+    return out;
+  }
+
+  /// Waehlt zu jeder Stopp-Stelle den passendsten Ort.
+  ///
+  /// Kriterien: nah an der gewuenschten Stelle, nah an der Strasse und
+  /// ein "guter" Ort (benannter Aussichtspunkt statt Gipfel im Wald).
+  /// Beim Tanken zaehlt die Reichweite: der naechste Tankstopp liegt
+  /// hoechstens [fuelEveryM] hinter dem vorigen, wenn es irgend geht -
+  /// und "zu spaet" wiegt doppelt, der Tank wird nicht voller.
+  ///
+  /// Rueckgabe: (Ort, Position entlang der Route in m), nach Position
+  /// sortiert. Stellen ohne passenden Ort fehlen.
+  static List<(Poi, double)> chooseStops(
+    List<StopSlot> slots,
+    List<StopCandidate> cands, {
+    double fuelEveryM = 150000,
+    double? totalM,
+  }) {
+    final total = totalM ??
+        slots.fold<double>(0, (m, s) => math.max(m, s.hiM));
+    final chosen = <(Poi, double)>[];
+    final used = <String>{};
+
+    StopCandidate? best(Iterable<StopCandidate> pool, double target,
+        {bool lateTwice = false}) {
+      StopCandidate? b;
+      var bestCost = double.infinity;
+      for (final k in pool) {
+        if (used.contains(k.poi.id)) continue;
+        var off = (k.alongM - target) / 1000;
+        if (lateTwice && off > 0) off *= 2;
+        // Kosten in "Kilometern Umweg": 1 Punkt Qualitaet ist 3 km wert.
+        final cost =
+            off.abs() + 3 * k.offM / 1000 - 3 * PoiService.stopQuality(k.poi);
+        if (cost < bestCost) {
+          bestCost = cost;
+          b = k;
+        }
+      }
+      return b;
+    }
+
+    void take(StopCandidate k, StopWish w) {
+      used.add(k.poi.id);
+      chosen.add((k.poi.copyWith(note: w.reason, source: 'stop'), k.alongM));
+    }
+
+    // Tank-Kette: von Tankstopp zu Tankstopp, nie weiter als die
+    // Reichweite, wenn es irgend geht.
+    final fillFuel = slots
+        .where((s) => s.kind == PoiKind.fuel && s.wish.repeat)
+        .toList();
+    final chainFuel = fillFuel.isNotEmpty && total > fuelEveryM;
+
+    for (final s in slots) {
+      if (chainFuel && s.kind == PoiKind.fuel && s.wish.repeat) continue;
+      final k = best(cands.where(s.accepts), s.targetM,
+          lateTwice: s.kind == PoiKind.fuel);
+      if (k != null) take(k, s.wish);
+    }
+
+    if (chainFuel) {
+      final w = fillFuel.first.wish;
+      final fuelCands = cands.where((k) => k.poi.kind == PoiKind.fuel).toList()
+        ..sort((a, b) => a.alongM.compareTo(b.alongM));
+      final fixed = chosen
+          .where((e) => e.$1.kind == PoiKind.fuel)
+          .map((e) => e.$2)
+          .toList()
+        ..sort();
+      var pos = 0.0;
+      for (final next in [...fixed, total]) {
+        while (next - pos > fuelEveryM) {
+          final reach = pos + fuelEveryM;
+          final inRange =
+              fuelCands.where((k) => k.alongM > pos + 1000 && k.alongM <= reach);
+          // Ziel: nach rund 85 % der Reichweite tanken.
+          var k = best(inRange, pos + fuelEveryM * 0.85);
+          // Nichts in Reichweite: die naechste Tankstelle danach, damit
+          // es ueberhaupt weitergeht (wird als Luecke gemeldet).
+          k ??= fuelCands
+              .where((c) => c.alongM > reach && c.alongM < next)
+              .where((c) => !used.contains(c.poi.id))
+              .firstOrNull;
+          if (k == null) break;
+          take(k, w);
+          pos = k.alongM;
+        }
+        pos = next;
+      }
+    }
+
     chosen.sort((x, y) => x.$2.compareTo(y.$2));
     return chosen;
   }
 
+  /// Wie viele Abschnitte laenger als die Reichweite sind (Start bis
+  /// erste Tankstelle, zwischen zwei Tankstellen, letzte bis Ziel).
+  static int fuelGaps(List<(Poi, double)> chosen, double totalM,
+      {required double fuelEveryM, required bool wanted}) {
+    if (!wanted) return 0;
+    var gaps = 0, last = 0.0;
+    final fuel = chosen.where((e) => e.$1.kind == PoiKind.fuel).map((e) => e.$2);
+    for (final a in [...fuel, totalM]) {
+      if (a - last > fuelEveryM * 1.05) gaps++;
+      last = a;
+    }
+    return gaps;
+  }
+
   /// Schiebt Stopps an der passenden Stelle zwischen die Wegpunkte.
-  ///
-  /// Start und Ziel liegen fest am Anfang und Ende - bei einer Rundtour
-  /// sind sie derselbe Punkt, eine Projektion waere dort mehrdeutig.
   static List<Waypoint> insertStops(
     List<Waypoint> waypoints,
     List<(Poi, double)> stops,
     List<RoutePoint> pts,
+  ) =>
+      [for (final w in mergeWaypoints(waypoints, stops, pts)) w.$1];
+
+  /// Wie [insertStops], aber mit der Position jedes Wegpunkts entlang
+  /// der bisherigen Route (m ab Start).
+  ///
+  /// Start und Ziel liegen fest am Anfang und Ende - bei einer Rundtour
+  /// sind sie derselbe Punkt, eine Projektion waere dort mehrdeutig.
+  static List<(Waypoint, double)> mergeWaypoints(
+    List<Waypoint> waypoints,
+    List<(Poi, double)> stops,
+    List<RoutePoint> pts,
   ) {
-    if (stops.isEmpty || pts.length < 2) return List.of(waypoints);
+    if (pts.length < 2) return [for (final w in waypoints) (w, 0.0)];
     final cum = cumulativeDistances(pts);
     final along = <double>[0];
     var from = 0;
     for (var i = 1; i < waypoints.length - 1; i++) {
       final hit = projectOnPolyline(waypoints[i].point, pts, cum, from: from);
       if (hit != null) {
-        along.add(hit.alongM);
+        along.add(math.max(hit.alongM, along.last));
         from = hit.segment;
       } else {
         along.add(along.last);
@@ -753,18 +1074,57 @@ class TourPlanner {
     }
     along.add(cum.last);
 
-    final out = <Waypoint>[];
+    final out = <(Waypoint, double)>[];
     var s = 0;
     for (var i = 0; i < waypoints.length; i++) {
       if (i > 0) {
         while (s < stops.length && stops[s].$2 <= along[i]) {
           final p = stops[s].$1;
-          out.add(Waypoint.at(p.lat, p.lon, WaypointKind.stop));
+          out.add((Waypoint.at(p.lat, p.lon, WaypointKind.stop), stops[s].$2));
           s++;
         }
       }
-      out.add(waypoints[i]);
+      out.add((waypoints[i], along[i]));
     }
+    return out;
+  }
+
+  /// Teilt eine lange Wegpunktliste in Stuecke, die der Server am Stueck
+  /// rechnen kann: hoechstens [maxSpanM] Strecke und [maxCount] Punkte.
+  /// Aufeinanderfolgende Stuecke teilen sich den Grenzpunkt. Zu grosse
+  /// Luecken werden mit Punkten der bisherigen Route ueberbrueckt, damit
+  /// deren Verlauf erhalten bleibt.
+  static List<List<(Waypoint, double)>> chunkWaypoints(
+    List<(Waypoint, double)> wps,
+    List<RoutePoint> pts,
+    List<double> cum, {
+    double maxSpanM = 250000,
+    int maxCount = 20,
+  }) {
+    final dense = <(Waypoint, double)>[];
+    for (final w in wps) {
+      if (dense.isNotEmpty) {
+        final a0 = dense.last.$2;
+        final gap = w.$2 - a0;
+        final n = (gap / (maxSpanM * 0.9)).ceil();
+        for (var i = 1; i < n; i++) {
+          final a = a0 + gap * i / n;
+          dense.add((Waypoint(pointAlong(pts, cum, a), WaypointKind.shape), a));
+        }
+      }
+      dense.add(w);
+    }
+    final out = <List<(Waypoint, double)>>[];
+    var cur = <(Waypoint, double)>[];
+    for (final w in dense) {
+      if (cur.length >= 2 &&
+          (w.$2 - cur.first.$2 > maxSpanM || cur.length >= maxCount)) {
+        out.add(cur);
+        cur = [cur.last];
+      }
+      cur.add(w);
+    }
+    if (cur.length >= 2) out.add(cur);
     return out;
   }
 
@@ -788,6 +1148,8 @@ class TourPlanner {
       stats: c.quality.toStats(),
       engineLabel: engine.label,
       notes: c.notes,
+      roundTrip: req.roundTrip,
+      request: req,
     );
   }
 

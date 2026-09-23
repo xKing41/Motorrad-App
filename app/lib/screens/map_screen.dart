@@ -1,12 +1,22 @@
+import 'dart:io' show Platform;
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/route_plan.dart';
+import '../services/external_nav.dart';
 import '../services/gpx_service.dart';
+import '../services/navigation.dart';
 import '../services/poi_service.dart';
 import '../services/route_follow.dart';
+import '../services/routing_engine.dart';
+import '../services/routing_settings.dart';
 import '../services/telemetry.dart';
+import '../services/traffic_service.dart';
+import '../services/voice.dart';
 import '../theme.dart';
 import '../widgets/map_attribution.dart';
 import 'route_planner_screen.dart';
@@ -41,6 +51,9 @@ class _MapScreenState extends State<MapScreen> {
   bool _busy = false;
   bool _mapReady = false;
 
+  /// Laufende Navigation (null = nur Route anzeigen).
+  NavigationSession? _nav;
+
   @override
   void initState() {
     super.initState();
@@ -50,18 +63,97 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void dispose() {
     t.removeListener(_onTick);
+    _nav?.dispose();
     super.dispose();
   }
 
   void _onTick() {
     if (!mounted) return;
-    if (_follower != null && t.lat != null) {
+    final nav = _nav;
+    if (nav != null && t.lat != null) {
+      nav.update(t.lat!, t.lon!, heading: t.headingDeg, speedMs: t.speedMs);
+    } else if (_follower != null && t.lat != null) {
       _follow = _follower!.update(t.lat!, t.lon!);
     }
     if (_autoFollow && _mapReady && t.lat != null) {
-      _map.move(LatLng(t.lat!, t.lon!), _map.camera.zoom);
+      if (nav != null) {
+        _followCourseUp();
+      } else {
+        _map.move(LatLng(t.lat!, t.lon!), _map.camera.zoom);
+      }
     }
     setState(() {});
+  }
+
+  /// Karte in Fahrtrichtung drehen, Position im unteren Drittel - so
+  /// sieht man, was kommt, wie bei jedem Navi.
+  void _followCourseUp() {
+    final heading = t.headingDeg ?? 0;
+    final zoom = _map.camera.zoom;
+    final mpp = 156543.03 * math.cos(t.lat! * math.pi / 180) / math.pow(2, zoom);
+    final ahead = mpp * MediaQuery.of(context).size.height * 0.22;
+    final c = const Distance().offset(LatLng(t.lat!, t.lon!), ahead, heading);
+    _map.moveAndRotate(c, zoom, -heading);
+  }
+
+  // ------------------------------------------------------------------
+  // Navigation
+  // ------------------------------------------------------------------
+  Future<void> _startNav() async {
+    final r = _route;
+    if (r == null) return;
+    final settings = await RoutingSettings.load();
+    Voice.instance.enabled = settings.voice;
+    final nav = NavigationSession(
+      plan: r,
+      engine: settings.engine(),
+      prefs: r.request != null
+          ? RoutingPrefs.of(r.request!)
+          : const RoutingPrefs(),
+      traffic: settings.hasTraffic ? TrafficService(settings.tomtomKey) : null,
+      speak: settings.voice ? (s) => Voice.instance.say(s) : null,
+    );
+    nav.addListener(_onNavChanged);
+    if (!mounted) return;
+    setState(() {
+      _nav = nav;
+      _autoFollow = true;
+    });
+    if (_mapReady && t.lat != null) {
+      _map.move(LatLng(t.lat!, t.lon!), 16);
+    }
+    nav.start();
+    // Navigation ohne Aufzeichnung waere schade - die Fahrt gleich mit
+    // aufzeichnen.
+    if (!t.recording) widget.onToggleRide();
+  }
+
+  void _onNavChanged() {
+    final nav = _nav;
+    if (nav == null || !mounted) return;
+    // Nach einer Neuberechnung die neue Linie zeigen.
+    if (!identical(nav.plan, _route)) {
+      _route = nav.plan;
+      _routeLine = nav.plan.points
+          .map((p) => LatLng(p.lat, p.lon))
+          .toList(growable: false);
+      _pois = [..._pois.where((p) => p.source == 'osm'), ...nav.plan.pois];
+    }
+    setState(() {});
+  }
+
+  void _stopNav() {
+    final nav = _nav;
+    if (nav == null) return;
+    nav.removeListener(_onNavChanged);
+    nav.dispose();
+    Voice.instance.stop();
+    setState(() {
+      _nav = null;
+      _follower = _route != null ? RouteFollower(_route!) : null;
+      _follow = null;
+    });
+    if (_mapReady) _map.rotate(0);
   }
 
   // ------------------------------------------------------------------
@@ -141,6 +233,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _setRoute(RoutePlan plan, {bool keepVariants = false}) {
+    _stopNav();
     setState(() {
       if (!keepVariants) {
         _variants = [plan, ...plan.alternatives];
@@ -159,12 +252,13 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _nextVariant() {
-    if (_variants.length < 2) return;
+    if (_variants.length < 2 || _nav != null) return;
     _variantIdx = (_variantIdx + 1) % _variants.length;
     _setRoute(_variants[_variantIdx], keepVariants: true);
   }
 
   void _clearRoute() {
+    _stopNav();
     setState(() {
       _route = null;
       _routeLine = const [];
@@ -236,7 +330,7 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  Future<void> _exportRoute() async {
+  Future<void> _shareGpx() async {
     final r = _route;
     if (r == null) return;
     final msg = await GpxService.share(
@@ -245,6 +339,90 @@ class _MapScreenState extends State<MapScreen> {
       subject: r.title,
     );
     if (msg != null && mounted) toast(context, msg);
+  }
+
+  Future<void> _open(Uri uri) async {
+    var ok = false;
+    try {
+      ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      ok = false;
+    }
+    if (!ok && mounted) toast(context, 'Keine passende App gefunden');
+  }
+
+  /// Route an eine andere Navi-App uebergeben.
+  void _showExport() {
+    final r = _route;
+    if (r == null) return;
+    final from = _nav?.alongM ?? 0;
+    final google = ExternalNav.googleMaps(r, fromM: from);
+    final (target, targetName) = ExternalNav.nextTarget(r, fromM: from);
+
+    Widget tile(IconData icon, String title, String sub, VoidCallback onTap) =>
+        ListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(icon, color: cool, size: 20),
+          title: Text(title,
+              style: const TextStyle(fontSize: 12.5, color: chalk)),
+          subtitle: Text(sub,
+              style: const TextStyle(fontSize: 10, color: steel, height: 1.3)),
+          onTap: onTap,
+        );
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: panel,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(),
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints:
+              BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            children: [
+              const Text('IN NAVI-APP ÖFFNEN',
+                  style: TextStyle(
+                      fontSize: 12, letterSpacing: 2, color: chalk)),
+              const SizedBox(height: 4),
+              const Text(
+                'Die exakte Tour überträgt nur die GPX-Datei. Links an '
+                'Google & Co. geben Zwischenpunkte auf der Tour vor - die '
+                'App rechnet dazwischen selbst.',
+                style: TextStyle(fontSize: 10, color: steel, height: 1.4),
+              ),
+              const SizedBox(height: 8),
+              tile(
+                Icons.route,
+                'GPX-Datei (exakte Tour)',
+                'TomTom GO, Garmin, Kurviger, Calimoto, OsmAnd, '
+                    'MyRoute-app ... - im Teilen-Menü die App wählen',
+                () {
+                  Navigator.pop(ctx);
+                  _shareGpx();
+                },
+              ),
+              for (final g in google)
+                tile(Icons.map, g.label, g.detail ?? '', () => _open(g.uri)),
+              tile(Icons.navigation, 'Waze',
+                  'Nur ein Ziel möglich: $targetName',
+                  () => _open(ExternalNav.waze(target))),
+              if (Platform.isIOS)
+                tile(Icons.map_outlined, 'Apple Karten',
+                    'Nur ein Ziel möglich: $targetName',
+                    () => _open(ExternalNav.appleMaps(target))),
+              if (Platform.isAndroid)
+                tile(Icons.open_in_new, 'Andere Navi-App',
+                    'TomTom GO, Sygic, HERE, Magic Earth ... - Ziel: $targetName',
+                    () => _open(ExternalNav.geo(target, targetName))),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // ------------------------------------------------------------------
@@ -294,21 +472,31 @@ class _MapScreenState extends State<MapScreen> {
             MarkerLayer(markers: _markers()),
             // Pflichtangabe zur Kartenquelle. Liegt oberhalb des
             // Tastenbands, damit sie nicht verdeckt wird.
-            const Align(
+            Align(
               alignment: Alignment.bottomLeft,
               child: Padding(
-                padding: EdgeInsets.only(left: 4, bottom: 104),
-                child: MapAttribution(),
+                padding: EdgeInsets.only(left: 4, bottom: _nav != null ? 215 : 104),
+                child: const MapAttribution(),
               ),
             ),
           ],
         ),
 
-        // Kopfzeile mit Route-Info
-        Positioned(top: 8, left: 12, right: 12, child: _topBar()),
+        // Kopfzeile: Abbiegehinweis bei Navigation, sonst Route-Info
+        Positioned(
+          top: 8,
+          left: 12,
+          right: 12,
+          child: _nav != null ? _navTop(_nav!) : _topBar(),
+        ),
 
         // Bedienleiste unten
-        Positioned(left: 12, right: 12, bottom: 10, child: _bottomBar()),
+        Positioned(
+          left: 12,
+          right: 12,
+          bottom: 10,
+          child: _nav != null ? _navBottom(_nav!) : _bottomBar(),
+        ),
 
         if (_busy)
           const Positioned(
@@ -415,13 +603,33 @@ class _MapScreenState extends State<MapScreen> {
       out.add(_flag(b, loop ? const Color(0xFF7FBF4F) : redline, Icons.flag));
     }
 
+    for (final inc in _nav?.ahead ?? _route?.traffic ?? const <TrafficIncident>[]) {
+      out.add(Marker(
+        point: LatLng(inc.points.first.lat, inc.points.first.lon),
+        width: 28,
+        height: 28,
+        child: GestureDetector(
+          onTap: () => toast(context,
+              [inc.label, if (inc.description != null) inc.description!].join(' · ')),
+          child: Container(
+            decoration: BoxDecoration(
+              color: panel,
+              shape: BoxShape.circle,
+              border: Border.all(color: redline, width: 2),
+            ),
+            child: Icon(_trafficIcon(inc.category), size: 15, color: redline),
+          ),
+        ),
+      ));
+    }
+
     for (final p in _pois) {
-      final info = {
+      final info = [
         p.kind.label,
         p.displayName,
-        if (p.detail != null && p.detail != p.displayName) p.detail!,
+        if (_detailOf(p) != null) _detailOf(p)!,
         if (p.note != null) p.note!,
-      }.join(' · ');
+      ].join(' · ');
       out.add(Marker(
         point: LatLng(p.lat, p.lon),
         width: 30,
@@ -471,6 +679,59 @@ class _MapScreenState extends State<MapScreen> {
           child: Icon(icon, size: 13, color: c),
         ),
       );
+
+  /// Zusatzangabe, aber nicht doppelt ("Jet · JET").
+  static String? _detailOf(Poi p) {
+    final d = p.detail;
+    if (d == null || d.trim().isEmpty) return null;
+    final a = d.trim().toLowerCase(), b = p.displayName.trim().toLowerCase();
+    if (a == b || b.contains(a)) return null;
+    return d;
+  }
+
+  static IconData _trafficIcon(TrafficCategory c) => switch (c) {
+        TrafficCategory.jam => Icons.traffic,
+        TrafficCategory.closed => Icons.block,
+        TrafficCategory.laneClosed => Icons.merge,
+        TrafficCategory.roadworks => Icons.construction,
+        TrafficCategory.accident => Icons.car_crash,
+        TrafficCategory.weather => Icons.cloud,
+        _ => Icons.warning_amber,
+      };
+
+  static IconData maneuverIcon(int type) => switch (type) {
+        ManeuverType.start => Icons.trip_origin,
+        ManeuverType.slightRight => Icons.turn_slight_right,
+        ManeuverType.right => Icons.turn_right,
+        ManeuverType.sharpRight => Icons.turn_sharp_right,
+        ManeuverType.uturnRight => Icons.u_turn_right,
+        ManeuverType.uturnLeft => Icons.u_turn_left,
+        ManeuverType.sharpLeft => Icons.turn_sharp_left,
+        ManeuverType.left => Icons.turn_left,
+        ManeuverType.slightLeft => Icons.turn_slight_left,
+        ManeuverType.rampRight || ManeuverType.exitRight => Icons.ramp_right,
+        ManeuverType.rampLeft || ManeuverType.exitLeft => Icons.ramp_left,
+        ManeuverType.stayRight => Icons.fork_right,
+        ManeuverType.stayLeft => Icons.fork_left,
+        ManeuverType.merge => Icons.merge,
+        ManeuverType.roundaboutEnter || ManeuverType.roundaboutExit =>
+          Icons.roundabout_right,
+        ManeuverType.ferry => Icons.directions_boat,
+        _ when ManeuverType.isDestination(type) => Icons.flag,
+        _ => Icons.straight,
+      };
+
+  static String _fmtDist(double m) {
+    if (m < 0) m = 0;
+    if (m < 1000) {
+      final r = m < 200 ? (m / 10).round() * 10 : (m / 50).round() * 50;
+      return '$r m';
+    }
+    return _fmtKm(m);
+  }
+
+  static String _fmtClock(DateTime d) =>
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
   IconData _poiIcon(PoiKind k) => switch (k) {
         PoiKind.fuel => Icons.local_gas_station,
@@ -653,14 +914,37 @@ class _MapScreenState extends State<MapScreen> {
                         child: Text(
                           [
                             p.displayName,
-                            if (p.detail != null && p.detail != p.displayName)
-                              p.detail!,
-                          ]
-                              .join(' · '),
+                            if (_detailOf(p) != null) _detailOf(p)!,
+                          ].join(' · '),
                           style: const TextStyle(fontSize: 11, color: chalk),
                         ),
                       ),
                     ]),
+                  ),
+              ],
+              if (r.traffic.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                const TinyLabel('VERKEHRSLAGE AN DER ROUTE'),
+                const SizedBox(height: 4),
+                for (final i in r.traffic)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(_trafficIcon(i.category), size: 14, color: redline),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            [
+                              'km ${(i.alongM / 1000).round()}: ${i.label}',
+                              if (i.description != null) i.description!,
+                            ].join(' · '),
+                            style: const TextStyle(fontSize: 11, color: chalk),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
               ],
               if (r.description != null) ...[
@@ -727,22 +1011,295 @@ class _MapScreenState extends State<MapScreen> {
           Expanded(
             child: _mapBtn(
               icon: Icons.ios_share,
-              label: 'EXPORT',
-              onTap: _exportRoute,
+              label: 'NAVI-APP',
+              onTap: _showExport,
             ),
           ),
         ],
       ]),
       const SizedBox(height: 8),
-      SizedBox(
-        width: double.infinity,
-        child: FlatButton2(
-          label: t.recording ? 'FAHRT BEENDEN' : 'FAHRT STARTEN',
-          color: t.recording ? amber : signal,
-          strong: true,
-          onTap: widget.onToggleRide,
+      Row(children: [
+        if (_route != null) ...[
+          Expanded(
+            child: FlatButton2(
+              label: 'NAVIGATION',
+              color: signal,
+              strong: true,
+              onTap: _startNav,
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+        Expanded(
+          child: FlatButton2(
+            label: t.recording ? 'FAHRT BEENDEN' : 'FAHRT STARTEN',
+            color: t.recording ? amber : (_route != null ? cool : signal),
+            strong: _route == null || t.recording,
+            onTap: widget.onToggleRide,
+          ),
+        ),
+      ]),
+    ]);
+  }
+
+  // ------------------------------------------------------------------
+  // Navigationsanzeige
+  // ------------------------------------------------------------------
+  Widget _navTop(NavigationSession nav) {
+    final step = nav.nextStep;
+    final then = nav.thenStep;
+    final f = nav.follow;
+    final offer = nav.offer;
+    final children = <Widget>[];
+
+    if (nav.rerouting) {
+      children.add(const Row(children: [
+        SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(color: signal, strokeWidth: 2),
+        ),
+        SizedBox(width: 12),
+        Expanded(
+          child: Text('Route wird neu berechnet ...',
+              style: TextStyle(fontSize: 14, color: chalk)),
+        ),
+      ]));
+    } else if (step != null) {
+      children.add(Row(children: [
+        Icon(maneuverIcon(step.type), size: 44, color: signal),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(_fmtDist(nav.distanceToNext),
+                  style: const TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w700,
+                      color: chalk,
+                      height: 1.1)),
+              Text(step.text,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12.5, color: chalk)),
+            ],
+          ),
+        ),
+        if (then != null)
+          Column(children: [
+            const Text('DANN',
+                style: TextStyle(fontSize: 8, letterSpacing: 1.2, color: steel)),
+            Icon(maneuverIcon(then.type), size: 22, color: steel),
+          ]),
+      ]));
+    } else {
+      children.add(const Text('Der Route folgen',
+          style: TextStyle(fontSize: 14, color: chalk)));
+    }
+
+    if (f != null && f.isOffRoute && !nav.rerouting) {
+      children.add(Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Text(
+          'ABSEITS DER ROUTE · ${_fmtDist(f.offRouteM)}',
+          style: const TextStyle(fontSize: 10, letterSpacing: 1.2, color: amber),
+        ),
+      ));
+    }
+    if (nav.banner != null) {
+      children.add(Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Text(nav.banner!,
+            style: const TextStyle(fontSize: 11, color: cool)),
+      ));
+    }
+    if (offer != null) {
+      children.add(Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(border: Border.all(color: redline)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(_trafficIcon(offer.category), size: 16, color: redline),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '${offer.label} in ${_fmtDist(offer.alongM - nav.alongM)}',
+                  style: const TextStyle(fontSize: 12, color: chalk),
+                ),
+              ),
+            ]),
+            if (offer.description != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Text(offer.description!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 10, color: steel)),
+              ),
+            const SizedBox(height: 6),
+            Row(children: [
+              Expanded(
+                child: FlatButton2(
+                  label: 'UMFAHREN',
+                  color: signal,
+                  strong: true,
+                  onTap: () => nav.avoidIncident(offer),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FlatButton2(
+                  label: 'BLEIBEN',
+                  onTap: nav.dismissOffer,
+                ),
+              ),
+            ]),
+          ],
+        ),
+      ));
+    }
+    if (nav.trafficError != null) {
+      children.add(Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(nav.trafficError!,
+            style: const TextStyle(fontSize: 9, color: steel)),
+      ));
+    }
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: panel.withValues(alpha: 0.96),
+        border: Border.all(color: f?.isOffRoute == true ? amber : line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: children,
+      ),
+    );
+  }
+
+  Widget _navBottom(NavigationSession nav) {
+    final stop = nav.nextStop;
+    final delay = nav.ahead
+        .where((i) => i.alongM > nav.alongM)
+        .fold<int>(0, (s, i) => s + i.delaySec);
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        decoration: BoxDecoration(
+          color: panel.withValues(alpha: 0.96),
+          border: Border.all(color: line),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Text(_fmtKm(nav.remainingM),
+                  style: const TextStyle(
+                      fontSize: 17, fontWeight: FontWeight.w700, color: chalk)),
+              const SizedBox(width: 10),
+              Text(_fmtDuration(nav.remainingTime.inSeconds),
+                  style: const TextStyle(fontSize: 12, color: steel)),
+              const Spacer(),
+              Text('AN ${_fmtClock(nav.eta)}',
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w700, color: signal)),
+            ]),
+            if (delay >= 60)
+              Text('davon ca. ${(delay / 60).round()} min Verzögerung durch Verkehr',
+                  style: const TextStyle(fontSize: 9.5, color: redline)),
+            if (stop != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(children: [
+                  Icon(_poiIcon(stop.poi.kind),
+                      size: 14, color: _poiColor(stop.poi.kind)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '${stop.poi.displayName} in ${_fmtDist(stop.distanceM)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 11, color: chalk),
+                    ),
+                  ),
+                ]),
+              ),
+          ],
         ),
       ),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(
+          child: _mapBtn(
+            icon: Icons.block,
+            label: 'SPERRUNG',
+            onTap: () async {
+              final ok = await nav.avoidAhead();
+              if (!ok && mounted) toast(context, 'Keine Umleitung möglich');
+            },
+          ),
+        ),
+        const SizedBox(width: 8),
+        if (stop != null) ...[
+          Expanded(
+            child: _mapBtn(
+              icon: Icons.skip_next,
+              label: 'STOPP ÜBERSPR.',
+              onTap: nav.skipNextStop,
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+        Expanded(
+          child: _mapBtn(
+            icon: Icons.refresh,
+            label: 'NEU',
+            onTap: nav.rerouteNow,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _mapBtn(
+            icon: Icons.ios_share,
+            label: 'NAVI-APP',
+            onTap: _showExport,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _mapBtn(
+            icon: _autoFollow ? Icons.navigation : Icons.location_searching,
+            label: 'FOLGEN',
+            active: _autoFollow,
+            onTap: () => setState(() => _autoFollow = !_autoFollow),
+          ),
+        ),
+      ]),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(
+          child: FlatButton2(
+            label: 'NAVIGATION BEENDEN',
+            color: amber,
+            onTap: _stopNav,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: FlatButton2(
+            label: t.recording ? 'FAHRT BEENDEN' : 'FAHRT STARTEN',
+            color: t.recording ? amber : signal,
+            onTap: widget.onToggleRide,
+          ),
+        ),
+      ]),
     ]);
   }
 

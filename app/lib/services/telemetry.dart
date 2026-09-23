@@ -102,6 +102,9 @@ class Telemetry extends ChangeNotifier {
   double speedMs = -1;
   double? lat, lon, altM;
   double gpsAccuracyM = 999;
+
+  /// Fahrtrichtung laut GPS in Grad (nur in Bewegung verlaesslich).
+  double? headingDeg;
   DateTime? _fixTime;
   bool gpsDenied = false;
   bool gpsServiceOff = false;
@@ -311,6 +314,7 @@ class Telemetry extends ChangeNotifier {
 
     final s = (p.speed.isFinite && p.speed >= 0) ? p.speed : 0.0;
     speedMs = speedMs < 0 ? s : speedMs + 0.35 * (s - speedMs);
+    if (s > 2 && p.heading.isFinite && p.heading >= 0) headingDeg = p.heading;
 
     // Erst hier, mit dem frisch aktualisierten Tempo: Die
     // Stillstandspruefung der Sturzerkennung braucht den aktuellen Wert,

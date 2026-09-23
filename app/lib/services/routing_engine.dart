@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:http/http.dart' as http;
 
@@ -42,12 +43,17 @@ enum WaypointKind {
 }
 
 class Waypoint {
-  const Waypoint(this.point, this.kind);
+  const Waypoint(this.point, this.kind, {this.heading});
 
-  Waypoint.at(double lat, double lon, this.kind) : point = RoutePoint(lat, lon);
+  Waypoint.at(double lat, double lon, this.kind, {this.heading})
+      : point = RoutePoint(lat, lon);
 
   final RoutePoint point;
   final WaypointKind kind;
+
+  /// Fahrtrichtung in Grad (nur beim Neuberechnen unterwegs): die Route
+  /// soll in Fahrtrichtung weitergehen, nicht mit einem Wendemanoever.
+  final double? heading;
 }
 
 /// Fahrvorlieben, die jede Engine versteht.
@@ -57,6 +63,7 @@ class RoutingPrefs {
     this.avoidMotorways = true,
     this.avoidTolls = false,
     this.avoidUnpaved = true,
+    this.avoid = const [],
   });
 
   factory RoutingPrefs.of(RouteRequest r) => RoutingPrefs(
@@ -70,6 +77,18 @@ class RoutingPrefs {
   final bool avoidMotorways;
   final bool avoidTolls;
   final bool avoidUnpaved;
+
+  /// Punkte auf Strassen, die nicht befahren werden sollen (Sperrung,
+  /// Stau). Die Engine meidet die Strasse an dieser Stelle.
+  final List<RoutePoint> avoid;
+
+  RoutingPrefs withAvoid(List<RoutePoint> more) => RoutingPrefs(
+        curviness: curviness,
+        avoidMotorways: avoidMotorways,
+        avoidTolls: avoidTolls,
+        avoidUnpaved: avoidUnpaved,
+        avoid: [...avoid, ...more],
+      );
 }
 
 /// Rohes Ergebnis einer Engine.
@@ -110,7 +129,7 @@ abstract class RoutingEngine {
 
 const Map<String, String> _headers = {
   'Content-Type': 'application/json',
-  'User-Agent': 'Schraeglage/4.2 (Motorrad-App)',
+  'User-Agent': 'Schraeglage/4.3 (Motorrad-App)',
 };
 
 // ===========================================================================
@@ -238,6 +257,10 @@ class ValhallaEngine implements RoutingEngine {
         'lat': _r6(w.point.lat),
         'lon': _r6(w.point.lon),
       };
+      if (w.heading != null) {
+        loc['heading'] = (w.heading! % 360).round();
+        loc['heading_tolerance'] = 60;
+      }
       if (isEnd || w.kind != WaypointKind.shape) {
         loc['type'] = 'break';
       } else if (relaxed) {
@@ -270,6 +293,11 @@ class ValhallaEngine implements RoutingEngine {
       'costing_options': {costing: opts},
       'directions_options': {'units': 'kilometers', 'language': 'de-DE'},
       if (alternates > 0 && wps.length == 2) 'alternates': alternates,
+      if (prefs.avoid.isNotEmpty)
+        'exclude_locations': [
+          for (final a in prefs.avoid.take(maxAvoid))
+            {'lat': _r6(a.lat), 'lon': _r6(a.lon)},
+        ],
       'id': 'schraeglage',
     };
   }
@@ -295,6 +323,9 @@ class ValhallaEngine implements RoutingEngine {
       };
 
   static double _r6(double v) => (v * 1e6).round() / 1e6;
+
+  /// Hoechstzahl gemiedener Punkte je Anfrage.
+  static const int maxAvoid = 50;
 
   Future<List<EngineRoute>> _send(Map<String, dynamic> body) async {
     final uri = Uri.parse('$baseUrl/route');
@@ -368,10 +399,18 @@ class ValhallaEngine implements RoutingEngine {
       for (final m in (leg['maneuvers'] as List?) ?? const []) {
         if (m is! Map) continue;
         final idx = (m['begin_shape_index'] as num?)?.toInt() ?? 0;
+        String? str(String k) {
+          final v = m[k];
+          return v is String && v.trim().isNotEmpty ? v.trim() : null;
+        }
+
         steps.add(RouteStep(
           text: (m['instruction'] ?? '').toString(),
           distanceM: ((m['length'] as num?)?.toDouble() ?? 0) * perUnit,
           pointIndex: offset + idx,
+          type: (m['type'] as num?)?.toInt() ?? 0,
+          verbal: str('verbal_pre_transition_instruction'),
+          alert: str('verbal_transition_alert_instruction'),
         ));
       }
     }
@@ -545,10 +584,13 @@ class GraphHopperEngine implements RoutingEngine {
       final steps = <RouteStep>[];
       for (final i in (p['instructions'] as List?) ?? const []) {
         if (i is! Map) continue;
+        final text = (i['text'] ?? '').toString();
         steps.add(RouteStep(
-          text: (i['text'] ?? '').toString(),
+          text: text,
           distanceM: (i['distance'] as num?)?.toDouble() ?? 0,
           pointIndex: ((i['interval'] as List?)?.first as num?)?.toInt() ?? 0,
+          type: ghSignToType((i['sign'] as num?)?.toInt() ?? 0),
+          verbal: text.isEmpty ? null : text,
         ));
       }
       if (pts.length < 2) continue;
@@ -564,6 +606,23 @@ class GraphHopperEngine implements RoutingEngine {
     }
     return out;
   }
+
+  /// GraphHopper-Abbiegezeichen auf die Valhalla-Nummerierung.
+  static int ghSignToType(int sign) => switch (sign) {
+        -3 => ManeuverType.sharpLeft,
+        -2 => ManeuverType.left,
+        -1 => ManeuverType.slightLeft,
+        1 => ManeuverType.slightRight,
+        2 => ManeuverType.right,
+        3 => ManeuverType.sharpRight,
+        4 => ManeuverType.destination,
+        6 => ManeuverType.roundaboutEnter,
+        -7 => ManeuverType.stayLeft,
+        7 => ManeuverType.stayRight,
+        -98 || -8 => ManeuverType.uturnLeft,
+        8 => ManeuverType.uturnRight,
+        _ => ManeuverType.straight,
+      };
 
   /// Custom Model fuer GraphHopper.
   ///
@@ -599,9 +658,34 @@ class GraphHopperEngine implements RoutingEngine {
     if (p.avoidUnpaved) {
       priority.add({'if': 'road_class == TRACK', 'multiply_by': '0.05'});
     }
+    // Gemiedene Stellen als kleine Flaechen (etwa 60 x 60 m).
+    final features = <Map<String, dynamic>>[];
+    for (var i = 0; i < p.avoid.length && i < 30; i++) {
+      final a = p.avoid[i];
+      const dLat = 0.0003;
+      final dLon = 0.0003 / math.max(0.2, math.cos(a.lat * math.pi / 180));
+      final ring = [
+        [a.lon - dLon, a.lat - dLat],
+        [a.lon + dLon, a.lat - dLat],
+        [a.lon + dLon, a.lat + dLat],
+        [a.lon - dLon, a.lat + dLat],
+        [a.lon - dLon, a.lat - dLat],
+      ];
+      features.add({
+        'type': 'Feature',
+        'id': 'avoid$i',
+        'geometry': {
+          'type': 'Polygon',
+          'coordinates': [ring],
+        },
+      });
+      priority.add({'if': 'in_avoid$i', 'multiply_by': '0'});
+    }
     return {
       'priority': priority,
       'distance_influence': p.curviness == Curviness.direct ? 90 : 15,
+      if (features.isNotEmpty)
+        'areas': {'type': 'FeatureCollection', 'features': features},
     };
   }
 }

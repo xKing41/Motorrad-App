@@ -1,0 +1,471 @@
+import 'dart:async';
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart';
+
+import '../models/route_plan.dart';
+import 'geo.dart';
+import 'route_follow.dart';
+import 'route_patch.dart';
+import 'routing_engine.dart';
+import 'traffic_service.dart';
+
+/// Sprachausgabe, austauschbar fuer Tests.
+typedef Speak = void Function(String text);
+
+/// Naechster Stopp auf der Route.
+class NextStop {
+  NextStop(this.poi, this.distanceM);
+  final Poi poi;
+  final double distanceM;
+}
+
+// ---------------------------------------------------------------------------
+//  NAVIGATION
+//
+//  Was eine Navi-App unterwegs koennen muss - und was diese hier tut:
+//   * Abbiegehinweise mit Entfernung, als Anzeige und als Ansage.
+//   * Verfahren? Nach wenigen Sekunden neu berechnen - und zwar zurueck
+//     AUF DIE TOUR, nicht einfach irgendwie zum Ziel. Sonst waere die
+//     kurvige Strecke nach dem ersten Verfahren weg.
+//   * Staus, Sperrungen, Baustellen voraus (mit Verkehrsdienst): melden,
+//     Sperrungen automatisch umfahren, bei Staus die Umfahrung anbieten,
+//     wenn sie wirklich schneller ist.
+//   * Auf Zuruf: Strecke voraus sperren ("da ist dicht") oder den
+//     naechsten Stopp auslassen.
+// ---------------------------------------------------------------------------
+
+class NavigationSession extends ChangeNotifier {
+  NavigationSession({
+    required RoutePlan plan,
+    required this.engine,
+    required this.prefs,
+    this.traffic,
+    Speak? speak,
+    this.autoAvoidClosures = true,
+    this.trafficEvery = const Duration(minutes: 5),
+  })  : _speak = speak ?? ((_) {}),
+        _plan = plan {
+    _rebuild();
+  }
+
+  final RoutingEngine engine;
+  final RoutingPrefs prefs;
+  final TrafficService? traffic;
+  final Speak _speak;
+  final bool autoAvoidClosures;
+  final Duration trafficEvery;
+
+  RoutePlan _plan;
+  RoutePlan get plan => _plan;
+
+  late RouteFollower _follower;
+  late List<double> _cum;
+  List<double> _stepAlong = const [];
+  List<(Poi, double)> _stops = const [];
+
+  FollowState? follow;
+  int _stepIdx = 0;
+  final Map<int, int> _announced = {};
+
+  /// Letzte Position auf der Route (m ab Start), solange der Fahrer
+  /// noch auf ihr war.
+  double _onRouteAlong = 0;
+  DateTime? _offSince;
+
+  @visibleForTesting
+  set debugOffSince(DateTime? v) => _offSince = v;
+  DateTime _noRerouteUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  bool rerouting = false;
+  bool arrived = false;
+
+  /// Kurze Meldung fuer die Anzeige ("Neue Route: +2 km").
+  String? banner;
+  DateTime? _bannerUntil;
+
+  /// Verkehrsmeldungen vor dem Fahrer (nach Entfernung sortiert).
+  List<TrafficIncident> ahead = const [];
+
+  /// Schwere Meldung, fuer die eine Umfahrung angeboten wird.
+  TrafficIncident? offer;
+  final Set<String> _handled = {};
+  DateTime? _lastTraffic;
+  bool _trafficBusy = false;
+  String? trafficError;
+
+  final Set<String> _skipped = {};
+
+  RoutePoint? _here;
+  double? _heading;
+  double _speedMs = 0;
+
+  void _rebuild() {
+    _follower = RouteFollower(_plan);
+    _cum = cumulativeDistances(_plan.points);
+    final n = _plan.points.length;
+    _stepAlong = [
+      for (final s in _plan.steps) _cum[s.pointIndex.clamp(0, n - 1)],
+    ];
+    _stepIdx = 0;
+    _announced.clear();
+    _stops = [
+      for (final p in _plan.pois.where((p) => p.source == 'stop'))
+        if (projectOnPolyline(RoutePoint(p.lat, p.lon), _plan.points, _cum)
+            case final h?)
+          (p, h.alongM),
+    ]..sort((a, b) => a.$2.compareTo(b.$2));
+    // Neue Linie: Meldungen neu zuordnen.
+    ahead = [
+      for (final i in ahead)
+        ...TrafficService.matchToRoute([i], _plan.points, _cum),
+    ];
+  }
+
+  double get totalM => _cum.isEmpty ? 0 : _cum.last;
+  double get alongM => follow == null ? _onRouteAlong : totalM - follow!.remainingM;
+  double get remainingM => follow?.remainingM ?? totalM;
+
+  /// Restfahrzeit: Anteil der geplanten Zeit plus Verzug durch Staus.
+  Duration get remainingTime {
+    final share = totalM > 0 ? remainingM / totalM : 0.0;
+    final delay = ahead
+        .where((i) => i.alongM > alongM && !_handled.contains(i.id))
+        .fold<int>(0, (s, i) => s + i.delaySec);
+    return Duration(seconds: (_plan.durationSec * share).round() + delay);
+  }
+
+  DateTime get eta => DateTime.now().add(remainingTime);
+
+  RouteStep? get nextStep =>
+      _stepIdx < _plan.steps.length ? _plan.steps[_stepIdx] : null;
+
+  double get distanceToNext =>
+      _stepIdx < _stepAlong.length ? _stepAlong[_stepIdx] - alongM : 0;
+
+  /// Die Anweisung danach, wenn sie gleich folgt ("dann links").
+  RouteStep? get thenStep {
+    final i = _stepIdx + 1;
+    if (i >= _plan.steps.length) return null;
+    return _stepAlong[i] - _stepAlong[_stepIdx] < 250 ? _plan.steps[i] : null;
+  }
+
+  NextStop? get nextStop {
+    for (final s in _stops) {
+      if (_skipped.contains(s.$1.id)) continue;
+      if (s.$2 > alongM + 30) return NextStop(s.$1, s.$2 - alongM);
+    }
+    return null;
+  }
+
+  void _say(String t) => _speak(t);
+
+  void _flash(String msg, {int seconds = 8}) {
+    banner = msg;
+    _bannerUntil = DateTime.now().add(Duration(seconds: seconds));
+  }
+
+  /// Start der Navigation: erste Anweisung ansagen.
+  void start() {
+    final first = _plan.steps.isNotEmpty ? _plan.steps.first : null;
+    if (first != null) _announced[0] = 2;
+    _say(first?.verbal ?? first?.text ?? 'Route gestartet.');
+    unawaited(checkTraffic(force: true));
+  }
+
+  /// Neue Position. [heading] in Grad, [speedMs] in m/s.
+  void update(double lat, double lon, {double? heading, double speedMs = 0}) {
+    _here = RoutePoint(lat, lon);
+    _heading = heading;
+    _speedMs = speedMs;
+    final f = _follower.update(lat, lon);
+    if (f == null) return;
+    follow = f;
+
+    if (_bannerUntil != null && DateTime.now().isAfter(_bannerUntil!)) {
+      banner = null;
+      _bannerUntil = null;
+    }
+
+    // Abseits der Route?
+    if (f.offRouteM > 50) {
+      _offSince ??= DateTime.now();
+      final long = DateTime.now().difference(_offSince!).inSeconds >= 6;
+      if (long && !rerouting && speedMs > 1.5 &&
+          DateTime.now().isAfter(_noRerouteUntil)) {
+        unawaited(_rejoin());
+      }
+    } else {
+      _offSince = null;
+      if (f.offRouteM < 30) _onRouteAlong = totalM - f.remainingM;
+      _advanceSteps();
+    }
+
+    if (!arrived && f.remainingM < 40 && f.offRouteM < 60) {
+      arrived = true;
+      _say('Sie haben Ihr Ziel erreicht.');
+      _flash('ZIEL ERREICHT', seconds: 30);
+    }
+
+    final last = _lastTraffic;
+    if (traffic != null &&
+        (last == null || DateTime.now().difference(last) > trafficEvery)) {
+      unawaited(checkTraffic());
+    }
+    _checkIncidentWarnings();
+    notifyListeners();
+  }
+
+  void _advanceSteps() {
+    final along = alongM;
+    while (_stepIdx < _stepAlong.length && _stepAlong[_stepIdx] < along - 15) {
+      _stepIdx++;
+    }
+    // "Losfahren" ist mit dem ersten Meter erledigt.
+    if (_stepIdx < _plan.steps.length &&
+        _plan.steps[_stepIdx].type == ManeuverType.start &&
+        along > _stepAlong[_stepIdx] + 30) {
+      _stepIdx++;
+    }
+    final s = nextStep;
+    if (s == null) return;
+    final d = distanceToNext;
+    final v = math.max(_speedMs, 8.0);
+    // Vorwarnung ~25 s vorher (mind. 400 m), Ansage ~6 s vorher.
+    final far = math.max(400.0, v * 25);
+    final near = math.max(70.0, v * 6);
+    final stage = _announced[_stepIdx] ?? 0;
+    if (d <= near && stage < 2) {
+      _announced[_stepIdx] = 2;
+      _say(s.verbal ?? s.text);
+    } else if (d <= far && d > near * 1.5 && stage < 1) {
+      _announced[_stepIdx] = 1;
+      _say('In ${spokenDistance(d)}: ${s.alert ?? s.text}');
+    }
+  }
+
+  /// "800 Metern", "1,5 Kilometern" - fuer die Ansage.
+  static String spokenDistance(double m) {
+    if (m < 950) {
+      final r = m < 300 ? (m / 50).round() * 50 : (m / 100).round() * 100;
+      return '$r Metern';
+    }
+    final km = m / 1000;
+    if (km < 10) {
+      final t = (km * 2).round() / 2;
+      final s = t == t.roundToDouble()
+          ? t.round().toString()
+          : t.toStringAsFixed(1).replaceAll('.', ',');
+      return s == '1' ? 'einem Kilometer' : '$s Kilometern';
+    }
+    return '${km.round()} Kilometern';
+  }
+
+  // ---------------------------------------------------------------------
+  //  Neu berechnen
+  // ---------------------------------------------------------------------
+
+  RoutePatcher get _patcher => RoutePatcher(engine, prefs);
+
+  void _apply(EngineRoute r, String msg) {
+    _plan = planWith(_plan, r);
+    _rebuild();
+    follow = null;
+    final h = _here;
+    if (h != null) follow = _follower.update(h.lat, h.lon);
+    final f = follow;
+    _onRouteAlong = f != null ? totalM - f.remainingM : 0;
+    _offSince = null;
+    _flash(msg);
+  }
+
+  Future<void> _rejoin() async {
+    final h = _here;
+    if (h == null) return;
+    rerouting = true;
+    _flash('ROUTE WIRD NEU BERECHNET ...', seconds: 30);
+    _say('Route wird neu berechnet.');
+    notifyListeners();
+    try {
+      final res = await _patcher.rejoin(engineRouteOf(_plan),
+          here: h, lastAlongM: _onRouteAlong, heading: _heading);
+      _apply(res.route, 'Zurück zur Tour');
+      _noRerouteUntil = DateTime.now().add(const Duration(seconds: 10));
+    } on RouteException catch (e) {
+      _flash('Neuberechnung fehlgeschlagen: ${e.message}');
+      _noRerouteUntil = DateTime.now().add(const Duration(seconds: 20));
+    } finally {
+      rerouting = false;
+      notifyListeners();
+    }
+  }
+
+  /// Sofort neu berechnen (Knopf).
+  Future<void> rerouteNow() => _rejoin();
+
+  /// Die Strecke direkt voraus meiden (Sperrung, die der Dienst nicht
+  /// kennt, Baustelle, Unfall ...). Umgeplant wird ab der aktuellen
+  /// Position.
+  Future<bool> avoidAhead({double fromM = 50, double lengthM = 800}) async {
+    final h = _here;
+    if (h == null || rerouting) return false;
+    final a = alongM + fromM;
+    final avoid = [
+      for (var d = 0.0; d <= lengthM; d += 200) pointAlong(_plan.points, _cum, a + d),
+    ];
+    return _detour(
+      fromM: alongM,
+      toM: a + lengthM + 3000,
+      avoid: avoid,
+      msg: 'Umleitung berechnet',
+    );
+  }
+
+  /// Den naechsten Stopp auslassen.
+  Future<bool> skipNextStop() async {
+    final s = nextStop;
+    if (s == null || rerouting) return false;
+    _skipped.add(s.poi.id);
+    final ok = await _detour(
+      fromM: alongM,
+      toM: alongM + s.distanceM + 1500,
+      avoid: const [],
+      msg: '${s.poi.displayName} ausgelassen',
+    );
+    if (!ok) _skipped.remove(s.poi.id);
+    return ok;
+  }
+
+  Future<bool> _detour({
+    required double fromM,
+    required double toM,
+    required List<RoutePoint> avoid,
+    required String msg,
+  }) async {
+    rerouting = true;
+    notifyListeners();
+    try {
+      final res = await _patcher.avoidSection(engineRouteOf(_plan),
+          fromM: fromM, toM: toM, avoid: avoid, here: _here, heading: _heading);
+      final km = res.extraM / 1000;
+      _apply(res.route,
+          '$msg (${km >= 0 ? '+' : ''}${km.toStringAsFixed(1).replaceAll('.', ',')} km)');
+      _say('Neue Route.');
+      return true;
+    } on RouteException catch (e) {
+      _flash('Keine Umfahrung gefunden: ${e.message}');
+      return false;
+    } finally {
+      rerouting = false;
+      notifyListeners();
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  //  Verkehrslage
+  // ---------------------------------------------------------------------
+
+  /// Fragt Meldungen fuer die naechsten 150 km ab.
+  Future<void> checkTraffic({bool force = false}) async {
+    final t = traffic;
+    if (t == null || _trafficBusy) return;
+    if (!force &&
+        _lastTraffic != null &&
+        DateTime.now().difference(_lastTraffic!) < trafficEvery) {
+      return;
+    }
+    _trafficBusy = true;
+    _lastTraffic = DateTime.now();
+    try {
+      final list = await t.alongRoute(_plan.points,
+          fromM: alongM, toM: alongM + 150000, maxBoxes: 4);
+      if (list == null) {
+        trafficError = 'Verkehrslage nicht abrufbar';
+      } else {
+        trafficError = null;
+        ahead = list;
+        await _reactToTraffic();
+      }
+    } on TrafficKeyException catch (e) {
+      trafficError = e.toString();
+    } finally {
+      _trafficBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _reactToTraffic() async {
+    for (final inc in ahead) {
+      if (_handled.contains(inc.id) || inc.alongM < alongM) continue;
+      if (!inc.isSevere) continue;
+      if (inc.isClosure && autoAvoidClosures) {
+        _handled.add(inc.id);
+        _say('Achtung, Sperrung in ${spokenDistance(inc.alongM - alongM)}. '
+            'Route wird angepasst.');
+        final ok = await avoidIncident(inc, speak: false);
+        if (!ok) _flash('Sperrung voraus - keine Umfahrung gefunden');
+        return; // Route hat sich geaendert, Rest beim naechsten Abruf.
+      }
+      if (offer == null) {
+        offer = inc;
+        final min = (inc.delaySec / 60).round();
+        _say('${inc.category.label} in ${spokenDistance(inc.alongM - alongM)}'
+            '${min > 0 ? ', etwa $min Minuten Verzögerung' : ''}. '
+            'Umfahrung möglich.');
+      }
+    }
+  }
+
+  final Set<String> _warned = {};
+
+  /// Kurz vor einer (nicht umfahrenen) Meldung nochmal warnen.
+  void _checkIncidentWarnings() {
+    for (final inc in ahead) {
+      final d = inc.alongM - alongM;
+      if (d < 0 || d > 2000 || _warned.contains(inc.id)) continue;
+      _warned.add(inc.id);
+      _say('Achtung: ${inc.category.label} in ${spokenDistance(d)}.');
+    }
+  }
+
+  /// Umfaehrt eine Meldung. Rueckgabe: true, wenn die Route geaendert
+  /// wurde.
+  Future<bool> avoidIncident(TrafficIncident inc, {bool speak = true}) async {
+    _handled.add(inc.id);
+    if (offer?.id == inc.id) offer = null;
+    rerouting = true;
+    notifyListeners();
+    try {
+      final res = await TrafficRerouter(_patcher).detour(
+        engineRouteOf(_plan),
+        inc,
+        here: _here,
+        hereAlongM: alongM,
+        heading: _heading,
+      );
+      if (res == null) {
+        _flash('Umfahrung wäre nicht schneller - Route bleibt.');
+        return false;
+      }
+      final min = (res.extraSec / 60).round();
+      _apply(res.route,
+          '${inc.category.label} umfahren (${min >= 0 ? '+' : ''}$min min)');
+      ahead = ahead.where((i) => i.id != inc.id).toList();
+      if (speak) _say('Neue Route um ${inc.category.label}.');
+      return true;
+    } on RouteException catch (e) {
+      _flash('Keine Umfahrung gefunden: ${e.message}');
+      return false;
+    } finally {
+      rerouting = false;
+      notifyListeners();
+    }
+  }
+
+  /// Angebotene Umfahrung ablehnen.
+  void dismissOffer() {
+    final o = offer;
+    if (o != null) _handled.add(o.id);
+    offer = null;
+    notifyListeners();
+  }
+}

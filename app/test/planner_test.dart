@@ -223,15 +223,23 @@ void main() {
       return Poi(id: id, kind: k, lat: p.lat, lon: p.lon, name: name, detail: detail);
     }
 
+    StopCandidate cand(Poi p) {
+      final cum = cumulativeDistances(route);
+      final hit = projectOnPolyline(RoutePoint(p.lat, p.lon), route, cum)!;
+      return StopCandidate(p, hit.alongM, hit.distanceM);
+    }
+
     test('nimmt die Tankstelle nahe "nach 60 km", lieber frueher als spaeter', () {
       final found = [
         poi('a', PoiKind.fuel, 40, 100, name: 'A'),
         poi('b', PoiKind.fuel, 57, 300, name: 'B'),
         poi('c', PoiKind.fuel, 63, 300, name: 'C'),
-        poi('d', PoiKind.fuel, 60, 5000, name: 'D'), // zu weit weg
       ];
-      final chosen = TourPlanner.chooseStops(
-          route, [StopWish(kind: PoiKind.fuel, afterKm: 60)], found);
+      final slots = TourPlanner.planSlots(
+          [StopWish(kind: PoiKind.fuel, afterKm: 60)], 100000,
+          fuelEveryKm: 500);
+      final chosen =
+          TourPlanner.chooseStops(slots, found.map(cand).toList());
       expect(chosen.length, 1);
       expect(chosen.first.$1.id, 'b');
       expect(chosen.first.$1.source, 'stop');
@@ -244,9 +252,115 @@ void main() {
         poi('view', PoiKind.viewpoint, 51, 200,
             name: 'Aussicht', detail: 'Aussichtspunkt'),
       ];
-      final chosen = TourPlanner.chooseStops(
-          route, [StopWish(kind: PoiKind.viewpoint)], found);
+      final slots = TourPlanner.planSlots(
+          [StopWish(kind: PoiKind.viewpoint)], 100000);
+      final chosen =
+          TourPlanner.chooseStops(slots, found.map(cand).toList());
       expect(chosen.single.$1.id, 'view');
+    });
+
+    test('3100 km mit Tankwunsch: Tankstopp spaetestens alle 150 km', () {
+      final slots = TourPlanner.planSlots(
+          [StopWish(kind: PoiKind.fuel, repeat: true)], 3100000,
+          fuelEveryKm: 150);
+      final fuel = slots.where((s) => s.kind == PoiKind.fuel).toList();
+      expect(fuel.length, 20);
+      var last = 0.0;
+      for (final s in [...fuel.map((s) => s.targetM), 3100000.0]) {
+        expect(s - last, lessThanOrEqualTo(150000 + 1));
+        last = s;
+      }
+    });
+
+    test('auch EIN Tankstopp der KI wird auf lange Strecke aufgefuellt', () {
+      final slots = TourPlanner.planSlots(
+          [StopWish(kind: PoiKind.fuel, afterKm: 100, reason: 'KI')], 800000,
+          fuelEveryKm: 200);
+      final fuel = slots.where((s) => s.kind == PoiKind.fuel).toList();
+      expect(fuel.length, 4); // 100, 300, 500, 700
+      expect(fuel.first.targetM, 100000);
+    });
+
+    test('Pausen wechseln zwischen Rastplatz und Einkehr', () {
+      final slots = TourPlanner.planSlots([
+        StopWish(kind: PoiKind.rest, repeat: true),
+        StopWish(kind: PoiKind.food, repeat: true),
+      ], 450000, breakEveryKm: 100);
+      final kinds = slots.map((s) => s.kind).toList();
+      expect(kinds, [
+        PoiKind.rest,
+        PoiKind.food,
+        PoiKind.rest,
+        PoiKind.food,
+      ]);
+    });
+
+    test('kurze Tour: je Art genau ein Stopp', () {
+      final slots = TourPlanner.planSlots([
+        StopWish(kind: PoiKind.fuel, repeat: true),
+        StopWish(kind: PoiKind.viewpoint, repeat: true),
+      ], 60000);
+      expect(slots.where((s) => s.kind == PoiKind.fuel).length, 1);
+      expect(slots.where((s) => s.kind == PoiKind.viewpoint).length, 1);
+    });
+
+    test('Tankstopps halten die Reichweite ein, auch wenn die Stelle '
+        'selbst nichts bietet', () {
+      final long = straight(home, 90, 600000, step: 500);
+      final cum = cumulativeDistances(long);
+      StopCandidate at(String id, double km) {
+        final p = pointAlong(long, cum, km * 1000);
+        return StopCandidate(
+            Poi(id: id, kind: PoiKind.fuel, lat: p.lat, lon: p.lon, name: id),
+            km * 1000,
+            50);
+      }
+
+      final cands = [at('t1', 120), at('t2', 160), at('t3', 250), at('t4', 290),
+        at('t5', 420), at('t6', 455), at('t7', 560)];
+      final slots = TourPlanner.planSlots(
+          [StopWish(kind: PoiKind.fuel, repeat: true)], 600000,
+          fuelEveryKm: 150);
+      final chosen = TourPlanner.chooseStops(slots, cands,
+          fuelEveryM: 150000, totalM: 600000);
+      expect(chosen.map((c) => c.$1.id), ['t1', 't3', 't4', 't5', 't7']);
+      var last = 0.0;
+      for (final c in chosen) {
+        expect(c.$2 - last, lessThanOrEqualTo(150000));
+        last = c.$2;
+      }
+      expect(TourPlanner.fuelGaps(chosen, 600000,
+          fuelEveryM: 150000, wanted: true), 0);
+    });
+
+    test('Suchabschnitte werden zusammengefasst', () {
+      final slots = TourPlanner.planSlots([
+        StopWish(kind: PoiKind.fuel, repeat: true),
+        StopWish(kind: PoiKind.rest, repeat: true),
+      ], 1000000, fuelEveryKm: 150, breakEveryKm: 100);
+      final secs = TourPlanner.mergeSections(slots, 1000000);
+      expect(secs.length, lessThan(slots.length));
+      for (final s in secs) {
+        expect(s.hiM - s.loM, lessThanOrEqualTo(120000 + 1));
+      }
+    });
+
+    test('Wegpunkte werden in Stuecke fuer den Server geteilt', () {
+      final long = straight(home, 90, 1000000, step: 1000);
+      final cum = cumulativeDistances(long);
+      final wps = [
+        (const Waypoint(home, WaypointKind.endpoint), 0.0),
+        (Waypoint(long.last, WaypointKind.endpoint), cum.last),
+      ];
+      final chunks = TourPlanner.chunkWaypoints(wps, long, cum);
+      expect(chunks.length, greaterThanOrEqualTo(4));
+      for (var i = 0; i < chunks.length; i++) {
+        expect(chunks[i].last.$2 - chunks[i].first.$2,
+            lessThanOrEqualTo(250000 + 1));
+        if (i > 0) expect(chunks[i].first.$2, chunks[i - 1].last.$2);
+      }
+      expect(chunks.first.first.$2, 0);
+      expect(chunks.last.last.$2, cum.last);
     });
 
     test('Stopps werden in der richtigen Reihenfolge eingefuegt', () {
@@ -303,6 +417,67 @@ void main() {
       expect(pathLength(part), closeTo(20000, 50));
       final clipped = subPath(line, cum, -5000, 10000);
       expect(pathLength(clipped), closeTo(10000, 50));
+    });
+
+    test('850 km mit Tankwunsch: viele Tankstopps, Route in Stuecken', () async {
+      final engine = FakeEngine();
+      final dest = destinationPoint(home, 120, 850000);
+      // Alle 25 km eine Tankstelle, 300 m neben der Luftlinie.
+      final stations = <Poi>[
+        for (var km = 10; km < 850; km += 25)
+          () {
+            final p = destinationPoint(
+                destinationPoint(home, 120, km * 1000.0), 30, 300);
+            return Poi(
+                id: 'fuel$km', kind: PoiKind.fuel, lat: p.lat, lon: p.lon,
+                name: 'T$km');
+          }(),
+      ];
+      var searches = 0;
+      Future<List<Poi>?> search(
+          List<RoutePoint> route, List<PoiKind> kinds, double corridor) async {
+        searches++;
+        final cum = cumulativeDistances(route);
+        return [
+          for (final s in stations)
+            if (kinds.contains(s.kind) &&
+                projectOnPolyline(RoutePoint(s.lat, s.lon), route, cum)!
+                        .distanceM <
+                    corridor)
+              s,
+        ];
+      }
+
+      final plan = await TourPlanner(engine, poiSearch: search).plan(
+          RouteRequest(
+            startLat: home.lat,
+            startLon: home.lon,
+            endLat: dest.lat,
+            endLon: dest.lon,
+            roundTrip: false,
+            fuelEveryKm: 150,
+            stops: [StopWish(kind: PoiKind.fuel, repeat: true)],
+          ));
+      final fuel = plan.pois.where((p) => p.kind == PoiKind.fuel).toList();
+      expect(fuel.length, greaterThanOrEqualTo(5));
+      expect(searches, greaterThanOrEqualTo(3));
+      expect(plan.notes.where((n) => n.contains('nur markiert')), isEmpty);
+      expect(plan.notes.where((n) => n.contains('Achtung')), isEmpty);
+      // Keine Anfrage ueber zu lange Strecken.
+      for (final r in engine.requests) {
+        var len = 0.0;
+        for (var i = 1; i < r.length; i++) {
+          len += dist(r[i - 1].point, r[i].point);
+        }
+        expect(len, lessThan(320000));
+      }
+      // Die Route fuehrt wirklich an den Tankstellen vorbei.
+      final cum = cumulativeDistances(plan.points);
+      for (final f in fuel) {
+        final hit =
+            projectOnPolyline(RoutePoint(f.lat, f.lon), plan.points, cum)!;
+        expect(hit.distanceM, lessThan(5));
+      }
     });
   });
 }

@@ -14,6 +14,32 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.3 - Stopps, Navigation, andere Navis
+----------------------------------------------
+
+- Stopps ueber die ganze Strecke: Unter PLANEN -> ZWISCHENSTOPPS
+  "Tankstelle" waehlen und die Reichweite einstellen ("Tanken
+  spaetestens alle 150 km"). Auf 3000 km gibt es dann rund 20
+  Tankstopps statt einem. Pausen ("Pause etwa alle 100 km") wechseln
+  zwischen Rastplatz und Einkehr. Die Auswahl wird gemerkt.
+- NAVIGATION (Karte, gruener Knopf nach dem Planen): Abbiegehinweise
+  mit Entfernung, Sprachansagen, Karte dreht sich in Fahrtrichtung,
+  Ankunftszeit und naechster Stopp. Verfahren? Nach ein paar Sekunden
+  gibt es eine neue Route zurueck auf die Tour.
+  Knoepfe unterwegs: SPERRUNG (Strecke voraus meiden), STOPP
+  UEBERSPR., NEU (sofort neu berechnen), NAVI-APP.
+- Staus und Sperrungen: Unter PLANEN -> EINSTELLUNGEN einen
+  TomTom-Schluessel eintragen (kostenlos auf developer.tomtom.com,
+  "Get your free API key"). Dann werden Sperrungen und lange Staus
+  schon beim Planen umfahren und waehrend der Fahrt alle 5 Minuten
+  geprueft. Ohne Schluessel funktioniert alles andere wie gewohnt.
+- An andere Navis uebergeben (Karte -> NAVI-APP): GPX-Datei fuer
+  TomTom GO, Garmin, Kurviger, Calimoto, OsmAnd; Google Maps mit
+  Zwischenpunkten auf der Tour (lange Touren in Abschnitten); Waze
+  oder jede andere Navi-App mit dem naechsten Ziel.
+  Hinweis: Google & Co. rechnen zwischen den Punkten selbst. Die
+  exakte Tour gibt es nur per GPX.
+
 VERSION 4.2 - Routenplanung neu
 -------------------------------
 

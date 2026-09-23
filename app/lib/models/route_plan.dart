@@ -183,13 +183,25 @@ class Poi {
 /// Wunsch nach einem Stopp - noch ohne konkreten Ort.
 /// Genau das darf ein Sprachmodell erzeugen.
 class StopWish {
-  StopWish({required this.kind, this.afterKm, this.reason});
+  StopWish({
+    required this.kind,
+    this.afterKm,
+    this.reason,
+    this.repeat = false,
+  });
 
   final PoiKind kind;
 
   /// Ungefaehr nach wie vielen Kilometern der Stopp liegen soll.
   final double? afterKm;
   final String? reason;
+
+  /// true = so oft wie noetig entlang der Strecke (Auswahl per Knopf:
+  /// "Tankstelle" heisst dann "immer rechtzeitig tanken", nicht
+  /// "genau eine Tankstelle"). false = genau dieser eine Stopp, so wie
+  /// ihn die KI geplant hat. Tankstopps werden in beiden Faellen
+  /// ergaenzt, wenn die Reichweite sonst nicht reicht.
+  final bool repeat;
 
   Map<String, dynamic> toJson() => {
         'kind': kind.id,
@@ -230,6 +242,8 @@ class RouteRequest {
     this.title,
     this.destinationName,
     this.towardsName,
+    this.fuelEveryKm = 150,
+    this.breakEveryKm = 100,
   });
 
   final double startLat;
@@ -266,6 +280,13 @@ class RouteRequest {
   final String? destinationName;
   final String? towardsName;
 
+  /// Spaetestens nach so vielen Kilometern wird getankt (Reichweite
+  /// mit Reserve).
+  final double fuelEveryKm;
+
+  /// Abstand zwischen zwei Pausen (Rastplatz, Einkehr, Wasser).
+  final double breakEveryKm;
+
   bool get hasEnd => endLat != null && endLon != null;
   bool get hasVia => viaLat != null && viaLon != null;
 
@@ -288,6 +309,8 @@ class RouteRequest {
     List<StopWish>? stops,
     bool? preferKnownGoodRoads,
     String? title,
+    double? fuelEveryKm,
+    double? breakEveryKm,
   }) =>
       RouteRequest(
         startLat: startLat ?? this.startLat,
@@ -308,6 +331,8 @@ class RouteRequest {
         title: title ?? this.title,
         destinationName: destinationName,
         towardsName: towardsName,
+        fuelEveryKm: fuelEveryKm ?? this.fuelEveryKm,
+        breakEveryKm: breakEveryKm ?? this.breakEveryKm,
       );
 
   Map<String, dynamic> toJson() => {
@@ -383,11 +408,162 @@ class RouteStep {
     required this.text,
     required this.distanceM,
     required this.pointIndex,
+    this.type = 0,
+    this.verbal,
+    this.alert,
   });
 
   final String text;
   final double distanceM;
+
+  /// Index des Routenpunkts, an dem abgebogen wird.
   final int pointIndex;
+
+  /// Art des Manoevers (Valhalla-Nummerierung, siehe [ManeuverType]).
+  final int type;
+
+  /// Sprachansage kurz vor dem Manoever ("Biegen Sie rechts ab auf
+  /// die B 54.") und die Vorwarnung ("In 500 Metern rechts abbiegen").
+  final String? verbal;
+  final String? alert;
+
+  /// Dieselbe Anweisung, verschoben um [offset] Routenpunkte - beim
+  /// Zusammensetzen von Routen.
+  RouteStep shifted(int offset) => RouteStep(
+        text: text,
+        distanceM: distanceM,
+        pointIndex: pointIndex + offset,
+        type: type,
+        verbal: verbal,
+        alert: alert,
+      );
+}
+
+/// Manoever-Arten, wie Valhalla sie nummeriert. Andere Engines werden
+/// darauf abgebildet.
+class ManeuverType {
+  static const none = 0;
+  static const start = 1;
+  static const destination = 4;
+  static const becomes = 7;
+  static const straight = 8;
+  static const slightRight = 9;
+  static const right = 10;
+  static const sharpRight = 11;
+  static const uturnRight = 12;
+  static const uturnLeft = 13;
+  static const sharpLeft = 14;
+  static const left = 15;
+  static const slightLeft = 16;
+  static const rampRight = 18;
+  static const rampLeft = 19;
+  static const exitRight = 20;
+  static const exitLeft = 21;
+  static const stayStraight = 22;
+  static const stayRight = 23;
+  static const stayLeft = 24;
+  static const merge = 25;
+  static const roundaboutEnter = 26;
+  static const roundaboutExit = 27;
+  static const ferry = 28;
+
+  static bool isDestination(int t) => t >= 4 && t <= 6;
+}
+
+/// Verkehrsmeldung an der Route (Stau, Sperrung, Baustelle ...).
+class TrafficIncident {
+  TrafficIncident({
+    required this.id,
+    required this.category,
+    required this.points,
+    this.description,
+    this.road,
+    this.from,
+    this.to,
+    this.delaySec = 0,
+    this.magnitude = 0,
+    this.lengthM = 0,
+    this.alongM = 0,
+    this.endAlongM = 0,
+  });
+
+  final String id;
+  final TrafficCategory category;
+
+  /// Verlauf der Meldung auf der Strasse.
+  final List<RoutePoint> points;
+  final String? description;
+  final String? road;
+  final String? from;
+  final String? to;
+
+  /// Zeitverlust in Sekunden (bei Staus).
+  final int delaySec;
+
+  /// 0 unbekannt, 1 gering, 2 maessig, 3 stark, 4 Sperrung.
+  final int magnitude;
+  final double lengthM;
+
+  /// Wo die Meldung auf der Route beginnt und endet (m ab Start).
+  final double alongM;
+  final double endAlongM;
+
+  bool get isClosure => category == TrafficCategory.closed;
+
+  /// Lohnt sich ein Umweg? Sperrungen immer, Staus ab spuerbarem
+  /// Zeitverlust.
+  bool get isSevere =>
+      isClosure ||
+      delaySec >= 300 ||
+      (category == TrafficCategory.jam && magnitude >= 3);
+
+  String get label {
+    final parts = <String>[
+      category.label,
+      if (road != null && road!.isNotEmpty) road!,
+      if (delaySec >= 60) '+${(delaySec / 60).round()} min',
+    ];
+    return parts.join(' · ');
+  }
+
+  TrafficIncident at(double along, double endAlong) => TrafficIncident(
+        id: id,
+        category: category,
+        points: points,
+        description: description,
+        road: road,
+        from: from,
+        to: to,
+        delaySec: delaySec,
+        magnitude: magnitude,
+        lengthM: lengthM,
+        alongM: along,
+        endAlongM: endAlong,
+      );
+}
+
+enum TrafficCategory {
+  jam,
+  closed,
+  laneClosed,
+  roadworks,
+  accident,
+  hazard,
+  weather,
+  other,
+}
+
+extension TrafficCategoryX on TrafficCategory {
+  String get label => switch (this) {
+        TrafficCategory.jam => 'Stau',
+        TrafficCategory.closed => 'Sperrung',
+        TrafficCategory.laneClosed => 'Fahrstreifen gesperrt',
+        TrafficCategory.roadworks => 'Baustelle',
+        TrafficCategory.accident => 'Unfall',
+        TrafficCategory.hazard => 'Gefahr',
+        TrafficCategory.weather => 'Wetter',
+        TrafficCategory.other => 'Meldung',
+      };
 }
 
 /// Kennzahlen einer geplanten Route - damit der Fahrer sieht, warum der
@@ -431,6 +607,9 @@ class RoutePlan {
     this.engineLabel,
     this.alternatives = const [],
     this.notes = const [],
+    this.traffic = const [],
+    this.roundTrip = false,
+    this.request,
   });
 
   final List<RoutePoint> points;
@@ -455,6 +634,16 @@ class RoutePlan {
   /// Hinweise des Planers ("Tankstelle nicht gefunden" ...).
   final List<String> notes;
 
+  /// Verkehrsmeldungen an der Route (nur mit Verkehrsdienst).
+  final List<TrafficIncident> traffic;
+
+  /// Fuehrt die Route zum Start zurueck?
+  final bool roundTrip;
+
+  /// Die Anfrage, aus der die Route entstand (null bei GPX) - fuer
+  /// Neuberechnungen unterwegs mit denselben Vorlieben.
+  final RouteRequest? request;
+
   double get distanceKm => distanceM / 1000;
   bool get isEmpty => points.length < 2;
 
@@ -470,6 +659,7 @@ class RoutePlan {
     String? engineLabel,
     List<RoutePlan>? alternatives,
     List<String>? notes,
+    List<TrafficIncident>? traffic,
   }) =>
       RoutePlan(
         points: points ?? this.points,
@@ -483,6 +673,9 @@ class RoutePlan {
         engineLabel: engineLabel ?? this.engineLabel,
         alternatives: alternatives ?? this.alternatives,
         notes: notes ?? this.notes,
+        traffic: traffic ?? this.traffic,
+        roundTrip: roundTrip,
+        request: request,
       );
 }
 

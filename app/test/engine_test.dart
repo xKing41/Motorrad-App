@@ -15,6 +15,29 @@ void main() {
   group('Valhalla-Anfrage', () {
     final engine = ValhallaEngine();
 
+    test('Umleitung: gemiedene Stellen und Fahrtrichtung gehen mit', () {
+      final req = engine.buildRequest([
+        const Waypoint(a, WaypointKind.endpoint, heading: 275),
+        const Waypoint(c, WaypointKind.endpoint),
+      ], const RoutingPrefs(avoid: [b]));
+      final locs = (req['locations'] as List).cast<Map<String, dynamic>>();
+      expect(locs.first['heading'], 275);
+      expect(locs.last.containsKey('heading'), isFalse);
+      final ex = (req['exclude_locations'] as List).cast<Map>();
+      expect(ex.single['lat'], b.lat);
+      expect(engine.buildRequest([
+        const Waypoint(a, WaypointKind.endpoint),
+        const Waypoint(c, WaypointKind.endpoint),
+      ], const RoutingPrefs()).containsKey('exclude_locations'), isFalse);
+    });
+
+    test('GraphHopper: gemiedene Stellen als Flaechen', () {
+      final m = GraphHopperEngine.customModel(const RoutingPrefs(avoid: [b]));
+      final areas = m['areas'] as Map;
+      expect((areas['features'] as List).single['id'], 'avoid0');
+      expect((m['priority'] as List).last['if'], 'in_avoid0');
+    });
+
     test('Hilfspunkte: through + Strassenklassen-Filter, Enden: break', () {
       final req = engine.buildRequest([
         const Waypoint(a, WaypointKind.endpoint),
@@ -107,6 +130,27 @@ void main() {
       expect(r.durationSec, 900);
       // Anweisung des zweiten Abschnitts zeigt auf den richtigen Punkt.
       expect(r.steps.map((s) => s.pointIndex).toList(), [0, 1, 1, 2]);
+    });
+
+    test('Manoever-Art und Sprachansagen werden gelesen', () {
+      final data = trip([
+        [a, b],
+      ]);
+      final leg = (data['trip'] as Map)['legs'][0] as Map;
+      leg['maneuvers'] = [
+        {
+          'type': 10,
+          'instruction': 'Rechts abbiegen auf B 54.',
+          'verbal_pre_transition_instruction': 'Biegen Sie rechts ab.',
+          'verbal_transition_alert_instruction': 'Rechts abbiegen.',
+          'begin_shape_index': 0,
+          'length': 1.0,
+        }
+      ];
+      final s = ValhallaEngine.parseResponse(data).single.steps.single;
+      expect(s.type, ManeuverType.right);
+      expect(s.verbal, 'Biegen Sie rechts ab.');
+      expect(s.alert, 'Rechts abbiegen.');
     });
 
     test('Meilen werden umgerechnet', () {

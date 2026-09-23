@@ -1,7 +1,7 @@
 name: schraeglage
 description: Schraeglage - Telemetrie, Karte und Navigation fuers Motorrad
 publish_to: 'none'
-version: 4.2.0+10
+version: 4.3.0+11
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -28,6 +28,8 @@ dependencies:
   # Breiter Bereich, damit es auch mit einer aelteren Flutter-Version auf
   # dem PC noch baut.
   share_plus: '>=11.0.0 <14.0.0'
+  # Sprachansagen bei der Navigation (Sprachausgabe des Handys).
+  flutter_tts: ^4.2.0
 
 dev_dependencies:
   flutter_test:
