@@ -14,6 +14,22 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.10 - Wetter entlang der Route
+---------------------------------------
+
+- Nach dem Planen wird das Wetter fuer die ganze Strecke geholt - fuer
+  jeden Abschnitt zu der Uhrzeit, zu der du dort bist. Hinweis oben
+  links auf der Karte, z. B. "Regen ab km 140 (gegen 15:30), ab km 190
+  wieder trocken", "Frostgefahr: 2 °C bei km 80", "Boeen bis 75 km/h".
+  Antippen -> Details.
+- BESSERE ABFAHRT: Wird es spaeter trockener, steht in den Details
+  z. B. "Besser um 11:00 losfahren: Trocken auf der ganzen Strecke".
+- Waehrend der Navigation wird alle 30 Minuten fuer den Rest der
+  Strecke neu geprueft. Neue Regenwarnung einmal per Ansage
+  ("Achtung, Regen in etwa 25 Kilometern").
+- Passhoehen werden mit ihrer Hoehe gerechnet (kaelter als das Tal).
+- Quelle: Open-Meteo, kostenlos, ohne Schluessel.
+
 VERSION 4.9 - Tempolimit, Blitzer bei der Planung
 -------------------------------------------------
 

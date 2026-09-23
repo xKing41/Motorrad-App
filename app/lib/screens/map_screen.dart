@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 import 'dart:math' as math;
@@ -16,6 +17,7 @@ import '../services/navigation.dart';
 import '../services/offline_maps.dart';
 import '../services/poi_service.dart';
 import '../services/route_follow.dart';
+import '../services/route_weather.dart';
 import '../services/smooth_position.dart';
 import '../services/speed_cameras.dart';
 import '../services/speed_limits.dart';
@@ -221,6 +223,7 @@ class _MapScreenState extends State<MapScreen>
   void _onNavChanged() {
     final nav = _nav;
     if (nav == null || !mounted) return;
+    unawaited(_refreshNavWeather(nav));
     if (!t.foreground) {
       // Nach einer Neuberechnung im Hintergrund die Linie trotzdem
       // uebernehmen - gezeichnet wird beim naechsten Hinsehen.
@@ -406,6 +409,90 @@ class _MapScreenState extends State<MapScreen>
     _autoSaveRoute(plan);
     _prefetchLimits(plan);
     _loadCameras(plan);
+    _loadWeather(plan);
+  }
+
+  // ------------------------------------------------------------------
+  // Wetter entlang der Route
+  // ------------------------------------------------------------------
+  RouteWeatherReport? _weather;
+  RouteWeatherReport? _betterDeparture;
+  DateTime? _weatherAt;
+  double? _rainSaidAt;
+
+  Future<void> _loadWeather(RoutePlan plan) async {
+    setState(() {
+      _weather = null;
+      _betterDeparture = null;
+    });
+    final w = await RouteWeather.fetch(plan.points);
+    if (!mounted || !identical(_route, plan) || w == null) return;
+    final now = DateTime.now();
+    setState(() {
+      _weatherAt = now;
+      _weather = w.at(now, plan.durationSec);
+      _betterDeparture = w.betterDeparture(now, plan.durationSec);
+    });
+  }
+
+  /// Waehrend der Navigation alle 30 Minuten fuer den Rest der Strecke
+  /// neu holen - Vorhersagen aendern sich, und das Tempo auch.
+  Future<void> _refreshNavWeather(NavigationSession nav) async {
+    final last = _weatherAt;
+    if (last != null &&
+        DateTime.now().difference(last) < const Duration(minutes: 30)) {
+      return;
+    }
+    _weatherAt = DateTime.now();
+    final plan = nav.plan;
+    final from = nav.alongM;
+    final w = await RouteWeather.fetch(plan.points, fromM: from);
+    if (!mounted || _nav != nav || w == null) return;
+    final r = w.at(DateTime.now(), nav.remainingTime.inSeconds);
+    setState(() {
+      _weather = r;
+      _betterDeparture = null;
+    });
+    // Neue Regenwarnung einmal ansagen - erneut nur, wenn sich die
+    // Stelle deutlich verschoben hat.
+    final wet = r.firstWet;
+    final said = _rainSaidAt;
+    if (wet != null && (said == null || (wet.alongM - said).abs() > 20000)) {
+      final km = ((wet.alongM - nav.alongM) / 1000).round();
+      Voice.instance.say(km < 2
+          ? 'Achtung, Regen auf der Strecke.'
+          : 'Achtung, Regen in etwa $km Kilometern.');
+    }
+    _rainSaidAt = wet?.alongM;
+  }
+
+  Widget _weatherChip() {
+    final w = _weather;
+    if (w == null) return const SizedBox.shrink();
+    final warn = w.warnings();
+    if (warn.isEmpty) return const SizedBox.shrink();
+    final wet = w.firstWet != null;
+    return InkWell(
+      onTap: _nav == null ? _showRouteInfo : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: panel.withValues(alpha: 0.94),
+          border: Border.all(color: wet ? cool : amber),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(wet ? Icons.umbrella : Icons.ac_unit,
+              size: 14, color: wet ? cool : amber),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(warn.first,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 10.5, color: chalk)),
+          ),
+        ]),
+      ),
+    );
   }
 
   List<SpeedCamera> _cameras = const [];
@@ -453,6 +540,8 @@ class _MapScreenState extends State<MapScreen>
     setState(() {
       _route = null;
       _cameras = const [];
+      _weather = null;
+      _betterDeparture = null;
       _routeLine = const [];
       _variants = const [];
       _variantIdx = 0;
@@ -746,6 +835,12 @@ class _MapScreenState extends State<MapScreen>
           child: _nav != null ? _navBottom(_nav!) : _bottomBar(),
         ),
 
+        Positioned(
+          left: 12,
+          right: 60,
+          top: _nav != null ? 150 : 80,
+          child: Align(alignment: Alignment.topLeft, child: _weatherChip()),
+        ),
         Positioned(
           right: 12,
           top: (_nav != null ? 150 : 80) + (_tomtomKey.isNotEmpty ? 44 : 0),
@@ -1377,6 +1472,30 @@ class _MapScreenState extends State<MapScreen>
                       ),
                     ]),
                   ),
+              ],
+              if (_weather != null) ...[
+                const SizedBox(height: 10),
+                const TinyLabel('WETTER UNTERWEGS (ABFAHRT JETZT)'),
+                const SizedBox(height: 4),
+                for (final w in _weather!.warnings().isEmpty
+                    ? [_weather!.summary()]
+                    : _weather!.warnings())
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Text(w,
+                        style: const TextStyle(fontSize: 11, color: chalk)),
+                  ),
+                if (_betterDeparture != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Besser um ${RouteWeatherReport.clock(_betterDeparture!.departure)} '
+                      'losfahren: ${_betterDeparture!.summary()}',
+                      style: const TextStyle(fontSize: 11, color: signal),
+                    ),
+                  ),
+                const Text(RouteWeather.attribution,
+                    style: TextStyle(fontSize: 8.5, color: steel)),
               ],
               if (r.traffic.isNotEmpty) ...[
                 const SizedBox(height: 10),

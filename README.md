@@ -26,6 +26,8 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
 - Nullpunkt-Kalibrierung: Das Handy darf hochkant, quer oder flach und
   beliebig schräg montiert sein; die Lage wird gespeichert
 - Wetterstreifen mit Regen-, Frost- und Kaltreifenwarnung
+- **Wetter entlang der Route** zur jeweiligen Ankunftszeit („Regen ab km 140
+  gegen 15:30“), Vorschlag für eine trockenere Abfahrtszeit
 
 **Karte und Routenplanung**
 - OpenStreetMap, Live-Spur nach Schräglage eingefärbt
