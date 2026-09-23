@@ -11,6 +11,7 @@ import '../services/ride_store.dart';
 import '../services/tour_store.dart';
 import '../theme.dart';
 import 'ride_detail_screen.dart';
+import 'rider_profile_screen.dart';
 
 /// Liste aller gespeicherten Fahrten.
 class RidesScreen extends StatefulWidget {
@@ -195,27 +196,42 @@ class RidesScreenState extends State<RidesScreen> {
         separatorBuilder: (_, __) => const SizedBox(height: 8),
         itemBuilder: (context, i) {
           if (i == 0) {
-            return Row(children: [
-              Expanded(
-                child: StatCard(
-                  label: 'FAHRTEN',
-                  value: '${_totals['rides'] ?? 0}',
+            return Column(children: [
+              Row(children: [
+                Expanded(
+                  child: StatCard(
+                    label: 'FAHRTEN',
+                    value: '${_totals['rides'] ?? 0}',
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: StatCard(
-                  label: 'GESAMT',
-                  value: totalKm.toStringAsFixed(0),
-                  unit: ' km',
+                const SizedBox(width: 8),
+                Expanded(
+                  child: StatCard(
+                    label: 'GESAMT',
+                    value: totalKm.toStringAsFixed(0),
+                    unit: ' km',
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: StatCard(
-                  label: 'BESTE',
-                  value: '${(_totals['maxLean'] ?? 0).round()}',
-                  unit: '°',
+                const SizedBox(width: 8),
+                Expanded(
+                  child: StatCard(
+                    label: 'BESTE',
+                    value: '${(_totals['maxLean'] ?? 0).round()}',
+                    unit: '°',
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FlatButton2(
+                  label: 'MEIN FAHRSTIL - KURVENANALYSE',
+                  color: cool,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const RiderProfileScreen()),
+                  ),
                 ),
               ),
             ]);

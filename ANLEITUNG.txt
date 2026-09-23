@@ -14,6 +14,21 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.16 - Mein Fahrstil (persoenliche Kurvenanalyse)
+---------------------------------------------------------
+
+- FAHRTEN -> "MEIN FAHRSTIL": wertet alle Kurven der letzten 30 Fahrten
+  aus - getrennt nach links/rechts und nach Kurvenart (eng, mittel,
+  weit), damit Spitzkehren nicht mit Autobahnkurven verglichen werden.
+- Tabelle: mittlere Schraeglage, Querbeschleunigung, Tempo am Scheitel
+  und Anzahl je Richtung und Kurvenart.
+- Hinweise, z. B. "Mittlere Kurven: links legst du dich im Schnitt 8°
+  weniger tief als rechts" (mit Tipp), "In engen Kurven faellt dein
+  Tempo bis zum Scheitel um 45 %", und wie sich deine Schraeglage ueber
+  die Fahrten entwickelt.
+- Hinweise erst ab genug Kurven je Gruppe - keine voreiligen Schluesse.
+  Keine Rangliste, Tempo zaehlt nicht.
+
 VERSION 4.15 - Begleit-SMS fuer Angehoerige
 -------------------------------------------
 
