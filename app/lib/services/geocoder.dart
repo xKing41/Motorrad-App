@@ -28,7 +28,7 @@ class Place {
 /// Gesucht wird nur auf Knopfdruck, nie bei jedem Tastendruck - die
 /// Dienste sind kostenlos und sollen es bleiben.
 class Geocoder {
-  static const _ua = {'User-Agent': 'Schraeglage/4.22 (Motorrad-App)'};
+  static const _ua = {'User-Agent': 'Schraeglage/4.23 (Motorrad-App)'};
 
   static Future<List<Place>> search(
     String query, {

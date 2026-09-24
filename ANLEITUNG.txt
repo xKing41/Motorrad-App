@@ -14,6 +14,15 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.23 - Eigene Position immer sichtbar
+---------------------------------------------
+
+- Der eigene Pfeil lag bei der Navigation hinter Tempolimit, Restzeit
+  und Knoepfen. Jetzt misst die App den freien Bereich zwischen dem
+  Abbiegefeld oben und den Feldern unten und setzt den Pfeil etwas
+  unter dessen Mitte - man sieht sich selbst und die Strecke voraus.
+- Gilt auch ohne Navigation beim Folgen.
+
 VERSION 4.22 - Vektorkarte mit Nachtmodus
 -----------------------------------------
 

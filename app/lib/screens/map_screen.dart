@@ -151,7 +151,18 @@ class _MapScreenState extends State<MapScreen>
     if (nav != null) {
       _followCourseUp(ll, _tracker.heading);
     } else {
-      _map.move(ll, _map.camera.zoom);
+      // Ohne Navigation ist die Karte genordet: Pfeil ebenfalls in den
+      // freien Bereich zwischen den Feldern.
+      final z = _map.camera.zoom;
+      final mpp = 156543.03 *
+          math.cos(ll.latitude * math.pi / 180) /
+          math.pow(2, z);
+      final dy = _riderOffsetPx();
+      _map.move(
+          dy >= 0
+              ? const Distance().offset(ll, mpp * dy, 0)
+              : const Distance().offset(ll, mpp * -dy, 180),
+          z);
     }
   }
 
@@ -192,13 +203,52 @@ class _MapScreenState extends State<MapScreen>
   /// Karte in Fahrtrichtung drehen, Position im unteren Drittel - so
   /// sieht man, was kommt, wie bei jedem Navi. Der Zoom passt sich weich
   /// dem Tempo an.
+  // Fuer die Lage des eigenen Pfeils: Karte und die Felder darueber.
+  final _stackKey = GlobalKey();
+  final _topKey = GlobalKey();
+  final _bottomKey = GlobalKey();
+
+  /// Wie weit der eigene Pfeil unter der Kartenmitte stehen soll (Pixel).
+  ///
+  /// Vorher fest 22 % der Bildschirmhoehe - mit Abbiegefeld oben und
+  /// Tempolimit, Restzeit und Knoepfen unten lag der Pfeil dann HINTER
+  /// den Knoepfen. Jetzt wird der freie Bereich zwischen oberem und
+  /// unterem Feld gemessen, und der Pfeil steht etwas unter dessen Mitte
+  /// (60 %) - so sieht man sich selbst und die Strecke voraus.
+  double _riderOffsetPx() {
+    RenderBox? box(GlobalKey k) {
+      final o = k.currentContext?.findRenderObject();
+      return o is RenderBox && o.hasSize ? o : null;
+    }
+
+    final stack = box(_stackKey);
+    if (stack == null) return 0;
+    final origin = stack.localToGlobal(Offset.zero).dy;
+    final h = stack.size.height;
+    var freeTop = 0.0, freeBottom = h;
+    final top = box(_topKey);
+    if (top != null) {
+      freeTop = top.localToGlobal(Offset.zero).dy - origin + top.size.height;
+    }
+    final bottom = box(_bottomKey);
+    if (bottom != null) {
+      freeBottom = bottom.localToGlobal(Offset.zero).dy - origin;
+    }
+    if (freeBottom - freeTop < 80) return 0;
+    final y = freeTop + (freeBottom - freeTop) * 0.6;
+    return y - h / 2;
+  }
+
   void _followCourseUp(LatLng at, double heading) {
     final target = SmoothTracker.zoomForSpeed(t.speedMs);
     _zoom += (target - _zoom) * 0.03;
     final mpp =
         156543.03 * math.cos(at.latitude * math.pi / 180) / math.pow(2, _zoom);
-    final ahead = mpp * MediaQuery.of(context).size.height * 0.22;
-    final c = const Distance().offset(at, ahead, heading);
+    // Kartenmitte so verschieben, dass der Pfeil im freien Bereich steht.
+    final dy = _riderOffsetPx();
+    final c = dy >= 0
+        ? const Distance().offset(at, mpp * dy, heading)
+        : const Distance().offset(at, mpp * -dy, (heading + 180) % 360);
     _map.moveAndRotate(c, _zoom, -heading);
   }
 
@@ -982,7 +1032,7 @@ class _MapScreenState extends State<MapScreen>
         : const LatLng(51.1657, 10.4515); // Mitte Deutschland als Rueckfall
 
     return SafeArea(
-      child: Stack(children: [
+      child: Stack(key: _stackKey, children: [
         FlutterMap(
           mapController: _map,
           options: MapOptions(
@@ -1087,7 +1137,9 @@ class _MapScreenState extends State<MapScreen>
           top: 8,
           left: 12,
           right: 12,
-          child: _nav != null ? _navTop(_nav!) : _topBar(),
+          child: KeyedSubtree(
+              key: _topKey,
+              child: _nav != null ? _navTop(_nav!) : _topBar()),
         ),
 
         // Bedienleiste unten
@@ -1095,7 +1147,9 @@ class _MapScreenState extends State<MapScreen>
           left: 12,
           right: 12,
           bottom: 10,
-          child: _nav != null ? _navBottom(_nav!) : _bottomBar(),
+          child: KeyedSubtree(
+              key: _bottomKey,
+              child: _nav != null ? _navBottom(_nav!) : _bottomBar()),
         ),
 
         Positioned(
