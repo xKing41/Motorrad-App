@@ -13,9 +13,11 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/route_plan.dart';
 import '../services/curve_warning.dart';
+import '../services/drive_sim.dart';
 import '../services/external_nav.dart';
 import '../services/geo.dart';
 import '../services/fuel_prices.dart';
+import '../services/geocoder.dart';
 import '../services/gpx_service.dart';
 import '../services/navigation.dart';
 import '../services/offline_maps.dart';
@@ -117,6 +119,7 @@ class _MapScreenState extends State<MapScreen>
 
   @override
   void dispose() {
+    _stopSim();
     t.removeListener(_onTick);
     _offline.removeListener(_onOffline);
     _offline.offline.removeListener(_onOffline);
@@ -255,7 +258,121 @@ class _MapScreenState extends State<MapScreen>
   // ------------------------------------------------------------------
   // Navigation
   // ------------------------------------------------------------------
-  Future<void> _startNav() async {
+  // ------------------------------------------------------------------
+  // Probefahrt (Simulation)
+  // ------------------------------------------------------------------
+  DriveSimulator? _sim;
+  Timer? _simTimer;
+  double _simFactor = 1;
+  bool _simPaused = false;
+  Object? _simLimits;
+
+  Future<void> _startSim() async {
+    final r = _route;
+    if (r == null || _nav != null) return;
+    if (t.recording) {
+      toast(context, 'Erst die laufende Aufzeichnung beenden');
+      return;
+    }
+    final sim = DriveSimulator()..setRoute(r.points);
+    t.simulating = true;
+    _sim = sim;
+    _simFactor = 1;
+    _simPaused = false;
+    _simLimits = null;
+    // Erste Position sofort, damit die Navigation am Start beginnt.
+    final f = sim.step1(0);
+    t.simulateFix(f.point.lat, f.point.lon, 0, f.heading);
+    await _startNav(simulated: true);
+    _restartSimTimer();
+  }
+
+  /// Ein Takt je Sekunde Fahrzeit - bei 2x/5x entsprechend oefter, damit
+  /// Karte und Ansagen wie in echt aussehen, nur schneller.
+  void _restartSimTimer() {
+    _simTimer?.cancel();
+    _simTimer = Timer.periodic(
+        Duration(milliseconds: (1000 / _simFactor).round()), (_) => _simTick());
+  }
+
+  void _simTick() {
+    final sim = _sim, nav = _nav;
+    if (sim == null || nav == null || _simPaused) return;
+    // Nach Neuberechnung/Umfahrung der neuen Linie folgen.
+    sim.setRoute(nav.plan.points);
+    final lim = nav.speedLimits;
+    if (lim.isNotEmpty && !identical(lim, _simLimits)) {
+      _simLimits = lim;
+      sim.setLimits(lim);
+    }
+    final f = sim.step1(1.0);
+    t.simulateFix(f.point.lat, f.point.lon, f.speedMs, f.heading);
+  }
+
+  void _stopSim() {
+    _simTimer?.cancel();
+    _simTimer = null;
+    if (_sim != null) {
+      _sim = null;
+      t.simulating = false;
+    }
+  }
+
+  Widget _simBar() {
+    final sim = _sim!;
+    Widget btn(String label, VoidCallback onTap, {bool active = false}) =>
+        Expanded(
+          child: InkWell(
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: panel.withValues(alpha: 0.96),
+                border: Border.all(color: active ? cool : line),
+              ),
+              child: Text(label,
+                  style: TextStyle(
+                      fontSize: 10,
+                      letterSpacing: 1.2,
+                      fontWeight: FontWeight.w700,
+                      color: active ? cool : chalk)),
+            ),
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          color: cool,
+          child: const Text('PROBEFAHRT',
+              style: TextStyle(
+                  fontSize: 10,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w800,
+                  color: asphalt)),
+        ),
+        const SizedBox(width: 6),
+        btn(_simPaused ? '▶ WEITER' : '❚❚ PAUSE',
+            () => setState(() => _simPaused = !_simPaused),
+            active: _simPaused),
+        const SizedBox(width: 6),
+        btn('${_simFactor.round()}× TEMPO', () {
+          setState(() => _simFactor = _simFactor >= 5 ? 1 : (_simFactor == 1 ? 2 : 5));
+          _restartSimTimer();
+        }),
+        const SizedBox(width: 6),
+        btn(sim.detouring ? 'VERFAHREN ...' : 'VERFAHREN', () {
+          sim.detour();
+          setState(() {});
+          toast(context, 'Simuliert: falsch abgebogen');
+        }, active: sim.detouring),
+      ]),
+    );
+  }
+
+  Future<void> _startNav({bool simulated = false}) async {
     final r = _route;
     if (r == null) return;
     final settings = await RoutingSettings.load();
@@ -288,8 +405,8 @@ class _MapScreenState extends State<MapScreen>
     }
     nav.start();
     // Navigation ohne Aufzeichnung waere schade - die Fahrt gleich mit
-    // aufzeichnen.
-    if (!t.recording) widget.onToggleRide();
+    // aufzeichnen. (Nicht bei der Probefahrt - das ist keine Fahrt.)
+    if (!simulated && !t.recording) widget.onToggleRide();
   }
 
   void _onNavChanged() {
@@ -319,6 +436,7 @@ class _MapScreenState extends State<MapScreen>
   }
 
   void _stopNav() {
+    _stopSim();
     final nav = _nav;
     if (nav == null) return;
     nav.removeListener(_onNavChanged);
@@ -389,8 +507,10 @@ class _MapScreenState extends State<MapScreen>
 
   Future<void> _editAt(RoutePoint p) async {
     final r = _route;
-    if (r == null || _nav != null || _busy) {
-      if (r == null) toast(context, 'Erst eine Route planen oder laden');
+    if (_nav != null || _busy) return;
+    if (r == null) {
+      // Ohne Route: dorthin fahren.
+      await _goThere(p);
       return;
     }
     setState(() => _editPin = LatLng(p.lat, p.lon));
@@ -519,6 +639,46 @@ class _MapScreenState extends State<MapScreen>
     if (mounted) {
       toast(context, 'Tipp: Lange auf die Karte drücken, um die Tour zu ändern');
     }
+  }
+
+  /// Lange auf die Karte gedrueckt, keine Route: "Hierhin fahren".
+  Future<void> _goThere(RoutePoint p) async {
+    setState(() => _editPin = LatLng(p.lat, p.lon));
+    final named = await Geocoder.reverse(p.lat, p.lon);
+    if (!mounted) return;
+    final place = named ??
+        Place(
+          name: 'Punkt ${p.lat.toStringAsFixed(5)}, ${p.lon.toStringAsFixed(5)}',
+          kind: 'Punkt auf der Karte',
+          lat: p.lat,
+          lon: p.lon,
+        );
+    final go = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: panel,
+      shape: const RoundedRectangleBorder(),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.place, color: signal),
+            title: Text(place.name,
+                style: const TextStyle(fontSize: 13, color: chalk)),
+            subtitle: Text(
+                [place.detail, place.kind].where((x) => x.isNotEmpty).join(' · '),
+                style: const TextStyle(fontSize: 10, color: steel)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.directions, color: cool),
+            title: const Text('Hierhin fahren (Route planen)',
+                style: TextStyle(fontSize: 12.5, color: chalk)),
+            onTap: () => Navigator.pop(ctx, true),
+          ),
+        ]),
+      ),
+    );
+    if (mounted) setState(() => _editPin = null);
+    if (go != true || !mounted) return;
+    await _openPlanner(dest: place);
   }
 
   void _undoEdit() {
@@ -903,13 +1063,14 @@ class _MapScreenState extends State<MapScreen>
         list.isEmpty ? 'Nichts gefunden (Internet?)' : '${list.length} Orte geladen');
   }
 
-  Future<void> _openPlanner() async {
+  Future<void> _openPlanner({Place? dest}) async {
     final plan = await Navigator.push<RoutePlan>(
       context,
       MaterialPageRoute(
         builder: (_) => RoutePlannerScreen(
           startLat: t.lat,
           startLon: t.lon,
+          initialDest: dest,
         ),
       ),
     );
@@ -1794,6 +1955,13 @@ class _MapScreenState extends State<MapScreen>
           ),
         if (r != null)
           IconButton(
+            tooltip: 'Probefahrt (Simulation)',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.play_circle_outline, size: 18, color: cool),
+            onPressed: _startSim,
+          ),
+        if (r != null)
+          IconButton(
             tooltip: 'Tour speichern',
             visualDensity: VisualDensity.compact,
             icon: const Icon(Icons.bookmark_add_outlined,
@@ -2295,6 +2463,7 @@ class _MapScreenState extends State<MapScreen>
     final limit = nav.speedLimit;
     final curve = nav.curveAhead;
     return Column(mainAxisSize: MainAxisSize.min, children: [
+      if (_sim != null) _simBar(),
       if (limit != null || curve != null)
         Padding(
           padding: const EdgeInsets.only(bottom: 8),

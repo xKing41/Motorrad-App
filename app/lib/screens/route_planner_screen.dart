@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,6 +16,7 @@ import '../services/routing_settings.dart';
 import '../services/traffic_service.dart';
 import '../theme.dart';
 import 'ai_connect_screen.dart';
+import 'map_pick_screen.dart';
 
 /// Routenplanung: entweder per Reglern oder per Freitext an die KI.
 ///
@@ -22,10 +25,15 @@ import 'ai_connect_screen.dart';
 /// aus dem, was auf dem Bildschirm steht. So sieht der Fahrer genau,
 /// was die KI verstanden hat.
 class RoutePlannerScreen extends StatefulWidget {
-  const RoutePlannerScreen({super.key, this.startLat, this.startLon});
+  const RoutePlannerScreen(
+      {super.key, this.startLat, this.startLon, this.initialDest});
 
   final double? startLat;
   final double? startLon;
+
+  /// Vorgewaehltes Ziel (z. B. lange auf die Karte gedrueckt:
+  /// "Hierhin fahren") - dann A nach B statt Rundtour.
+  final Place? initialDest;
 
   @override
   State<RoutePlannerScreen> createState() => _RoutePlannerScreenState();
@@ -74,6 +82,11 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
   @override
   void initState() {
     super.initState();
+    final d = widget.initialDest;
+    if (d != null) {
+      _roundTrip = false;
+      _dest = d;
+    }
     _loadSettings();
   }
 
@@ -1064,7 +1077,8 @@ InputDecoration _inputDecoration(String? hint, {bool dense = false}) =>
       ),
     );
 
-/// Ortssuche mit Ergebnisliste. Gesucht wird nur auf Knopfdruck.
+/// Ortssuche mit Ergebnisliste: Vorschlaege beim Tippen, volle Suche
+/// auf Knopfdruck, oder Punkt auf der Karte waehlen.
 class _PlaceField extends StatefulWidget {
   const _PlaceField({
     required this.label,
@@ -1091,29 +1105,75 @@ class _PlaceFieldState extends State<_PlaceField> {
   List<Place> _results = const [];
   bool _busy = false;
   String? _msg;
+  Timer? _debounce;
+  int _seq = 0;
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _ctrl.dispose();
     super.dispose();
+  }
+
+  /// Vorschlaege beim Tippen (kurz warten, bis der Finger ruht).
+  void _onTyped(String q) {
+    _debounce?.cancel();
+    if (q.trim().length < 3) {
+      if (_results.isNotEmpty) setState(() => _results = const []);
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 450), () async {
+      final seq = ++_seq;
+      final r = await Geocoder.suggest(q,
+          nearLat: widget.nearLat, nearLon: widget.nearLon);
+      if (!mounted || seq != _seq || _busy) return;
+      setState(() {
+        _results = r;
+        _msg = null;
+      });
+    });
   }
 
   Future<void> _search() async {
     final q = _ctrl.text.trim();
     if (q.isEmpty) return;
+    _debounce?.cancel();
     FocusScope.of(context).unfocus();
+    final seq = ++_seq;
     setState(() {
       _busy = true;
       _msg = null;
     });
     final r = await Geocoder.search(q,
         nearLat: widget.nearLat, nearLon: widget.nearLon);
-    if (!mounted) return;
+    if (!mounted || seq != _seq) return;
     setState(() {
       _busy = false;
       _results = r;
-      _msg = r.isEmpty ? 'Nichts gefunden (oder kein Internet).' : null;
+      _msg = r.isEmpty
+          ? 'Nichts gefunden (oder kein Internet). Tipp: anders schreiben, '
+              'Ort dazu ("Gasthof Post Winterberg"), Koordinaten eingeben '
+              'oder auf der Karte wählen.'
+          : null;
     });
+  }
+
+  Future<void> _pickOnMap() async {
+    FocusScope.of(context).unfocus();
+    final p = await Navigator.push<Place>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MapPickScreen(
+          lat: widget.nearLat,
+          lon: widget.nearLon,
+          title: widget.label,
+        ),
+      ),
+    );
+    if (p != null && mounted) {
+      setState(() => _results = const []);
+      widget.onChanged(p);
+    }
   }
 
   @override
@@ -1166,6 +1226,7 @@ class _PlaceFieldState extends State<_PlaceField> {
             child: TextField(
               controller: _ctrl,
               textInputAction: TextInputAction.search,
+              onChanged: _onTyped,
               onSubmitted: (_) => _search(),
               style: const TextStyle(fontSize: 12, color: chalk),
               decoration: _inputDecoration(widget.hint, dense: true),
@@ -1180,6 +1241,15 @@ class _PlaceFieldState extends State<_PlaceField> {
             ),
           ),
         ]),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _pickOnMap,
+            icon: const Icon(Icons.add_location_alt, size: 16, color: cool),
+            label: const Text('AUF DER KARTE WÄHLEN',
+                style: TextStyle(fontSize: 10, letterSpacing: 1.2, color: cool)),
+          ),
+        ),
         if (_msg != null)
           Padding(
             padding: const EdgeInsets.only(top: 4),
@@ -1210,6 +1280,16 @@ class _PlaceFieldState extends State<_PlaceField> {
                   if (p.detail.isNotEmpty)
                     Text(p.detail,
                         style: const TextStyle(fontSize: 9.5, color: steel)),
+                  if (p.kind.isNotEmpty || widget.nearLat != null)
+                    Text(
+                      [
+                        if (p.kind.isNotEmpty) p.kind,
+                        if (widget.nearLat != null && widget.nearLon != null)
+                          Geocoder.distanceText(Geocoder.distanceTo(
+                              p, widget.nearLat!, widget.nearLon!)),
+                      ].join(' · '),
+                      style: const TextStyle(fontSize: 9, color: cool),
+                    ),
                 ],
               ),
             ),

@@ -30,6 +30,11 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
   gegen 15:30“), Vorschlag für eine trockenere Abfahrtszeit
 
 **Karte und Routenplanung**
+- **Probefahrt** (Simulation): Tour mit virtuellem GPS abfahren – Ansagen,
+  Warnungen, Verfahren und Neuberechnung am Schreibtisch testen
+- **Suche** über Photon und Nominatim gleichzeitig, Vorschläge beim Tippen,
+  Kategorien in der Nähe, Koordinaten und Karten-Links, Punkt auf der Karte
+  wählen, „Hierhin fahren“ per langem Druck
 - **Vektorkarte** (OpenFreeMap) mit automatischem **Nachtmodus** nach
   Sonnenstand; klassische OSM-Karte wählbar
 - OpenStreetMap, Live-Spur nach Schräglage eingefärbt

@@ -14,6 +14,35 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.24 - Probefahrt am Schreibtisch, Suche findet (fast) alles
+--------------------------------------------------------------------
+
+PROBEFAHRT (Simulation)
+- Route planen oder laden, dann oben in der Routenzeile das blaue
+  Play-Symbol. Die App faehrt die Tour mit einem virtuellen GPS ab -
+  mit allem, was auch auf der Strasse passiert: Karte, Abbiegeansagen
+  (auch im Headset), Kurvenwarnungen, Tempolimit, Stopps, Wetter.
+- Realistisches Tempo: langsam in Kurven und Kehren, bis zum
+  Tempolimit auf Geraden, vorausschauend bremsen, sanft beschleunigen.
+- Unten: PAUSE, TEMPO (1x, 2x, 5x) und VERFAHREN - simuliert falsch
+  abbiegen, damit man sieht, wie die App zurueck auf die Tour fuehrt.
+- Es wird nichts aufgezeichnet, die Sturzerkennung bleibt aus.
+  Beenden: NAVIGATION BEENDEN gedrueckt halten.
+
+SUCHE
+- Zwei Suchdienste gleichzeitig (Photon und Nominatim), zusammengefuehrt:
+  Orte, Ortsteile, Strassen mit Hausnummer, Berge, Paesse, Seen,
+  Gasthoefe, Geschaefte, Sehenswuerdigkeiten.
+- Vorschlaege schon beim Tippen (ab 3 Buchstaben).
+- Jeder Treffer mit Art ("Restaurant", "Pass", "Adresse") und
+  Entfernung.
+- Kategorien in der Naehe: "Tankstelle", "Cafe", "Aussichtspunkt",
+  "Rastplatz", "Werkstatt" ... findet die naechsten im Umkreis.
+- Koordinaten in jeder Schreibweise und Links aus Google Maps.
+- "AUF DER KARTE WAEHLEN" unter jedem Suchfeld: Karte unter die Nadel
+  schieben, HIER - fuer Ziele, die keine Suche kennt.
+- Ohne geplante Route lange auf die Karte druecken -> "Hierhin fahren".
+
 VERSION 4.23 - Eigene Position immer sichtbar
 ---------------------------------------------
 

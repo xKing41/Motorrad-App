@@ -506,7 +506,35 @@ class Telemetry extends ChangeNotifier {
   /// Zaehlt die GPS-Messungen - so erkennt die Karte eine neue.
   int fixSeq = 0;
 
+  /// Probefahrt laeuft: Die echten GPS-Messungen werden ignoriert, die
+  /// Positionen kommen vom Simulator ([simulateFix]).
+  bool simulating = false;
+
   void _onPos(Position p) {
+    if (simulating) return;
+    _applyFix(p);
+  }
+
+  /// Simulierte GPS-Messung (Probefahrt). Laeuft durch dieselbe
+  /// Verarbeitung wie eine echte - nur ohne Aufzeichnung.
+  void simulateFix(double lat, double lon, double speedMs, double heading) {
+    if (!simulating) return;
+    _applyFix(Position(
+      latitude: lat,
+      longitude: lon,
+      timestamp: DateTime.now(),
+      accuracy: 5,
+      altitude: altM ?? 0,
+      altitudeAccuracy: 10,
+      heading: heading,
+      headingAccuracy: 5,
+      speed: speedMs,
+      speedAccuracy: 0.5,
+    ));
+    notifyListeners();
+  }
+
+  void _applyFix(Position p) {
     _fixTime = DateTime.now();
     fixSeq++;
     gpsServiceOff = false;
@@ -539,9 +567,11 @@ class Telemetry extends ChangeNotifier {
     // Erst hier, mit dem frisch aktualisierten Tempo: Die
     // Stillstandspruefung der Sturzerkennung braucht den aktuellen Wert,
     // nicht den des vorigen Fixes.
-    _crash.feedSpeed(speedMs * 3.6, _clock.elapsedMilliseconds);
+    // Simulierte Fahrt: die Sturzerkennung nicht "scharf" machen - das
+    // Handy liegt ja auf dem Tisch.
+    if (!simulating) _crash.feedSpeed(speedMs * 3.6, _clock.elapsedMilliseconds);
 
-    if (recording) {
+    if (recording && !simulating) {
       if (speedMs > rideMaxSpeedMs) rideMaxSpeedMs = speedMs;
       final nowUs = _clock.elapsedMicroseconds;
       if (_lastMoveUs != 0 && speedMs > 1.5) {
