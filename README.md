@@ -30,8 +30,9 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
   gegen 15:30“), Vorschlag für eine trockenere Abfahrtszeit
 
 **Karte und Routenplanung**
-- **Probefahrt** (Simulation): Tour mit virtuellem GPS abfahren – Ansagen,
-  Warnungen, Verfahren und Neuberechnung am Schreibtisch testen
+- **Probefahrt** (Simulation, nur in der Test-App „Schräglage Testing“):
+  Tour mit virtuellem GPS abfahren – Ansagen, Warnungen, Verfahren und
+  Neuberechnung am Schreibtisch testen
 - **Suche** über Photon und Nominatim gleichzeitig, Vorschläge beim Tippen,
   Kategorien in der Nähe, Koordinaten und Karten-Links, Punkt auf der Karte
   wählen, „Hierhin fahren“ per langem Druck
@@ -146,7 +147,14 @@ installierten Flutter-Version und passen zur jeweiligen Toolchain.
 
 `.github/workflows/build-apk.yml` prüft den Code (Analyzer und Tests) und
 baut die APK bei jedem Push auf `main`, `master` und `claude/…`-Zweige.
-Abholen unter **Actions → letzter Lauf → Artifacts → Schraeglage-APK**.
+Abholen unter **Actions → letzter Lauf → Artifacts**:
+
+- **Schraeglage-APK** – die normale App „Schräglage“ (für Kunden und Kollegen)
+- **Schraeglage-Testing-APK** – „Schräglage Testing“: dieselbe App plus
+  Test-Werkzeuge (Probefahrt-Simulation), eigene App-Kennung
+  (`….testing`), eigene Daten, blaues „TEST“-Band. Läuft neben der normalen
+  App. Gebaut mit `--dart-define=SCHRAEGLAGE_TEST=true`
+  (siehe `app/lib/build_flavor.dart`).
 Von Hand starten über **Run workflow**. Damit reicht ein Handy mit Browser.
 
 Alle Cloud-Builds sind mit demselben Schlüssel signiert

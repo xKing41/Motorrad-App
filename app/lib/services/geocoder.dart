@@ -49,7 +49,7 @@ class Place {
 /// Nominatim erst beim Absenden - dessen Regeln verbieten Suche bei jedem
 /// Tastendruck.
 class Geocoder {
-  static const _ua = {'User-Agent': 'Schraeglage/4.24 (Motorrad-App)'};
+  static const _ua = {'User-Agent': 'Schraeglage/4.25 (Motorrad-App)'};
 
   /// Vollstaendige Suche (Knopf "Suchen").
   static Future<List<Place>> search(

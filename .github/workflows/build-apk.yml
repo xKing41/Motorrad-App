@@ -108,13 +108,35 @@ jobs:
         working-directory: proj
         run: flutter test
 
+      # Normale App: das, was Kunden und Kollegen bekommen.
       - name: APK bauen
         working-directory: proj
-        run: flutter build apk --release
+        run: |
+          flutter build apk --release
+          mkdir -p ../out
+          cp build/app/outputs/flutter-apk/app-release.apk ../out/Schraeglage.apk
+
+      # Test-App: dieselbe App plus Test-Werkzeuge (Probefahrt ...), mit
+      # eigener App-Kennung und eigenem Namen - liegt NEBEN der normalen
+      # App auf dem Handy und hat eigene Daten.
+      - name: Test-APK bauen
+        working-directory: proj
+        run: |
+          set -e
+          for f in android/app/build.gradle.kts android/app/build.gradle; do
+            if [ -f "$f" ]; then
+              sed -i -E 's/(applicationId[ =]+")([^"]+)"/\1\2.testing"/' "$f"
+              grep -n "applicationId" "$f"
+            fi
+          done
+          sed -i 's/android:label="Schräglage"/android:label="Schräglage Testing"/' android/app/src/main/AndroidManifest.xml
+          grep -n 'android:label' android/app/src/main/AndroidManifest.xml
+          flutter build apk --release --dart-define=SCHRAEGLAGE_TEST=true
+          cp build/app/outputs/flutter-apk/app-release.apk ../out/Schraeglage-Testing.apk
 
       - name: Signatur anzeigen
         run: |
-          APK=proj/build/app/outputs/flutter-apk/app-release.apk
+          APK=out/Schraeglage.apk
           SIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
           "$SIGNER" verify --print-certs "$APK" | grep -i "SHA-256" || true
           echo "Erwartet (fester Schluessel): e513fa43b826d686123371aa1ddec96cc73d11d611054c45e0da10857a59b572"
@@ -123,6 +145,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Schraeglage-APK
-          path: proj/build/app/outputs/flutter-apk/app-release.apk
+          path: out/Schraeglage.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Test-APK bereitstellen
+        uses: actions/upload-artifact@v4
+        with:
+          name: Schraeglage-Testing-APK
+          path: out/Schraeglage-Testing.apk
           if-no-files-found: error
           retention-days: 30

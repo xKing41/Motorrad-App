@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'build_flavor.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/map_screen.dart';
 import 'screens/rides_screen.dart';
@@ -25,9 +26,19 @@ class LeanApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Schräglage',
+      title: kAppName,
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
+      // Test-App deutlich kennzeichnen - damit niemand sie mit der
+      // echten verwechselt.
+      builder: kTestBuild
+          ? (context, child) => Banner(
+                message: 'TEST',
+                location: BannerLocation.topEnd,
+                color: cool,
+                child: child!,
+              )
+          : null,
       home: const HomeShell(),
     );
   }

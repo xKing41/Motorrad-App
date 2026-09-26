@@ -14,10 +14,31 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
-VERSION 4.24 - Probefahrt am Schreibtisch, Suche findet (fast) alles
+VERSION 4.25 - Zwei Ausgaben: normale App und Test-App
+------------------------------------------------------
+
+Jeder Cloud-Build liefert jetzt ZWEI Dateien:
+- "Schraeglage-APK" -> die normale App ("Schräglage") fuer dich,
+  Kunden und Kollegen. Ohne Test-Werkzeuge.
+- "Schraeglage-Testing-APK" -> "Schräglage Testing": dieselbe App plus
+  Werkzeuge zum Ausprobieren (Probefahrt-Simulation). Rechts oben ein
+  blaues "TEST"-Band.
+Beide koennen GLEICHZEITIG auf dem Handy sein (eigene App-Kennung) und
+haben getrennte Daten: Probieren in der Test-App veraendert nichts an
+den echten Fahrten, Touren und Einstellungen.
+
+Die verbesserte Suche (Vorschlaege beim Tippen, Kategorien,
+Koordinaten, "Auf der Karte waehlen", "Hierhin fahren") ist Teil der
+normalen App - nur die Probefahrt gibt es ausschliesslich in der
+Test-App.
+
+setup.bat baut weiterhin die normale App.
+
+VERSION 4.24 - Probefahrt (nur Test-App), Suche findet (fast) alles
 --------------------------------------------------------------------
 
 PROBEFAHRT (Simulation)
+- NUR IN DER TEST-APP ("Schräglage Testing").
 - Route planen oder laden, dann oben in der Routenzeile das blaue
   Play-Symbol. Die App faehrt die Tour mit einem virtuellen GPS ab -
   mit allem, was auch auf der Strasse passiert: Karte, Abbiegeansagen

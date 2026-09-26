@@ -11,6 +11,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../build_flavor.dart';
 import '../models/route_plan.dart';
 import '../services/curve_warning.dart';
 import '../services/drive_sim.dart';
@@ -268,6 +269,7 @@ class _MapScreenState extends State<MapScreen>
   Object? _simLimits;
 
   Future<void> _startSim() async {
+    if (!kTestBuild) return;
     final r = _route;
     if (r == null || _nav != null) return;
     if (t.recording) {
@@ -1953,7 +1955,8 @@ class _MapScreenState extends State<MapScreen>
               ]),
             ),
           ),
-        if (r != null)
+        // Probefahrt nur in der Test-App ("Schräglage Testing").
+        if (r != null && kTestBuild)
           IconButton(
             tooltip: 'Probefahrt (Simulation)',
             visualDensity: VisualDensity.compact,
