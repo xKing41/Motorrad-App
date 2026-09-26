@@ -9,6 +9,7 @@ import 'screens/rides_screen.dart';
 import 'screens/crash_alarm_screen.dart';
 import 'services/companion.dart';
 import 'services/emergency.dart';
+import 'services/group_ride.dart';
 import 'services/power.dart';
 import 'services/ride_store.dart';
 import 'services/telemetry.dart';
@@ -63,7 +64,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     PowerPolicy.instance.init();
     // Notfalldaten liegen auf dem Geraet und muessen vor der ersten
     // Sturzpruefung geladen sein.
-    Emergency.instance.load();
+    Emergency.instance.load().then((_) {
+      // Gruppen (Test-App): gemerkte Gruppen wieder verbinden.
+      if (kTestBuild) {
+        final n = Emergency.instance.riderName.trim();
+        GroupHub.instance.restore(n.isEmpty ? 'Fahrer' : n);
+      }
+    });
     // Vektorkarte vorbereiten (Stile laden, Kachel-Adresse holen).
     VectorMap.instance.init();
     t.start();
@@ -109,8 +116,17 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   /// abgeschaltet (Akku).
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    t.setForeground(state == AppLifecycleState.resumed ||
-        state == AppLifecycleState.inactive);
+    final fg = state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.inactive;
+    t.setForeground(fg);
+    // Gruppen: im Hintergrund ohne Fahrt keine Dauerverbindung (Akku).
+    if (kTestBuild) {
+      if (fg) {
+        GroupHub.instance.resume();
+      } else if (!t.recording && !t.navigating) {
+        GroupHub.instance.pause();
+      }
+    }
   }
 
   bool _lastRecording = false;

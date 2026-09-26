@@ -84,8 +84,8 @@ class _CrashAlarmScreenState extends State<CrashAlarmScreen> {
     _timer?.cancel();
     // Laufende Gruppenfahrt: die anderen sofort alarmieren - sie sind
     // meist am naechsten dran.
-    unawaited(GroupRide.current.value
-        ?.sendSos(widget.lat, widget.lon)
+    unawaited(GroupHub.instance
+        .sendSos(widget.lat, widget.lon)
         .catchError((_) {}));
     // Erst direkt senden (wenn eingeschaltet und erlaubt) - sonst die
     // SMS-App mit fertiger Nachricht oeffnen.

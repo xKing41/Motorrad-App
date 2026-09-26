@@ -14,6 +14,43 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.29 - Gruppen als Community (Test-App)
+-----------------------------------------------
+
+GRUPPEN BLEIBEN
+- Wer die App schliesst, bleibt in seinen Gruppen. Beim naechsten
+  Start verbindet die App sie automatisch wieder. Raus nur mit
+  "AUS GRUPPE AUSTRETEN".
+- Mehrere Gruppen gleichzeitig: z. B. die feste Clique, der
+  Stammtisch und eine Gruppe nur fuer die Urlaubstour.
+- Karte -> Gruppen-Symbol oeffnet die Liste: Name, naechste Ausfahrt,
+  letzte Nachricht, ungelesene Nachrichten (oranger Rand).
+
+CHAT
+- Jede Gruppe hat einen Chat. Wer spaeter beitritt, sieht die
+  letzten 50 Nachrichten.
+- Ohne Netz geschrieben: die Nachricht wartet und geht raus, sobald
+  wieder Verbindung da ist.
+
+AUSFAHRTEN
+- "AUSFAHRT PLANEN": Titel, Tag, Uhrzeit, Treffpunkt (eigener
+  Standort oder auf der Karte gewaehlt), auf Wunsch die aktuelle Tour.
+- Alle koennen "DABEI" oder "NICHT DABEI" tippen und sehen, wer
+  kommt.
+- "ZUM TREFFPUNKT" plant die Route dorthin, "TOUR LADEN" legt die
+  Tour der Ausfahrt auf die Karte.
+
+MITGLIEDER UND FAHREN
+- Position sehen die anderen nur, solange du aufzeichnest oder
+  navigierst - nicht, wenn die App nur offen ist.
+- Pro Gruppe einstellbar: "Beim Fahren live sichtbar und Funk". Aus =
+  nur Chat und Ausfahrten (z. B. fuer den Stammtisch).
+- Sturzalarm geht an alle Gruppen.
+- Akku: Im Hintergrund ohne Fahrt ruht die Verbindung; beim Oeffnen
+  kommt Verpasstes nach (Chat-Verlauf, Ausfahrten, Zusagen).
+  Benachrichtigungen bei geschlossener App gibt es erst mit eigenem
+  Server.
+
 VERSION 4.28 - Navi redet weniger und klingt menschlicher
 ---------------------------------------------------------
 

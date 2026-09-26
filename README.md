@@ -33,9 +33,11 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
 - **Spurempfehlung** vor Abbiegungen und Ausfahrten (OSM turn:lanes), auch
   angesagt und offline verfügbar
 - **Neuberechnung ohne Netz** aus den gespeicherten Vektorkacheln (Test-App)
-- **Gruppenfahrt** (Test-App): Mitfahrer auf der Karte, Tour an alle
-  schicken, Sturzwarnung an die Gruppe; Ende-zu-Ende verschlüsselt über
-  öffentliches MQTT
+- **Gruppen / Community** (Test-App): mehrere Gruppen gleichzeitig, bleiben
+  nach dem Schließen erhalten; Chat mit Verlauf, geplante Ausfahrten mit
+  Treffpunkt, Tour und Zu-/Absagen; beim Fahren Mitfahrer auf der Karte,
+  Tour an alle, Sturzwarnung an die Gruppe; Ende-zu-Ende verschlüsselt
+  über öffentliches MQTT
 - **Headset-Paket** (Test-App): Sena/Cardo/… erkennen mit Akkustand,
   Warnung ohne Headset, Headset-Tasten steuern die App, Funkgerät-Modus
   (Sprachnachrichten an die Gruppe über das Helm-Mikrofon)
