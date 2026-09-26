@@ -14,6 +14,34 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.27 - Headset-Paket (Test-App)
+---------------------------------------
+
+Sena, Cardo, Interphone, Midland ... jedes Bluetooth-Helmheadset. Die App
+ergaenzt das Intercom der Headsets, sie ersetzt es nicht.
+
+- HEADSET-KNOPF rechts auf der Karte: gruen = verbunden (mit Name und
+  Akkustand), orange = Akku unter 20 %, grau = keins verbunden. Der
+  Akkustand braucht einmal die Erlaubnis "Geraete in der Naehe".
+- NAVIGATIONSSTART ohne Headset: Hinweis, dass die Ansagen aus dem
+  Handy-Lautsprecher kommen. Bei schwachem Headset-Akku ebenfalls.
+- HEADSET-TASTEN (im Headset-Menue einschalten):
+  * Play/Pause: letzte Ansage wiederholen (mit aktueller Entfernung)
+  * Weiter: Sprechen an die Gruppe starten, nochmal: senden
+  * Zurueck: Restweg, Ankunft und Tempolimit ansagen
+  Solange eingeschaltet, steuern die Tasten keine Musik.
+- FUNKGERAET in der Gruppenfahrt: Knopf "SPRECHEN (GRUPPE)" in der
+  Navigation und im Gruppen-Menue - tippen, sprechen, nochmal tippen =
+  senden (hoechstens 20 Sekunden). Aufgenommen ueber das Helm-Mikrofon,
+  mit Rausch- und Echounterdrueckung. Bei den anderen laeuft die
+  Nachricht sofort im Helm (Musik wird leiser); die letzten 10 lassen
+  sich im Gruppen-Menue nochmal anhoeren.
+- Mit "Audio-Multitasking" am Headset (Sena/Cardo) hoert man Ansagen
+  und Sprachnachrichten auch waehrend eines laufenden Intercoms.
+- Wird gefragt: Mikrofon (fuer Sprachnachrichten).
+- Noch nicht mit echten Sena/Cardo-Geraeten getestet - Rueckmeldung
+  willkommen, vor allem zu den Tasten.
+
 VERSION 4.26 - Spurempfehlung, Neuberechnung ohne Netz, Gruppenfahrt
 --------------------------------------------------------------------
 

@@ -22,9 +22,13 @@ import io.flutter.plugin.common.MethodChannel
  */
 class MainActivity : FlutterActivity() {
     private var pendingPermission: MethodChannel.Result? = null
+    private var headset: HeadsetBridge? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // Helm-Headset: erkennen, Akku, Sprachnachrichten, Tasten.
+        headset?.dispose()
+        headset = HeadsetBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "schraeglage/sms")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -123,12 +127,19 @@ class MainActivity : FlutterActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (headset?.onPermissionResult(requestCode, grantResults) == true) return
         if (requestCode == REQUEST_SMS) {
             val ok = grantResults.isNotEmpty() &&
                 grantResults[0] == PackageManager.PERMISSION_GRANTED
             pendingPermission?.success(ok)
             pendingPermission = null
         }
+    }
+
+    override fun onDestroy() {
+        headset?.dispose()
+        headset = null
+        super.onDestroy()
     }
 
     companion object {

@@ -186,6 +186,15 @@ class GroupMember {
   bool staleAt(DateTime now) => now.difference(seen) > const Duration(minutes: 2);
 }
 
+/// Sprachnachricht aus der Gruppe ("Funkgeraet").
+class GroupVoice {
+  GroupVoice(this.from, this.audio, this.duration, this.at);
+  final String from;
+  final Uint8List audio;
+  final Duration duration;
+  final DateTime at;
+}
+
 /// Hilferuf aus der Gruppe (Sturzerkennung bei jemandem).
 class GroupSos {
   GroupSos(this.name, this.point, this.at);
@@ -217,6 +226,16 @@ class GroupSession extends ChangeNotifier {
   RoutePlan? groupTour;
   String? tourFrom;
   GroupSos? lastSos;
+
+  /// Die letzten Sprachnachrichten (neueste zuletzt).
+  final List<GroupVoice> voices = [];
+  final _voiceIn = StreamController<GroupVoice>.broadcast();
+
+  /// Neue Sprachnachricht der anderen - zum sofortigen Abspielen.
+  Stream<GroupVoice> get voiceIn => _voiceIn.stream;
+
+  /// Groesste Nachricht (Bytes Audio, ~20 s bei 24 kbit/s).
+  static const int maxVoiceBytes = 90 * 1024;
   String? error;
   bool started = false;
 
@@ -289,6 +308,19 @@ class GroupSession extends ChangeNotifier {
       'tour', {'from': myName, 'id': myId, 'plan': planToJson(plan)},
       retain: true);
 
+  /// Sprachnachricht an alle (nicht gespeichert: wer spaeter dazukommt,
+  /// hoert sie nicht - wie beim Funkgeraet).
+  Future<bool> sendVoice(Uint8List audio, Duration duration) async {
+    if (audio.isEmpty || audio.length > maxVoiceBytes) return false;
+    await _publish('voice', {
+      'id': myId,
+      'name': myName,
+      'ms': duration.inMilliseconds,
+      'a': base64Encode(audio),
+    });
+    return true;
+  }
+
   /// Hilferuf (Sturzerkennung).
   Future<void> sendSos(double? lat, double? lon) => _publish('sos', {
         'id': myId,
@@ -337,6 +369,26 @@ class GroupSession extends ChangeNotifier {
       if (p == null) return;
       groupTour = p;
       tourFrom = j['from'] as String?;
+    } else if (sub == 'voice') {
+      if (id == myId) return;
+      final a = j['a'];
+      if (a is! String) return;
+      final Uint8List audio;
+      try {
+        audio = base64Decode(a);
+      } catch (_) {
+        return;
+      }
+      if (audio.isEmpty || audio.length > maxVoiceBytes) return;
+      final v = GroupVoice(
+        (j['name'] as String?) ?? 'Mitfahrer',
+        audio,
+        Duration(milliseconds: (j['ms'] as num?)?.toInt() ?? 0),
+        now,
+      );
+      voices.add(v);
+      if (voices.length > 10) voices.removeAt(0);
+      _voiceIn.add(v);
     } else if (sub == 'sos') {
       if (id == myId) return;
       final lat = (j['lat'] as num?)?.toDouble();

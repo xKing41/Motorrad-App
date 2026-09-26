@@ -36,6 +36,9 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
 - **Gruppenfahrt** (Test-App): Mitfahrer auf der Karte, Tour an alle
   schicken, Sturzwarnung an die Gruppe; Ende-zu-Ende verschlüsselt über
   öffentliches MQTT
+- **Headset-Paket** (Test-App): Sena/Cardo/… erkennen mit Akkustand,
+  Warnung ohne Headset, Headset-Tasten steuern die App, Funkgerät-Modus
+  (Sprachnachrichten an die Gruppe über das Helm-Mikrofon)
 - **Probefahrt** (Simulation, nur in der Test-App „Schräglage Testing“):
   Tour mit virtuellem GPS abfahren – Ansagen, Warnungen, Verfahren und
   Neuberechnung am Schreibtisch testen

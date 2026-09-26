@@ -23,6 +23,7 @@ import '../services/fuel_prices.dart';
 import '../services/geocoder.dart';
 import '../services/gpx_service.dart';
 import '../services/group_ride.dart';
+import '../services/headset.dart';
 import '../services/lanes.dart';
 import '../services/navigation.dart';
 import '../services/offline_maps.dart';
@@ -113,6 +114,12 @@ class _MapScreenState extends State<MapScreen>
     GroupRide.current.addListener(_onGroupChanged);
     _groupListened = GroupRide.current.value;
     _groupListened?.addListener(_onGroup);
+    _voiceSub = _groupListened?.voiceIn.listen(_onVoice);
+    if (kTestBuild) {
+      Headset.instance.addListener(_onOffline);
+      Headset.instance.init();
+      _buttonSub = Headset.instance.buttons.listen(_onHeadsetButton);
+    }
     _loadTrafficKey();
     _offline.cache();
   }
@@ -135,6 +142,10 @@ class _MapScreenState extends State<MapScreen>
     VectorMap.instance.removeListener(_onOffline);
     GroupRide.current.removeListener(_onGroupChanged);
     _groupListened?.removeListener(_onGroup);
+    _voiceSub?.cancel();
+    _buttonSub?.cancel();
+    _pttTimer?.cancel();
+    Headset.instance.removeListener(_onOffline);
     _ticker.dispose();
     _rider.dispose();
     _nav?.dispose();
@@ -426,6 +437,18 @@ class _MapScreenState extends State<MapScreen>
       _map.move(LatLng(t.lat!, t.lon!), _zoom);
     }
     nav.start();
+    // Test-App: ohne Headset hoert man die Ansagen unter dem Helm nicht.
+    if (kTestBuild && settings.voice && mounted) {
+      await Headset.instance.refresh();
+      final st = Headset.instance.status;
+      if (!mounted) return;
+      if (!st.connected) {
+        toast(context,
+            'Kein Headset verbunden - Ansagen kommen aus dem Handy-Lautsprecher');
+      } else if (st.batteryLow) {
+        toast(context, 'Headset-Akku nur noch ${st.battery} %');
+      }
+    }
     // Navigation ohne Aufzeichnung waere schade - die Fahrt gleich mit
     // aufzeichnen. (Nicht bei der Probefahrt - das ist keine Fahrt.)
     if (!simulated && !t.recording) widget.onToggleRide();
@@ -1362,6 +1385,12 @@ class _MapScreenState extends State<MapScreen>
             top: (_nav != null ? 150 : 80) + (_tomtomKey.isNotEmpty ? 132 : 88),
             child: _groupButton(),
           ),
+        if (kTestBuild)
+          Positioned(
+            right: 12,
+            top: (_nav != null ? 150 : 80) + (_tomtomKey.isNotEmpty ? 176 : 132),
+            child: _headsetButton(),
+          ),
         if (_tomtomKey.isNotEmpty)
           Positioned(
             right: 12,
@@ -1510,8 +1539,10 @@ class _MapScreenState extends State<MapScreen>
 
   void _onGroupChanged() {
     _groupListened?.removeListener(_onGroup);
+    _voiceSub?.cancel();
     _groupListened = GroupRide.current.value;
     _groupListened?.addListener(_onGroup);
+    _voiceSub = _groupListened?.voiceIn.listen(_onVoice);
     if (mounted) setState(() {});
   }
 
@@ -1527,6 +1558,202 @@ class _MapScreenState extends State<MapScreen>
       }
     }
     if (mounted) setState(() {});
+  }
+
+  // ------------------------------------------------------------------
+  // Helm-Headset und Funkgeraet (Test-App)
+  // ------------------------------------------------------------------
+  StreamSubscription<GroupVoice>? _voiceSub;
+  StreamSubscription<HeadsetButton>? _buttonSub;
+  Timer? _pttTimer;
+
+  /// Sprachnachricht der Gruppe: sofort uebers Headset abspielen.
+  void _onVoice(GroupVoice v) {
+    if (mounted) toast(context, 'Funk: ${v.from}');
+    Headset.instance.play(v.audio);
+  }
+
+  /// Tasten am Headset (wenn eingeschaltet).
+  void _onHeadsetButton(HeadsetButton b) {
+    final nav = _nav;
+    switch (b) {
+      case HeadsetButton.playPause:
+        Voice.instance.say(nav != null ? nav.repeatText() : _statusText(),
+            repeat: true);
+      case HeadsetButton.next:
+        if (GroupRide.current.value != null) {
+          _pttToggle();
+        } else {
+          Voice.instance.say('Keine Gruppenfahrt aktiv.', repeat: true);
+        }
+      case HeadsetButton.previous:
+        Voice.instance.say(_statusText(), repeat: true);
+    }
+  }
+
+  /// Kurzer Lagebericht zum Anhoeren.
+  String _statusText() {
+    final nav = _nav;
+    final parts = <String>[];
+    if (nav != null) {
+      final km = nav.remainingM / 1000;
+      parts.add('Noch ${km < 10 ? km.toStringAsFixed(1).replaceAll('.', ',') : km.round()} Kilometer');
+      parts.add('Ankunft ${_fmtClock(nav.eta)}');
+      final l = nav.speedLimit;
+      if (l != null && !l.isUnlimited) parts.add('Tempolimit ${l.kmh}');
+    } else {
+      parts.add('Tempo ${t.speedKmh.round()}');
+    }
+    final g = GroupRide.current.value;
+    if (g != null) parts.add('${g.members.length} Mitfahrer in der Gruppe');
+    return '${parts.join('. ')}.';
+  }
+
+  /// Funkgeraet: Tippen startet, nochmal Tippen sendet (hoechstens 20 s).
+  Future<void> _pttToggle() async {
+    final g = GroupRide.current.value;
+    final h = Headset.instance;
+    if (g == null) return;
+    if (h.recording) {
+      _pttTimer?.cancel();
+      final rec = await h.stopRecording();
+      if (rec == null) {
+        if (mounted) toast(context, 'Zu kurz - nichts gesendet');
+        return;
+      }
+      final ok = await g.sendVoice(rec.$1, rec.$2);
+      if (mounted) toast(context, ok ? 'Gesendet' : 'Zu lang - nicht gesendet');
+      return;
+    }
+    if (!await h.startRecording()) {
+      if (mounted) toast(context, 'Mikrofon nicht verfügbar - Berechtigung?');
+      return;
+    }
+    _pttTimer = Timer(Headset.maxRecord, _pttToggle);
+    if (mounted) setState(() {});
+  }
+
+  Widget _pttButton() => ListenableBuilder(
+        listenable: Headset.instance,
+        builder: (context, _) => _pttButtonInner(),
+      );
+
+  Widget _pttButtonInner() {
+    final rec = Headset.instance.recording;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: _pttToggle,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: rec ? redline : panel.withValues(alpha: 0.96),
+            border: Border.all(color: rec ? redline : cool, width: 1.5),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(rec ? Icons.send : Icons.mic,
+                size: 22, color: rec ? chalk : cool),
+            const SizedBox(width: 8),
+            Text(rec ? 'SENDEN' : 'SPRECHEN (GRUPPE)',
+                style: TextStyle(
+                    fontSize: 12,
+                    letterSpacing: 1.4,
+                    fontWeight: FontWeight.w800,
+                    color: rec ? chalk : cool)),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _headsetButton() {
+    final st = Headset.instance.status;
+    final c = st.connected ? (st.batteryLow ? amber : signal) : steel;
+    return InkWell(
+      onTap: _showHeadset,
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: panel.withValues(alpha: 0.94),
+          border: Border.all(color: st.connected ? c : line),
+        ),
+        child: Icon(st.connected ? Icons.headset_mic : Icons.headset_off,
+            size: 18, color: c),
+      ),
+    );
+  }
+
+  void _showHeadset() {
+    final h = Headset.instance;
+    h.refresh();
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: panel,
+      shape: const RoundedRectangleBorder(),
+      builder: (ctx) => SafeArea(
+        child: ListenableBuilder(
+          listenable: h,
+          builder: (ctx, _) {
+            final st = h.status;
+            const small = TextStyle(fontSize: 10, color: steel, height: 1.4);
+            return ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+              children: [
+                const Text('HELM-HEADSET',
+                    style: TextStyle(
+                        fontSize: 12, letterSpacing: 2, color: chalk)),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Icon(st.connected ? Icons.headset_mic : Icons.headset_off,
+                      color: st.connected ? signal : steel),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                        st.connected
+                            ? '${st.label}${st.brand.isNotEmpty && !st.name.toLowerCase().contains(st.brand.toLowerCase()) ? ' (${st.brand})' : ''}'
+                            : 'Kein Headset verbunden',
+                        style: const TextStyle(fontSize: 13, color: chalk)),
+                  ),
+                ]),
+                if (st.connected && st.battery < 0 && !st.btPermission)
+                  TextButton(
+                    onPressed: h.requestPermissions,
+                    child: const Text('AKKUSTAND ANZEIGEN (ERLAUBEN)',
+                        style: TextStyle(fontSize: 10, color: cool)),
+                  ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Sena, Cardo, Interphone, Midland ... jedes Bluetooth-'
+                  'Headset. Navi-Ansagen und Sprachnachrichten der Gruppe '
+                  'kommen im Helm, Musik wird dabei leiser. Mit '
+                  'Audio-Multitasking am Headset auch während des Intercoms.',
+                  style: small,
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  activeTrackColor: signal,
+                  inactiveTrackColor: line,
+                  title: const Text('Headset-Tasten steuern die App',
+                      style: TextStyle(fontSize: 12.5, color: chalk)),
+                  subtitle: const Text(
+                      'Play/Pause: Ansage wiederholen · Weiter: Sprechen an '
+                      'die Gruppe (nochmal: senden) · Zurück: Restweg, '
+                      'Ankunft, Tempolimit. Solange an, steuern die Tasten '
+                      'keine Musik.',
+                      style: small),
+                  value: h.buttonsOn,
+                  onChanged: (v) => h.setButtons(v),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
   }
 
   Widget _groupButton() {
@@ -1714,7 +1941,24 @@ class _MapScreenState extends State<MapScreen>
               ),
             ]),
           ),
-        const SizedBox(height: 10),
+        if (g.voices.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          const TinyLabel('SPRACHNACHRICHTEN'),
+          for (final v in g.voices.reversed)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.play_arrow, color: cool, size: 20),
+              title: Text(
+                  '${v.from} · ${v.duration.inSeconds} s · '
+                  '${v.at.hour.toString().padLeft(2, '0')}:${v.at.minute.toString().padLeft(2, '0')}',
+                  style: const TextStyle(fontSize: 12, color: chalk)),
+              onTap: () => Headset.instance.play(v.audio),
+            ),
+        ],
+        const SizedBox(height: 8),
+        _pttButton(),
+        const SizedBox(height: 2),
         if (_route != null)
           ListTile(
             dense: true,
@@ -2827,6 +3071,7 @@ class _MapScreenState extends State<MapScreen>
     final curve = nav.curveAhead;
     return Column(mainAxisSize: MainAxisSize.min, children: [
       if (_sim != null) _simBar(),
+      if (GroupRide.current.value != null) _pttButton(),
       if (limit != null || curve != null)
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
