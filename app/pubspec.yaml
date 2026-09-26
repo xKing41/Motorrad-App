@@ -21,6 +21,8 @@ dependencies:
   # Vektorkarte (scharf in jeder Zoomstufe, Tag- und Nachtdarstellung).
   vector_map_tiles: ^8.0.0
   vector_tile_renderer: ^5.2.0
+  # Strassen aus den Kartenkacheln lesen (Neuberechnung ohne Netz).
+  vector_tile: ^2.0.1
 
   # Daten / Netz / Dateien
   shared_preferences: ^2.3.2

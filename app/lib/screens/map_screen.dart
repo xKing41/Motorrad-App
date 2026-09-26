@@ -23,6 +23,7 @@ import '../services/gpx_service.dart';
 import '../services/lanes.dart';
 import '../services/navigation.dart';
 import '../services/offline_maps.dart';
+import '../services/offline_router.dart';
 import '../services/poi_service.dart';
 import '../services/route_follow.dart';
 import '../services/route_patch.dart';
@@ -389,6 +390,11 @@ class _MapScreenState extends State<MapScreen>
       traffic: settings.trafficFeed(),
       limits: settings.limitSource(),
       lanes: OverpassLanes.instance,
+      // Neuberechnung ohne Netz - vorerst nur in der Test-App.
+      offlineRouter: kTestBuild
+          ? OfflineRerouter(
+              (k) async => (await VectorMap.instance.cache()).read(k))
+          : null,
       etaSource: settings.tomtomKey.trim().isEmpty
           ? null
           : TomTomEta(settings.tomtomKey.trim()),

@@ -7,6 +7,7 @@ import '../models/route_plan.dart';
 import 'curve_warning.dart';
 import 'geo.dart';
 import 'lanes.dart';
+import 'offline_router.dart';
 import 'route_follow.dart';
 import 'route_patch.dart';
 import 'routing_engine.dart';
@@ -47,6 +48,7 @@ class NavigationSession extends ChangeNotifier {
     this.traffic,
     this.limits,
     this.lanes,
+    this.offlineRouter,
     this.etaSource,
     this.speedWarning = false,
     this.curveWarning = true,
@@ -70,6 +72,47 @@ class NavigationSession extends ChangeNotifier {
   TrafficEta? trafficEta;
   double _etaFromM = 0;
   bool _etaBusy = false;
+
+  /// Neuberechnung ohne Netz aus den gespeicherten Kartenkacheln.
+  /// null = nur online.
+  final OfflineRerouter? offlineRouter;
+
+  /// Letzte Neuberechnung kam vom Handy (ohne Netz)?
+  bool lastRerouteOffline = false;
+
+  /// Weg zurueck zur Tour ohne Netz. true = gefunden und uebernommen.
+  Future<bool> _rejoinOffline(RoutePoint h) async {
+    final r = offlineRouter;
+    if (r == null) return false;
+    OfflineRouteResult? res;
+    try {
+      res = await r.rejoin(
+        here: h,
+        route: _plan.points,
+        fromAlongM: _onRouteAlong,
+        avoidMotorways: prefs.avoidMotorways,
+        avoidUnpaved: prefs.avoidUnpaved,
+      );
+    } catch (_) {
+      res = null;
+    }
+    if (res == null) return false;
+    final detour = EngineRoute(
+      points: res.points,
+      distanceM: pathLength(res.points),
+      durationSec: res.durationSec,
+      steps: stepsFromLine(res.points),
+    );
+    final base = engineRouteOf(_plan);
+    final rest = res.joinAlongM < totalM - 1
+        ? sliceRoute(base, res.joinAlongM, totalM, cum: _cum)
+        : null;
+    _apply(joinRoutes([detour, if (rest != null) rest]),
+        'Zurück zur Tour - ohne Netz auf dem Handy berechnet');
+    lastRerouteOffline = true;
+    _say('Kein Netz. Weg zurück zur Tour wurde auf dem Handy berechnet.');
+    return true;
+  }
 
   /// Spurempfehlungen (OSM). null = keine.
   final LaneSource? lanes;
@@ -621,9 +664,16 @@ class NavigationSession extends ChangeNotifier {
       final res = await _patcher.rejoin(engineRouteOf(_plan),
           here: h, lastAlongM: _onRouteAlong, heading: _heading);
       _rerouteFails = 0;
+      lastRerouteOffline = false;
       _apply(res.route, 'Zurück zur Tour');
       _noRerouteUntil = DateTime.now().add(const Duration(seconds: 10));
     } on RouteException catch (e) {
+      // Server nicht erreichbar: auf dem Handy rechnen (Kartenkacheln).
+      if (await _rejoinOffline(h)) {
+        _rerouteFails = 0;
+        _noRerouteUntil = DateTime.now().add(const Duration(seconds: 15));
+        return;
+      }
       _rerouteFails++;
       // Ohne Netz bleibt die gespeicherte Route auf der Karte - der
       // Fahrer kann ihr folgen. Neuer Versuch nach 20, 40, 60 s.
