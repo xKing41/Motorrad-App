@@ -20,6 +20,7 @@ import '../services/geo.dart';
 import '../services/fuel_prices.dart';
 import '../services/geocoder.dart';
 import '../services/gpx_service.dart';
+import '../services/lanes.dart';
 import '../services/navigation.dart';
 import '../services/offline_maps.dart';
 import '../services/poi_service.dart';
@@ -387,6 +388,7 @@ class _MapScreenState extends State<MapScreen>
           : const RoutingPrefs(),
       traffic: settings.trafficFeed(),
       limits: settings.limitSource(),
+      lanes: OverpassLanes.instance,
       etaSource: settings.tomtomKey.trim().isEmpty
           ? null
           : TomTomEta(settings.tomtomKey.trim()),
@@ -989,6 +991,10 @@ class _MapScreenState extends State<MapScreen>
   /// Tempolimits schon beim Planen holen - dann sind sie auch im
   /// Funkloch da, wenn die Navigation startet.
   Future<void> _prefetchLimits(RoutePlan plan) async {
+    // Spurempfehlungen gleich mit holen - dann auch offline da.
+    unawaited(OverpassLanes.instance
+        .forRoute(plan.points, plan.steps)
+        .catchError((_) => <int, LaneInfo>{}));
     final src = (await RoutingSettings.load()).limitSource();
     if (src == null || !identical(_route, plan)) return;
     try {
@@ -2284,6 +2290,13 @@ class _MapScreenState extends State<MapScreen>
       children.add(const Text('Der Route folgen',
           style: TextStyle(fontSize: 14, color: chalk)));
     }
+    final lanes = nav.rerouting ? null : nav.nextLanes;
+    if (lanes != null) {
+      children.add(Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: _laneRow(lanes),
+      ));
+    }
 
     if (f != null && f.isOffRoute && !nav.rerouting) {
       children.add(Padding(
@@ -2373,6 +2386,41 @@ class _MapScreenState extends State<MapScreen>
           children: children,
         ),
       ),
+    );
+  }
+
+  /// Spuren wie auf dem Schild: empfohlene hell, andere grau.
+  Widget _laneRow(LaneInfo info) {
+    IconData icon(Set<String> ind) {
+      bool has(String x) => ind.contains(x);
+      if (has('reverse')) return Icons.u_turn_left;
+      if (has('left') || has('sharp_left')) return Icons.turn_left;
+      if (has('right') || has('sharp_right')) return Icons.turn_right;
+      if (has('slight_left') || has('merge_to_left')) return Icons.turn_slight_left;
+      if (has('slight_right') || has('merge_to_right')) {
+        return Icons.turn_slight_right;
+      }
+      return Icons.straight;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      decoration: BoxDecoration(
+        color: asphalt,
+        border: Border.all(color: line),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        for (var i = 0; i < info.lanes.length; i++) ...[
+          if (i > 0)
+            Container(width: 1, height: 26, color: steel.withValues(alpha: 0.5)),
+          SizedBox(
+            width: 34,
+            child: Icon(icon(info.lanes[i].indications),
+                size: 26,
+                color: info.lanes[i].recommended ? chalk : steel.withValues(alpha: 0.45)),
+          ),
+        ],
+      ]),
     );
   }
 

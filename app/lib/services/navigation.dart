@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../models/route_plan.dart';
 import 'curve_warning.dart';
 import 'geo.dart';
+import 'lanes.dart';
 import 'route_follow.dart';
 import 'route_patch.dart';
 import 'routing_engine.dart';
@@ -45,6 +46,7 @@ class NavigationSession extends ChangeNotifier {
     required this.prefs,
     this.traffic,
     this.limits,
+    this.lanes,
     this.etaSource,
     this.speedWarning = false,
     this.curveWarning = true,
@@ -68,6 +70,35 @@ class NavigationSession extends ChangeNotifier {
   TrafficEta? trafficEta;
   double _etaFromM = 0;
   bool _etaBusy = false;
+
+  /// Spurempfehlungen (OSM). null = keine.
+  final LaneSource? lanes;
+  Map<int, LaneInfo> _lanes = const {};
+  List<RoutePoint>? _lanesFor;
+
+  void _loadLanes() {
+    final src = lanes;
+    if (src == null) return;
+    final pts = _plan.points;
+    if (identical(pts, _lanesFor)) return;
+    _lanesFor = pts;
+    _lanes = const {};
+    src.forRoute(pts, _plan.steps).then((m) {
+      if (!identical(_plan.points, pts)) return;
+      _lanes = m;
+      notifyListeners();
+    }, onError: (_) {
+      if (identical(_lanesFor, pts)) _lanesFor = null;
+    });
+  }
+
+  /// Spuren vor der naechsten Abbiegung - erst ab 1,5 km davor.
+  LaneInfo? get nextLanes {
+    if (_stepIdx >= _plan.steps.length) return null;
+    final info = _lanes[_stepIdx];
+    if (info == null || distanceToNext > 1500) return null;
+    return info;
+  }
 
   /// Tempolimits (OSM). null = keine Anzeige.
   final SpeedLimitSource? limits;
@@ -155,6 +186,7 @@ class NavigationSession extends ChangeNotifier {
           (p, h.alongM),
     ]..sort((a, b) => a.$2.compareTo(b.$2));
     _loadLimits();
+    _loadLanes();
     _curves = curveWarning
         ? CurveFinder.find(_plan.points, skipNear: [
             for (var i = 0; i < _plan.steps.length; i++)
@@ -509,7 +541,10 @@ class NavigationSession extends ChangeNotifier {
       // Die Nenn-Entfernung der Stufe ("in 3 Kilometern") - ausser die
       // tatsaechliche liegt deutlich darunter.
       final spoken = d < stages[due] * 0.8 ? d : stages[due];
-      _say('In ${spokenDistance(spoken)}: ${s.alert ?? s.text}');
+      // Spurempfehlung dazu, sobald sie zaehlt (ab 1,5 km).
+      final lane = spoken <= 1500 ? _lanes[_stepIdx]?.spoken : null;
+      final laneText = lane != null ? ' Benutzen Sie $lane.' : '';
+      _say('In ${spokenDistance(spoken)}: ${s.alert ?? s.text}$laneText');
     }
   }
 
