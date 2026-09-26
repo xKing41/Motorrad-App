@@ -14,6 +14,37 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.28 - Navi redet weniger und klingt menschlicher
+---------------------------------------------------------
+
+WENIGER GEREDE
+- Eigene, kurze Ansagen statt der langen Saetze des Routing-Servers:
+  vorher "Biegen Sie rechts ab auf die Schwerter Strasse/L 674. Dann
+  weiter auf L 674." - jetzt "In 200 Metern rechts auf die Schwerter
+  Strasse." und an der Stelle "Jetzt rechts."
+- Nichts zu tun = nichts gesagt: "weiter auf ...", Strasse wechselt den
+  Namen, Kreisel verlassen.
+- Weniger Stufen: Autobahn 2 km, 500 m und davor (vorher 4). Land-
+  strasse 600 m und davor, Ort 200 m und davor.
+- Strassenname nur bei der ersten Vorwarnung, Spur nur bei der
+  letzten ("In 500 Metern Ausfahrt rechts, rechte Spur.").
+- "Danach gleich links" nur, wenn die naechste Abbiegung wirklich
+  gleich folgt (unter 150 m).
+- Stopps einmal (2 km vorher) statt zweimal. Baustellen ohne
+  Verzoegerung werden nicht mehr angesagt. Nebensachen warten, bis ein
+  paar Sekunden Ruhe ist.
+- Start: "Los geht's." statt der ersten Anweisung.
+
+STIMME
+- Die App nimmt automatisch die beste deutsche Stimme des Handys, die
+  auch ohne Internet funktioniert (vorher: die voreingestellte, oft
+  einfache Stimme).
+- PLANEN -> EINSTELLUNGEN -> "STIMME": alle deutschen Stimmen mit
+  Hoerprobe (antippen), Sprechtempo einstellbar.
+- Noch natuerlicher: "WEITERE STIMMEN" -> Google Sprachausgabe ->
+  Sprachdaten installieren -> Deutsch (Stimmen in hoher Qualitaet).
+- Strassennummern werden richtig gelesen ("B 54").
+
 VERSION 4.27 - Headset-Paket (Test-App)
 ---------------------------------------
 

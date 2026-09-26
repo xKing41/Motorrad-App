@@ -90,6 +90,21 @@ class MainActivity : FlutterActivity() {
                             result.success(false)
                         }
                     }
+                    // Einstellungen der Sprachausgabe (weitere/bessere
+                    // Stimmen installieren).
+                    "openTtsSettings" -> {
+                        try {
+                            startActivity(Intent("com.android.settings.TTS_SETTINGS"))
+                            result.success(true)
+                        } catch (e: Exception) {
+                            try {
+                                startActivity(Intent(Settings.ACTION_SETTINGS))
+                                result.success(true)
+                            } catch (e2: Exception) {
+                                result.success(false)
+                            }
+                        }
+                    }
                     "isIgnoringBatteryOptimizations" -> {
                         val pm = getSystemService(PowerManager::class.java)
                         result.success(pm?.isIgnoringBatteryOptimizations(packageName) ?: true)

@@ -16,7 +16,7 @@ import 'vector_map.dart';
 
 /// Kartenquelle (OpenStreetMap-Standardkarte).
 const String osmUrlTemplate = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-const String osmUserAgent = 'Schraeglage/4.27 (de.schraeglage.app)';
+const String osmUserAgent = 'Schraeglage/4.28 (de.schraeglage.app)';
 
 /// Stand eines Vorab-Downloads.
 class OfflineJob {

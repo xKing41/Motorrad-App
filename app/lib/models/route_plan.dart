@@ -463,9 +463,18 @@ class RouteStep {
     this.type = 0,
     this.verbal,
     this.alert,
+    this.street,
+    this.exitCount,
   });
 
   final String text;
+
+  /// Strasse nach dem Abbiegen ("B 54", "Schwerter Straße") - fuer
+  /// kurze, eigene Ansagen.
+  final String? street;
+
+  /// Kreisverkehr: die wievielte Ausfahrt.
+  final int? exitCount;
   final double distanceM;
 
   /// Index des Routenpunkts, an dem abgebogen wird.
@@ -486,6 +495,8 @@ class RouteStep {
         if (type != 0) 'k': type,
         if (verbal != null) 'v': verbal,
         if (alert != null) 'a': alert,
+        if (street != null) 's': street,
+        if (exitCount != null) 'x': exitCount,
       };
 
   static RouteStep fromJson(Map<String, dynamic> j) => RouteStep(
@@ -495,6 +506,8 @@ class RouteStep {
         type: (j['k'] as num?)?.toInt() ?? 0,
         verbal: j['v'] as String?,
         alert: j['a'] as String?,
+        street: j['s'] as String?,
+        exitCount: (j['x'] as num?)?.toInt(),
       );
 
   /// Dieselbe Anweisung, verschoben um [offset] Routenpunkte - beim
@@ -506,6 +519,8 @@ class RouteStep {
         type: type,
         verbal: verbal,
         alert: alert,
+        street: street,
+        exitCount: exitCount,
       );
 }
 

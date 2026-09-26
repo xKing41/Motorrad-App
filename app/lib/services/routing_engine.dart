@@ -129,7 +129,7 @@ abstract class RoutingEngine {
 
 const Map<String, String> _headers = {
   'Content-Type': 'application/json',
-  'User-Agent': 'Schraeglage/4.27 (Motorrad-App)',
+  'User-Agent': 'Schraeglage/4.28 (Motorrad-App)',
 };
 
 // ===========================================================================
@@ -385,6 +385,20 @@ class ValhallaEngine implements RoutingEngine {
     return out;
   }
 
+  /// Erster Strassenname einer Liste; Nummern (B 54) vor Namen, weil
+  /// man sie auf Schildern sieht.
+  static String? firstName(Object? names) {
+    if (names is! List) return null;
+    final l = [
+      for (final n in names)
+        if (n is String && n.trim().isNotEmpty) n.trim(),
+    ];
+    if (l.isEmpty) return null;
+    final ref = l.firstWhere((n) => RegExp(r'^[ABLKS] ?\d').hasMatch(n),
+        orElse: () => l.first);
+    return ref;
+  }
+
   static EngineRoute _parseTrip(Map<String, dynamic> trip) {
     final perUnit = trip['units'] == 'miles' ? 1609.344 : 1000.0;
     final pts = <RoutePoint>[];
@@ -411,6 +425,8 @@ class ValhallaEngine implements RoutingEngine {
           type: (m['type'] as num?)?.toInt() ?? 0,
           verbal: str('verbal_pre_transition_instruction'),
           alert: str('verbal_transition_alert_instruction'),
+          street: firstName(m['street_names']) ?? firstName(m['begin_street_names']),
+          exitCount: (m['roundabout_exit_count'] as num?)?.toInt(),
         ));
       }
     }
@@ -591,6 +607,11 @@ class GraphHopperEngine implements RoutingEngine {
           pointIndex: ((i['interval'] as List?)?.first as num?)?.toInt() ?? 0,
           type: ghSignToType((i['sign'] as num?)?.toInt() ?? 0),
           verbal: text.isEmpty ? null : text,
+          street: (i['street_name'] is String &&
+                  (i['street_name'] as String).trim().isNotEmpty)
+              ? (i['street_name'] as String).trim()
+              : null,
+          exitCount: (i['exit_number'] as num?)?.toInt(),
         ));
       }
       if (pts.length < 2) continue;

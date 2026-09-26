@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/route_plan.dart';
@@ -14,6 +15,7 @@ import '../services/route_patch.dart';
 import '../services/routing_engine.dart';
 import '../services/routing_settings.dart';
 import '../services/traffic_service.dart';
+import '../services/voice.dart';
 import '../theme.dart';
 import 'ai_connect_screen.dart';
 import 'map_pick_screen.dart';
@@ -987,6 +989,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
         const SizedBox(height: 6),
         _switchRow('Sprachansagen bei der Navigation', _voice,
             (v) => setState(() => _voice = v)),
+        if (_voice) const _VoicePicker(),
         _switchRow('Vor engen Kurven warnen (wenn zu schnell)', _curveWarn,
             (v) => setState(() => _curveWarn = v)),
         _switchRow('Tempolimit anzeigen (OpenStreetMap)', _showLimits,
@@ -1295,6 +1298,119 @@ class _PlaceFieldState extends State<_PlaceField> {
             ),
           ),
       ],
+    );
+  }
+}
+
+
+/// Stimme der Ansagen waehlen, Probe hoeren, Tempo einstellen.
+class _VoicePicker extends StatefulWidget {
+  const _VoicePicker();
+
+  @override
+  State<_VoicePicker> createState() => _VoicePickerState();
+}
+
+class _VoicePickerState extends State<_VoicePicker> {
+  List<TtsVoice> _voices = const [];
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Voice.instance.germanVoices().then((v) {
+      if (mounted) {
+        setState(() {
+          _voices = v;
+          _loaded = true;
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cur = Voice.instance.current;
+    const small = TextStyle(fontSize: 10, color: steel, height: 1.4);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(border: Border.all(color: line)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const TinyLabel('STIMME'),
+          const SizedBox(height: 4),
+          if (!_loaded)
+            const Text('Stimmen werden gesucht ...', style: small)
+          else if (_voices.isEmpty)
+            const Text(
+                'Keine deutsche Stimme gefunden - unten "Weitere Stimmen" '
+                'antippen und "Deutsch" installieren.',
+                style: small)
+          else
+            for (var i = 0; i < _voices.length && i < 8; i++)
+              InkWell(
+                onTap: () async {
+                  await Voice.instance.setVoice(_voices[i]);
+                  if (mounted) setState(() {});
+                  await Voice.instance.sample();
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: Row(children: [
+                    Icon(
+                        cur?.name == _voices[i].name
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_unchecked,
+                        size: 16,
+                        color: cur?.name == _voices[i].name ? signal : steel),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(_voices[i].label(i),
+                          style: const TextStyle(fontSize: 11.5, color: chalk)),
+                    ),
+                    const Icon(Icons.volume_up, size: 15, color: steel),
+                  ]),
+                ),
+              ),
+          const SizedBox(height: 6),
+          Row(children: [
+            const Text('Tempo', style: TextStyle(fontSize: 11, color: steel)),
+            Expanded(
+              child: Slider(
+                value: Voice.instance.rate,
+                min: 0.35,
+                max: 0.65,
+                divisions: 6,
+                activeColor: signal,
+                onChanged: (v) => setState(() => Voice.instance.rate = v),
+                onChangeEnd: (v) async {
+                  await Voice.instance.setRate(v);
+                  await Voice.instance.sample();
+                },
+              ),
+            ),
+          ]),
+          const Text(
+              'Antippen = Hörprobe. "Offline" wählen, sonst schweigt das Navi '
+              'im Funkloch. Natürlicher klingen die Google-Stimmen in hoher '
+              'Qualität: "Weitere Stimmen" → Google Sprachausgabe → '
+              'Sprachdaten installieren → Deutsch.',
+              style: small),
+          TextButton.icon(
+            onPressed: () async {
+              try {
+                await const MethodChannel('schraeglage/system')
+                    .invokeMethod('openTtsSettings');
+              } catch (_) {}
+            },
+            icon: const Icon(Icons.record_voice_over, size: 16, color: cool),
+            label: const Text('WEITERE STIMMEN',
+                style: TextStyle(fontSize: 10, letterSpacing: 1.2, color: cool)),
+          ),
+        ],
+      ),
     );
   }
 }

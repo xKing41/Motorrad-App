@@ -279,17 +279,17 @@ void main() {
       at(100);
       expect(nav.nextStep!.type, ManeuverType.left);
       expect(nav.distanceToNext, closeTo(4900, 20));
-      at(4700); // 300 m vorher: Vorwarnung
-      expect(said.last, startsWith('In 300 Metern'));
-      at(4930); // 70 m vorher: Ansage
-      expect(said.last, 'Links');
+      at(4820); // 180 m vorher: Vorwarnung (Ort: 200 m)
+      expect(said.last, 'In 200 Metern links.');
+      at(4950); // 50 m vorher: Ansage
+      expect(said.last, 'Jetzt links.');
       at(5100);
       expect(nav.nextStep!.type, ManeuverType.destination);
       at(9990);
       expect(nav.arrived, isTrue);
     });
 
-    test('Autobahn: Ausfahrt wird gestaffelt angesagt (3 km, 1 km, 400 m)',
+    test('Autobahn: Ausfahrt wird gestaffelt angesagt (2 km, 500 m, davor)',
         () {
       final said = <String>[];
       final pts = straight(home, 90, 20000, step: 100);
@@ -312,18 +312,18 @@ void main() {
         nav.update(p.lat, p.lon, speedMs: 33); // ~120 km/h
       }
       expect(said, [
-        'In 3 Kilometern: Ausfahrt 23',
-        'In einem Kilometer: Ausfahrt 23',
-        'In 400 Metern: Ausfahrt 23',
-        'Nehmen Sie die Ausfahrt 23.',
+        'In 2 Kilometern Ausfahrt rechts.',
+        'In 500 Metern Ausfahrt rechts.',
+        'Jetzt Ausfahrt rechts.',
       ]);
     });
 
     test('Stadt: nur kurze Vorwarnung', () {
       expect(NavigationSession.announceStages(ManeuverType.right, 10).first,
-          250);
+          200);
+      expect(NavigationSession.announceStages(ManeuverType.right, 20).length, 2);
       expect(NavigationSession.announceStages(ManeuverType.exitRight, 30).first,
-          3000);
+          2000);
     });
 
     test('verfahren: nach einigen Sekunden zurueck auf die Tour', () async {
@@ -378,15 +378,15 @@ void main() {
       expect(nav.rerouteFails, 2);
       // Die geplante Route ist unveraendert.
       expect(nav.plan.points.length, r.points.length);
-      expect(said.where((t) => t.contains('neu berechnet')).length, 1);
-      expect(said.where((t) => t.contains('nicht möglich')).length, 1);
+      expect(said.where((t) => t == 'Neue Route.').length, 1);
+      expect(said.where((t) => t.startsWith('Kein Netz')).length, 1);
       // Zurueck auf der Route: Zaehler zurueckgesetzt.
       final back = pointAlong(r.points, cum, 6000);
       nav.update(back.lat, back.lon, speedMs: 15);
       expect(nav.rerouteFails, 0);
     });
 
-    test('Stopps werden vorab angesagt: 10 km und 1,5 km', () {
+    test('Stopps werden einmal vorab angesagt (2 km)', () {
       final r = lineRoute(30);
       final cum = cumulativeDistances(r.points);
       final sp = pointAlong(r.points, cum, 20000);
@@ -401,15 +401,12 @@ void main() {
         speak: said.add,
       );
       // Abbiegung "Links" liegt bei 15 km - weit genug weg halten.
-      for (final at in [5000.0, 9500.0, 10500.0, 11000.0, 18000.0, 18600.0, 18700.0]) {
+      for (final at in [5000.0, 9500.0, 10500.0, 11000.0, 18100.0, 18600.0, 18700.0]) {
         final p = pointAlong(r.points, cum, at);
         nav.update(p.lat, p.lon, speedMs: 20);
       }
       final stops = said.where((t) => t.contains('Tankstopp')).toList();
-      expect(stops, [
-        'In 10 Kilometern: Tankstopp, Aral.',
-        'In 1,5 Kilometern: Tankstopp, Aral.',
-      ]);
+      expect(stops, ['In 2 Kilometern Tankstopp, Aral.'], reason: said.join(' | '));
     });
 
     test('Ansage wiederholen: aktuelle Entfernung', () {

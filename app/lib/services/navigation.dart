@@ -8,6 +8,7 @@ import 'curve_warning.dart';
 import 'geo.dart';
 import 'lanes.dart';
 import 'offline_router.dart';
+import 'phrases.dart';
 import 'route_follow.dart';
 import 'route_patch.dart';
 import 'routing_engine.dart';
@@ -110,7 +111,7 @@ class NavigationSession extends ChangeNotifier {
     _apply(joinRoutes([detour, if (rest != null) rest]),
         'Zurück zur Tour - ohne Netz auf dem Handy berechnet');
     lastRerouteOffline = true;
-    _say('Kein Netz. Weg zurück zur Tour wurde auf dem Handy berechnet.');
+    _say('Kein Netz. Neue Route auf dem Handy berechnet.');
     return true;
   }
 
@@ -376,11 +377,17 @@ class NavigationSession extends ChangeNotifier {
   }
 
   bool _spoke = false;
+  DateTime _lastSpoke = DateTime.fromMillisecondsSinceEpoch(0);
 
   void _say(String t) {
     _spoke = true;
+    _lastSpoke = DateTime.now();
     _speak(t);
   }
+
+  /// Seit [d] nichts gesagt? Nebensachen (Stopps, Baustellen) warten, bis
+  /// Ruhe ist - Abbiegungen haben Vorrang.
+  bool _quietFor(Duration d) => DateTime.now().difference(_lastSpoke) >= d;
 
   /// Ansage zum Wiederholen (Antippen der Anzeige): die naechste
   /// Anweisung mit der aktuellen Entfernung.
@@ -445,9 +452,7 @@ class NavigationSession extends ChangeNotifier {
       curveAhead = (c, d);
       if (!_curveWarned.contains(k) && !_spoke) {
         _curveWarned.add(k);
-        _say(d < 80
-            ? 'Achtung, ${c.label}!'
-            : 'Achtung, ${c.label} in ${spokenDistance(d)}.');
+        _say(d < 80 ? '${c.label}!' : '${c.label} in ${spokenDistance(d)}.');
       }
       return;
     }
@@ -455,7 +460,7 @@ class NavigationSession extends ChangeNotifier {
 
   // Stopps vorab ansagen: "In 10 Kilometern: Tankstopp, Aral."
   final Map<String, int> _stopAnnounced = {};
-  static const List<double> stopStages = [10000, 1500];
+  static const List<double> stopStages = [2000];
 
   static String stopLabel(PoiKind k) => switch (k) {
         PoiKind.fuel => 'Tankstopp',
@@ -475,14 +480,14 @@ class NavigationSession extends ChangeNotifier {
       if (s.distanceM <= stopStages[i]) due = i;
     }
     if (due < 0 || due < done) return;
-    // Nie mitten in eine Abbiege-Ansage hinein - dann beim naechsten
-    // GPS-Punkt.
-    if (_spoke) return;
+    // Nie mitten in eine andere Ansage hinein - dann beim naechsten
+    // GPS-Punkt (Nebensachen warten, bis Ruhe ist).
+    if (_spoke || !_quietFor(const Duration(seconds: 8))) return;
     _stopAnnounced[s.poi.id] = due + 1;
     final name = s.poi.name?.isNotEmpty == true ? ', ${s.poi.name}' : '';
     final spoken =
         s.distanceM < stopStages[due] * 0.8 ? s.distanceM : stopStages[due];
-    _say('In ${spokenDistance(spoken)}: ${stopLabel(s.poi.kind)}$name.');
+    _say('In ${spokenDistance(spoken)} ${stopLabel(s.poi.kind)}$name.');
   }
 
   void _flash(String msg, {int seconds = 8}) {
@@ -494,7 +499,7 @@ class NavigationSession extends ChangeNotifier {
   void start() {
     final first = _plan.steps.isNotEmpty ? _plan.steps.first : null;
     if (first != null) _announced[0] = 2;
-    _say(first?.verbal ?? first?.text ?? 'Route gestartet.');
+    _say('Los geht\'s.');
     unawaited(checkTraffic(force: true));
   }
 
@@ -535,7 +540,7 @@ class NavigationSession extends ChangeNotifier {
 
     if (!arrived && f.remainingM < 40 && f.offRouteM < 60) {
       arrived = true;
-      _say('Sie haben Ihr Ziel erreicht.');
+      _say('Ziel erreicht.');
       _flash('ZIEL ERREICHT', seconds: 30);
     }
 
@@ -562,6 +567,9 @@ class NavigationSession extends ChangeNotifier {
     }
     final s = nextStep;
     if (s == null) return;
+    // Nichts zu tun (Strasse wechselt den Namen, geradeaus weiter,
+    // Kreisel verlassen): nichts sagen.
+    if (Phrases.silent(s.type)) return;
     final d = distanceToNext;
     final stages = _stages[_stepIdx] ?? announceStages(s.type, _speedMs);
     final done = _announced[_stepIdx] ?? 0; // Anzahl erledigter Stufen
@@ -576,27 +584,42 @@ class NavigationSession extends ChangeNotifier {
     _announced[_stepIdx] = due + 1;
     _stages[_stepIdx] = stages;
     final last = due == stages.length - 1;
-    final then = thenStep;
-    final thenText = then != null ? ', dann ${then.alert ?? then.text}' : '';
     if (last) {
-      _say('${s.verbal ?? s.text}$thenText');
+      final then = _closeFollower();
+      _say(Phrases.now(s, then: then) ?? s.verbal ?? s.text);
     } else {
-      // Die Nenn-Entfernung der Stufe ("in 3 Kilometern") - ausser die
+      // Die Nenn-Entfernung der Stufe ("in 2 Kilometern") - ausser die
       // tatsaechliche liegt deutlich darunter.
       final spoken = d < stages[due] * 0.8 ? d : stages[due];
-      // Spurempfehlung dazu, sobald sie zaehlt (ab 1,5 km).
-      final lane = spoken <= 1500 ? _lanes[_stepIdx]?.spoken : null;
-      final laneText = lane != null ? ' Benutzen Sie $lane.' : '';
-      _say('In ${spokenDistance(spoken)}: ${s.alert ?? s.text}$laneText');
+      // Spur erst bei der letzten Vorwarnung - dann ist sie wichtig.
+      final lastPre = due == stages.length - 2;
+      final lane = lastPre ? _lanes[_stepIdx]?.spoken : null;
+      _say(Phrases.pre(s, spokenDistance(spoken),
+              // Strassenname nur einmal, bei der ersten Vorwarnung.
+              withStreet: done == 0,
+              lane: lane != null ? Phrases.laneHint(lane) : null) ??
+          'In ${spokenDistance(spoken)}: ${s.alert ?? s.text}');
     }
+  }
+
+  /// Die naechste Abbiegung, wenn sie so dicht folgt, dass sie gleich
+  /// mit angesagt werden muss (unter 150 m).
+  RouteStep? _closeFollower() {
+    for (var i = _stepIdx + 1; i < _plan.steps.length; i++) {
+      if (_stepAlong[i] - _stepAlong[_stepIdx] > 150) return null;
+      if (!Phrases.silent(_plan.steps[i].type)) return _plan.steps[i];
+    }
+    return null;
   }
 
   /// Ab welchen Entfernungen (m) eine Abbiegung angesagt wird - absteigend,
   /// die letzte ist die Ansage direkt davor.
   ///
-  /// Autobahn (Ausfahrt, Auffahrt, Spurwahl oder ab 85 km/h): 3 km, 1 km,
-  /// 400 m und kurz davor - wie bei den grossen Navis. Landstrasse: 1 km
-  /// (ab 70 km/h), 400 m, kurz davor. Ort: 250 m und kurz davor.
+  /// So knapp wie moeglich, so frueh wie noetig:
+  ///  * Autobahn (Ausfahrt, Auffahrt, Spurwahl oder ab 85 km/h): 2 km,
+  ///    500 m und kurz davor.
+  ///  * Landstrasse (ab 60 km/h): 600 m und kurz davor.
+  ///  * Ort: 200 m und kurz davor.
   static List<double> announceStages(int type, double speedMs) {
     final v = math.max(speedMs, 5.0);
     final highwayManeuver = type == ManeuverType.rampRight ||
@@ -604,17 +627,15 @@ class NavigationSession extends ChangeNotifier {
         type == ManeuverType.exitRight ||
         type == ManeuverType.exitLeft ||
         type == ManeuverType.stayLeft ||
-        type == ManeuverType.stayRight ||
-        type == ManeuverType.stayStraight ||
-        type == ManeuverType.merge;
-    // "Kurz davor": etwa 6 Sekunden, auf der Autobahn etwas mehr.
+        type == ManeuverType.stayRight;
+    // "Kurz davor": etwa 5 Sekunden.
     if (v >= 23.6 || (highwayManeuver && v >= 16)) {
-      return [3000, 1000, 400, math.max(150.0, v * 6)];
+      return [2000, 500, math.max(150.0, v * 5)];
     }
-    if (v >= 13.9) {
-      return [if (v >= 19.4) 1000, 400, math.max(80.0, v * 6)];
+    if (v >= 16.7) {
+      return [600, math.max(80.0, v * 5)];
     }
-    return [250, math.max(40.0, v * 5)];
+    return [200, math.max(40.0, v * 4)];
   }
 
   /// "800 Metern", "1,5 Kilometern" - fuer die Ansage.
@@ -658,7 +679,7 @@ class NavigationSession extends ChangeNotifier {
     if (h == null) return;
     rerouting = true;
     _flash('ROUTE WIRD NEU BERECHNET ...', seconds: 30);
-    if (_rerouteFails == 0) _say('Route wird neu berechnet.');
+    if (_rerouteFails == 0) _say('Neue Route.');
     notifyListeners();
     try {
       final res = await _patcher.rejoin(engineRouteOf(_plan),
@@ -680,7 +701,7 @@ class NavigationSession extends ChangeNotifier {
       _flash('Neuberechnung nicht möglich: ${e.message} '
           'Die Route bleibt auf der Karte.', seconds: 12);
       if (_rerouteFails == 1) {
-        _say('Neuberechnung nicht möglich. Bitte zur Route zurückkehren.');
+        _say('Kein Netz. Bitte zurück zur Route.');
       }
       _noRerouteUntil = DateTime.now()
           .add(Duration(seconds: 20 * math.min(3, _rerouteFails)));
@@ -842,8 +863,20 @@ class NavigationSession extends ChangeNotifier {
     for (final inc in ahead) {
       final d = inc.alongM - alongM;
       if (d < 0 || d > 2000 || _warned.contains(inc.id)) continue;
+      // Nur, was wirklich betrifft: Stau, Sperrung, Unfall, Gefahr -
+      // eine Dauerbaustelle ohne Verzoegerung ist keine Ansage wert.
+      final relevant = inc.isSevere ||
+          inc.category == TrafficCategory.jam ||
+          inc.category == TrafficCategory.accident ||
+          inc.category == TrafficCategory.hazard ||
+          inc.delaySec >= 120;
+      if (!relevant) {
+        _warned.add(inc.id);
+        continue;
+      }
+      if (_spoke || !_quietFor(const Duration(seconds: 6))) return;
       _warned.add(inc.id);
-      _say('Achtung: ${inc.category.label} in ${spokenDistance(d)}.');
+      _say('${inc.category.label} in ${spokenDistance(d)}.');
     }
   }
 

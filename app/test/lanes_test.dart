@@ -126,7 +126,10 @@ void main() {
       p = pointAlong(route, cum, 1100);
       nav.update(p.lat, p.lon, speedMs: 25);
       expect(nav.nextLanes, isNotNull);
-      expect(said.any((t) => t.contains('Benutzen Sie die rechte Spur.')), isTrue,
+      // Spur wird bei der letzten Vorwarnung (500 m) mit angesagt.
+      p = pointAlong(route, cum, 1600);
+      nav.update(p.lat, p.lon, speedMs: 25);
+      expect(said.any((t) => t.endsWith('Ausfahrt rechts, rechte Spur.')), isTrue,
           reason: said.join(' | '));
     });
   });
