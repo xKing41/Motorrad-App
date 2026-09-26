@@ -57,8 +57,13 @@ void main() {
       expect(req['costing'], 'motorcycle');
       final opts = (req['costing_options'] as Map)['motorcycle'] as Map;
       expect(opts['use_highways'], 0.0);
-      expect(opts['use_trails'], greaterThan(0.3));
+      // use_trails steuert bei Valhalla nur den Belag: >0.45 hebt den
+      // Aufschlag fuer Schotter/Feldwege auf - das darf nie passieren.
+      expect(opts['use_trails'], 0.0);
+      expect(opts['use_tracks'], 0.0);
       expect(opts['exclude_unpaved'], isTrue);
+      expect(opts['private_access_penalty'], greaterThan(1000));
+      expect(opts['destination_only_penalty'], greaterThan(1000));
       expect(req.containsKey('alternates'), isFalse);
       // Muss sich als JSON verschicken lassen.
       expect(() => jsonEncode(req), returnsNormally);

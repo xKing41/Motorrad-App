@@ -31,7 +31,7 @@ const int _extent = 4096;
 
 /// Eine Strasse aus einer Kachel.
 class RoadLine {
-  RoadLine(this.nodes, this.cls, this.oneway);
+  RoadLine(this.nodes, this.cls, this.oneway, {this.unpaved = false});
 
   /// Punkte als globale Rasterkoordinaten (Zoom 14, 4096 je Kachel) -
   /// gleiche Punkte in Nachbarkacheln haben exakt dieselben Werte.
@@ -40,6 +40,9 @@ class RoadLine {
 
   /// 1 = nur in Zeichenrichtung, -1 = nur dagegen, 0 = beide.
   final int oneway;
+
+  /// Kein fester Belag (laut Karte).
+  final bool unpaved;
 }
 
 /// Rasterpunkt -> Koordinate.
@@ -82,6 +85,9 @@ List<RoadLine> roadsFromTile(Uint8List bytes, int tx, int ty) {
       final props = f.decodeProperties();
       final cls = props['class']?.stringValue ?? '';
       if (!RoadNet.speedKmh.containsKey(cls)) continue;
+      // Privat / fuer Kfz gesperrt (OpenMapTiles: access=no).
+      if (props['access']?.stringValue == 'no') continue;
+      final unpaved = props['surface']?.stringValue == 'unpaved';
       final ow = _asInt(props['oneway']);
       for (final line in f.decodeLineString()) {
         if (line.length < 2) continue;
@@ -91,7 +97,7 @@ List<RoadLine> roadsFromTile(Uint8List bytes, int tx, int ty) {
               tx * _extent + (c[0] * _extent / ext).round(),
               ty * _extent + (c[1] * _extent / ext).round(),
             ),
-        ], cls, ow));
+        ], cls, ow, unpaved: unpaved));
       }
     }
   }
@@ -115,7 +121,7 @@ class RoadNet {
     'secondary': 70,
     'tertiary': 60,
     'minor': 40,
-    'service': 15,
+    'service': 8,
     'track': 12,
   };
 
@@ -144,8 +150,12 @@ class RoadNet {
       {bool avoidMotorways = false, bool avoidUnpaved = true}) {
     final net = RoadNet();
     for (final l in lines) {
-      if (avoidUnpaved && l.cls == 'track') continue;
+      // Feldwege sind fuer Motorraeder fast immer gesperrt (Schild
+      // "landwirtschaftlicher Verkehr frei") - auch asphaltierte.
+      if (l.cls == 'track') continue;
       var v = speedKmh[l.cls]!;
+      // Schotter: nicht verboten (sonst manchmal kein Weg), aber teuer.
+      if (l.unpaved && avoidUnpaved) v /= 6;
       // "Ohne Autobahn": nicht verboten (sonst gibt es manchmal keinen
       // Weg), aber sehr teuer.
       if (avoidMotorways && (l.cls == 'motorway' || l.cls == 'trunk')) v /= 5;

@@ -78,6 +78,17 @@ void main() {
     expect(net.shortest([1], {0: 0}), isNull);
   });
 
+  test('Feldwege nie, auch wenn sie kuerzer sind', () {
+    // Direkt ueber den Feldweg (0 -> 1) oder ueber die Strasse (0 -> 2 -> 1).
+    final net = RoadNet.build([
+      RoadLine([(0, 0), (1000, 0)], 'track', 0),
+      RoadLine([(0, 0), (500, 800), (1000, 0)], 'minor', 0),
+    ], avoidUnpaved: false);
+    // Der Feldweg fehlt im Netz: Knoten 0, (500,800) = 1, Ziel = 2.
+    expect(net.nodeCount, 3);
+    expect(net.shortest([0], {2: 0}), [0, 1, 2]);
+  });
+
   test('Rueckfuehrung zur Tour ueber das Strassennetz', () async {
     // Tour laeuft auf der Querstrasse nach Osten. Der Fahrer ist auf der
     // Nord-Sued-Strasse nach Norden abgebogen (bei x=1500).

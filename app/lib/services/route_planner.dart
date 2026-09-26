@@ -6,6 +6,7 @@ import '../models/route_plan.dart';
 import 'geo.dart';
 import 'poi_service.dart';
 import 'route_patch.dart';
+import 'road_check.dart';
 import 'routing_engine.dart';
 
 export 'routing_engine.dart' show RouteException;
@@ -311,12 +312,16 @@ class TourPlanner {
     math.Random? random,
     this.maxVariants = 3,
     PoiSearch? poiSearch,
+    this.roadCheck,
   })  : _rnd = random ?? math.Random(),
         _poiSearch = poiSearch ?? _overpassSearch;
 
   final PoiSearch _poiSearch;
 
   final RoutingEngine engine;
+
+  /// Prueft die fertigen Touren auf Feldwege & Co. (null = keine Pruefung).
+  final RoadCheck? roadCheck;
 
   /// Eigene Strecken (Rasterzellen), fuer "bewaehrte Strecken bevorzugen".
   final Map<String, double>? heatmap;
@@ -355,6 +360,23 @@ class TourPlanner {
       }
       cands = withStops
         ..sort((a, b) => b.quality.score.compareTo(a.quality.score));
+    }
+
+    if (roadCheck != null && cands.isNotEmpty) {
+      say('Straßen werden geprüft ...');
+      final checked = await _pool<(_Candidate, double)>(
+        [for (final c in cands) () => _verifyRoads(c, req)],
+        engine.parallelRequests,
+      );
+      final list = [
+        for (var i = 0; i < cands.length; i++) checked[i] ?? (cands[i], 0.0),
+      ];
+      // Saubere Touren zuerst, dann nach Bewertung.
+      list.sort((a, b) {
+        final bad = (a.$2 > 0 ? 1 : 0).compareTo(b.$2 > 0 ? 1 : 0);
+        return bad != 0 ? bad : b.$1.quality.score.compareTo(a.$1.quality.score);
+      });
+      cands = [for (final e in list) e.$1];
     }
 
     final plans = [for (final c in cands) _toPlan(c, req)];
@@ -1126,6 +1148,91 @@ class TourPlanner {
     }
     if (cur.length >= 2) out.add(cur);
     return out;
+  }
+
+  // -------------------------------------------------------------------------
+  //  Strassen pruefen
+  // -------------------------------------------------------------------------
+
+  /// Feldwege, Fuss-/Radwege und (falls gemieden) Schotter finden und
+  /// ohne sie neu rechnen. Liefert die Variante und die Meter, die
+  /// trotzdem uebrig bleiben (0 = sauber).
+  Future<(_Candidate, double)> _verifyRoads(
+      _Candidate c, RouteRequest req) async {
+    final check = roadCheck!;
+    final keep = [
+      for (final w in c.waypoints)
+        if (w.kind != WaypointKind.shape) w.point,
+    ];
+    Future<List<RoadIssue>> issuesOf(List<RoutePoint> pts) async =>
+        relevantIssues(
+            await check.check(pts, unpaved: req.avoidUnpaved), pts,
+            keepNear: keep);
+    double badM(List<RoadIssue> l) => l.fold(0.0, (s, i) => s + i.lengthM);
+
+    List<RoadIssue> issues;
+    try {
+      issues = await issuesOf(c.route.points);
+    } catch (_) {
+      // Kein Netz / Server voll: ungeprueft weiter.
+      return (c, 0.0);
+    }
+    if (issues.isEmpty) return (c, 0.0);
+
+    var best = c;
+    var bestIssues = issues;
+    final canReroute = c.waypoints.length <= engine.maxWaypoints &&
+        pathLength(c.route.points) <= longTripM;
+    var avoid = <RoutePoint>[];
+    for (var attempt = 0; attempt < 2 && canReroute && bestIssues.isNotEmpty;
+        attempt++) {
+      avoid = [...avoid, ...issueAvoidPoints(bestIssues, best.route.points)];
+      try {
+        final rs = await engine.route(
+            c.waypoints, RoutingPrefs.of(req).withAvoid(avoid));
+        final r = cleanRoute(rs.first,
+            keep: [for (final p in c.pois) RoutePoint(p.lat, p.lon)]);
+        final iss = await issuesOf(r.points);
+        if (badM(iss) >= badM(bestIssues)) break;
+        final len = pathLength(r.points);
+        best = c.copyWith(
+          route: r,
+          quality: RouteScoring.evaluate(
+            r.points,
+            curviness: req.curviness,
+            lengthError: req.roundTrip && req.distanceKm > 0
+                ? (len - req.distanceKm * 1000).abs() / (req.distanceKm * 1000)
+                : c.quality.lengthError,
+            roundTrip: req.roundTrip,
+            heatmap: heatmap,
+            preferKnown: req.preferKnownGoodRoads,
+          ),
+        );
+        bestIssues = iss;
+      } catch (_) {
+        break;
+      }
+    }
+    if (bestIssues.isEmpty) return (best, 0.0);
+    return (
+      best.copyWith(notes: [...best.notes, roadWarning(bestIssues)]),
+      badM(bestIssues),
+    );
+  }
+
+  /// Hinweis fuer den Fahrer, wenn sich ein Stueck nicht vermeiden liess.
+  static String roadWarning(List<RoadIssue> issues) {
+    String km(double m) => m < 1000
+        ? '${(m / 10).round() * 10} m'
+        : '${(m / 1000).toStringAsFixed(1).replaceAll('.', ',')} km';
+    final parts = [
+      for (final i in issues.take(3))
+        '${km(i.lengthM)} ${i.kind} bei km ${(i.fromM / 1000).round()}',
+    ];
+    final more = issues.length > 3 ? ' und ${issues.length - 3} weitere' : '';
+    return 'Achtung: ${parts.join(', ')}$more - laut Karte kein normaler '
+        'Straßenbelag bzw. keine Straße für Motorräder. Vor Ort auf '
+        'Schilder achten oder die Stelle mit "Bearbeiten" umgehen.';
   }
 
   // -------------------------------------------------------------------------

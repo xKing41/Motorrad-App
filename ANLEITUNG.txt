@@ -14,6 +14,29 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.30 - Keine Feldwege mehr in geplanten Touren
+------------------------------------------------------
+
+FEHLER BEHOBEN
+- Eine geplante Tour konnte ueber Feld- und Wirtschaftswege fuehren,
+  die fuer Motorraeder gesperrt sind. Ursache: Eine Einstellung fuer
+  den Routing-Server war falsch verstanden - sie sollte kleine Strassen
+  bevorzugen, hat aber in Wahrheit den Aufschlag fuer schlechten Belag
+  und Feldwege abgeschaltet. Jetzt gilt immer: Feldwege, Schotter,
+  Privatwege, "Anlieger frei" und Zufahrten nur, wenn es gar nicht
+  anders geht.
+
+NEU: JEDE TOUR WIRD GEPRUEFT
+- Nach dem Planen wird die Tour Stueck fuer Stueck mit der Karte
+  abgeglichen. Liegt ein Feldweg, Fuss-/Radweg oder (wenn gemieden)
+  Schotter darauf, rechnet die App die Tour ohne diese Stelle neu.
+- Laesst sich eine Stelle nicht vermeiden, steht in den Hinweisen zur
+  Tour genau, wo: "Achtung: 800 m Feldweg bei km 34 ...".
+- Auch die Neuberechnung ohne Netz nimmt keine Feldwege und keine
+  gesperrten Wege mehr.
+- Grenze: Die App kennt nur, was in OpenStreetMap steht. Ein Schild
+  vor Ort gilt immer.
+
 VERSION 4.29 - Gruppen als Community (Test-App)
 -----------------------------------------------
 

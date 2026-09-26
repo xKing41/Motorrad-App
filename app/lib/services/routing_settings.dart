@@ -2,6 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'routing_engine.dart';
 import 'fuel_prices.dart';
+import 'road_check.dart';
 import 'speed_limits.dart';
 import 'traffic_service.dart';
 import 'traffic_sources.dart';
@@ -77,6 +78,14 @@ class RoutingSettings {
     return base == ValhallaEngine.publicUrl
         ? ValhallaSpeedLimits.instance
         : ValhallaSpeedLimits.forBase(base);
+  }
+
+  /// Prueft geplante Touren auf Feldwege, Fuss-/Radwege und Schotter
+  /// (Valhalla - auch wenn mit GraphHopper geplant wird).
+  RoadCheck roadCheck() {
+    final base = ValhallaEngine.normalizeUrl(valhallaUrl);
+    return ValhallaRoadCheck(
+        base: base.isEmpty ? ValhallaEngine.publicUrl : base);
   }
 
   /// Schluessel fuer HERE Traffic (optional, zweite Quelle).

@@ -129,7 +129,7 @@ abstract class RoutingEngine {
 
 const Map<String, String> _headers = {
   'Content-Type': 'application/json',
-  'User-Agent': 'Schraeglage/4.29 (Motorrad-App)',
+  'User-Agent': 'Schraeglage/4.30 (Motorrad-App)',
 };
 
 // ===========================================================================
@@ -175,7 +175,11 @@ class ValhallaEngine implements RoutingEngine {
   @override
   int get parallelRequests => isPublic ? 1 : 4;
 
-  Future<void> _throttle() async {
+  Future<void> _throttle() => waitSlot(minInterval);
+
+  /// Gemeinsamer Takt fuer alle Anfragen an den oeffentlichen Server
+  /// (Routing, Strassen-Pruefung).
+  static Future<void> waitSlot(Duration minInterval) async {
     if (minInterval == Duration.zero) return;
     final now = DateTime.now();
     final slot = _nextSlot.isAfter(now) ? _nextSlot : now;
@@ -284,8 +288,18 @@ class ValhallaEngine implements RoutingEngine {
       'use_highways': _useHighways(prefs),
       'use_tolls': prefs.avoidTolls ? 0.0 : 0.5,
       if (prefs.avoidUnpaved) 'exclude_unpaved': true,
+      // Feld- und Wirtschaftswege: Valhalla faehrt sie standardmaessig
+      // ohne Aufschlag (0.5). 0 = deutlich teurer plus Strafzeit.
+      'use_tracks': prefs.avoidUnpaved ? 0.0 : 0.25,
+      // Zufahrten, Parkplaetze, Privatwege, "Anlieger frei",
+      // Spielstrassen: nur wenn es gar nicht anders geht.
+      'service_penalty': 60,
+      'service_factor': 2.0,
+      'private_access_penalty': 3600,
+      'destination_only_penalty': 1800,
+      'use_living_streets': 0.1,
     };
-    if (costing == 'motorcycle') opts['use_trails'] = _useTrails(prefs);
+    if (costing == 'motorcycle') opts['use_trails'] = useTrails(prefs);
 
     return {
       'locations': locations,
@@ -313,14 +327,13 @@ class ValhallaEngine implements RoutingEngine {
     };
   }
 
-  /// Valhalla: Werte gegen 1 meiden grosse Strassen und fuehren ueber
-  /// kleinere Landstrassen - genau das, was "kurvig" meistens heisst.
-  static double _useTrails(RoutingPrefs p) => switch (p.curviness) {
-        Curviness.direct => 0.0,
-        Curviness.balanced => 0.2,
-        Curviness.curvy => 0.45,
-        Curviness.veryCurvy => p.avoidUnpaved ? 0.6 : 0.85,
-      };
+  /// Valhalla (Motorrad): steuert NUR den Aufschlag fuer schlechten
+  /// Belag. Schon ab 0.45 faellt er ganz weg, ab 0.5 werden Schotter und
+  /// Feldwege sogar bevorzugt - fuer Kurven taugt der Wert nicht (die
+  /// holt die eigene Bewertung der Varianten). Deshalb: Belag immer
+  /// ernst nehmen; nur wer Schotter ausdruecklich erlaubt, bekommt einen
+  /// kleineren Aufschlag.
+  static double useTrails(RoutingPrefs p) => p.avoidUnpaved ? 0.0 : 0.25;
 
   static double _r6(double v) => (v * 1e6).round() / 1e6;
 
@@ -676,8 +689,22 @@ class GraphHopperEngine implements RoutingEngine {
     if (p.avoidMotorways || p.curviness == Curviness.veryCurvy) {
       priority.add({'if': 'road_class == MOTORWAY', 'multiply_by': '0.05'});
     }
+    // Privatwege nie, Anlieger-Strassen nur im Notfall, Feldwege kaum.
+    priority
+      ..add({'if': 'road_access == PRIVATE', 'multiply_by': '0'})
+      ..add({'if': 'road_access == DESTINATION', 'multiply_by': '0.1'})
+      ..add({
+        'if': 'road_class == TRACK',
+        'multiply_by': p.avoidUnpaved ? '0.02' : '0.3',
+      });
     if (p.avoidUnpaved) {
-      priority.add({'if': 'road_class == TRACK', 'multiply_by': '0.05'});
+      priority.add({
+        'if': 'surface == UNPAVED || surface == COMPACTED || '
+            'surface == FINE_GRAVEL || surface == GRAVEL || '
+            'surface == GROUND || surface == DIRT || surface == GRASS || '
+            'surface == SAND',
+        'multiply_by': '0.1',
+      });
     }
     // Gemiedene Stellen als kleine Flaechen (etwa 60 x 60 m).
     final features = <Map<String, dynamic>>[];

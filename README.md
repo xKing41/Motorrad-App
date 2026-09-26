@@ -81,6 +81,9 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
 - **Rundtouren**, die an deinem Standort beginnen und enden – mit
   Wunschlänge, Himmelsrichtung und optional „über“ einen Ort
 - **Von A nach B** mit Zielsuche und kurvigen Umwegen
+- **Straßen-Prüfung**: jede geplante Tour wird Stück für Stück mit der
+  Karte abgeglichen – Feldwege, Fuß-/Radwege und Schotter werden
+  umfahren oder mit genauer Stelle gemeldet
 - Mehrere Varianten zur Auswahl, bewertet nach Kurvigkeit, Länge und
   doppelt gefahrenen Abschnitten; Sackgassen-Stiche werden
   herausgeschnitten
@@ -243,6 +246,7 @@ app/lib/
     route_planner.dart          Tourenplaner: Rundtour, A→B, Varianten,
                                 Bewertung, Zwischenstopps
     routing_engine.dart         Valhalla (Standard) und GraphHopper
+    road_check.dart             Prüfung auf Feldwege/Schotter (trace_attributes)
     routing_settings.dart       gespeicherte Routing-Einstellungen
     geo.dart                    Geometrie: Kurvigkeit, Doppelstrecken,
                                 Sackgassen, Projektion auf die Route

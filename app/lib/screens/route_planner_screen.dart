@@ -249,7 +249,8 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       }
 
       final engine = _routing.engine();
-      final planner = TourPlanner(engine, heatmap: heatmap);
+      final planner = TourPlanner(engine,
+          heatmap: heatmap, roadCheck: _routing.roadCheck());
       var plan = await planner.plan(req, onProgress: (m) {
         if (mounted) setState(() => _status = m);
       });
