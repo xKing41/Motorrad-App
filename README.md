@@ -30,6 +30,12 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
   gegen 15:30“), Vorschlag für eine trockenere Abfahrtszeit
 
 **Karte und Routenplanung**
+- **Spurempfehlung** vor Abbiegungen und Ausfahrten (OSM turn:lanes), auch
+  angesagt und offline verfügbar
+- **Neuberechnung ohne Netz** aus den gespeicherten Vektorkacheln (Test-App)
+- **Gruppenfahrt** (Test-App): Mitfahrer auf der Karte, Tour an alle
+  schicken, Sturzwarnung an die Gruppe; Ende-zu-Ende verschlüsselt über
+  öffentliches MQTT
 - **Probefahrt** (Simulation, nur in der Test-App „Schräglage Testing“):
   Tour mit virtuellem GPS abfahren – Ansagen, Warnungen, Verfahren und
   Neuberechnung am Schreibtisch testen
@@ -268,6 +274,8 @@ tools/check_dart.py             Strukturprüfung aller Dart-Dateien
 | Routing, alternativ | GraphHopper | ja, optional |
 | Tempolimits entlang der Route | Valhalla trace_attributes (OSM maxspeed) | nein |
 | Feste Blitzer (nur Planung) | Overpass (OSM) | nein |
+| Spurempfehlung | Overpass (OSM turn:lanes) | nein |
+| Gruppenfahrt (Test-App) | öffentliches MQTT (EMQX / HiveMQ), AES-256-GCM | nein |
 | Spritpreise an Tankstopps (DE) | Tankerkönig / MTS-K | ja, optional (kostenlos) |
 | Ortssuche | Photon (komoot), Nominatim | nein |
 | Zwischenstopps | Overpass | nein |

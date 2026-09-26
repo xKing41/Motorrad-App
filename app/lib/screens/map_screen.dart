@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -15,11 +16,13 @@ import '../build_flavor.dart';
 import '../models/route_plan.dart';
 import '../services/curve_warning.dart';
 import '../services/drive_sim.dart';
+import '../services/emergency.dart';
 import '../services/external_nav.dart';
 import '../services/geo.dart';
 import '../services/fuel_prices.dart';
 import '../services/geocoder.dart';
 import '../services/gpx_service.dart';
+import '../services/group_ride.dart';
 import '../services/lanes.dart';
 import '../services/navigation.dart';
 import '../services/offline_maps.dart';
@@ -107,6 +110,9 @@ class _MapScreenState extends State<MapScreen>
     _offline.offline.addListener(_onOffline);
     VectorMap.instance.addListener(_onOffline);
     VectorMap.instance.init();
+    GroupRide.current.addListener(_onGroupChanged);
+    _groupListened = GroupRide.current.value;
+    _groupListened?.addListener(_onGroup);
     _loadTrafficKey();
     _offline.cache();
   }
@@ -127,6 +133,8 @@ class _MapScreenState extends State<MapScreen>
     _offline.removeListener(_onOffline);
     _offline.offline.removeListener(_onOffline);
     VectorMap.instance.removeListener(_onOffline);
+    GroupRide.current.removeListener(_onGroupChanged);
+    _groupListened?.removeListener(_onGroup);
     _ticker.dispose();
     _rider.dispose();
     _nav?.dispose();
@@ -174,6 +182,10 @@ class _MapScreenState extends State<MapScreen>
 
   void _onTick() {
     if (!mounted) return;
+    final g = GroupRide.current.value;
+    if (g != null && g.started && t.lat != null) {
+      unawaited(g.sendPosition(t.lat!, t.lon!, math.max(0, t.speedMs)));
+    }
     final nav = _nav;
     if (nav != null && t.lat != null) {
       // Laeuft auch im Hintergrund weiter: Ansagen, Neuberechnung.
@@ -1343,6 +1355,13 @@ class _MapScreenState extends State<MapScreen>
           top: (_nav != null ? 150 : 80) + (_tomtomKey.isNotEmpty ? 88 : 44),
           child: _styleButton(),
         ),
+        // Gruppenfahrt: vorerst nur in der Test-App.
+        if (kTestBuild)
+          Positioned(
+            right: 12,
+            top: (_nav != null ? 150 : 80) + (_tomtomKey.isNotEmpty ? 132 : 88),
+            child: _groupButton(),
+          ),
         if (_tomtomKey.isNotEmpty)
           Positioned(
             right: 12,
@@ -1480,6 +1499,258 @@ class _MapScreenState extends State<MapScreen>
           ]),
         ),
       ),
+    );
+  }
+
+  // ------------------------------------------------------------------
+  // Gruppenfahrt (Test-App)
+  // ------------------------------------------------------------------
+  GroupSession? _groupListened;
+  DateTime? _sosShown;
+
+  void _onGroupChanged() {
+    _groupListened?.removeListener(_onGroup);
+    _groupListened = GroupRide.current.value;
+    _groupListened?.addListener(_onGroup);
+    if (mounted) setState(() {});
+  }
+
+  void _onGroup() {
+    final g = GroupRide.current.value;
+    final sos = g?.lastSos;
+    if (sos != null && sos.at != _sosShown) {
+      _sosShown = sos.at;
+      Voice.instance.say(
+          'Achtung: ${sos.name} ist möglicherweise gestürzt.', force: true);
+      if (mounted) {
+        toast(context, 'SOS: ${sos.name} ist möglicherweise gestürzt!');
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
+  Widget _groupButton() {
+    final g = GroupRide.current.value;
+    final n = g?.members.length ?? 0;
+    return InkWell(
+      onTap: _showGroup,
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: panel.withValues(alpha: 0.94),
+          border: Border.all(color: g != null ? cool : line),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.groups, size: 18, color: g != null ? cool : steel),
+          if (g != null) ...[
+            const SizedBox(width: 4),
+            Text('$n', style: const TextStyle(fontSize: 11, color: cool)),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _startGroup(String code) async {
+    final name = Emergency.instance.riderName.trim().isEmpty
+        ? 'Fahrer'
+        : Emergency.instance.riderName.trim();
+    final s = GroupSession(
+      transport: MqttTransport(),
+      code: code,
+      myId: GroupSession.newMemberId(),
+      myName: name,
+    );
+    try {
+      await s.start();
+      GroupRide.current.value = s;
+      if (t.lat != null) await s.sendPosition(t.lat!, t.lon!, 0);
+    } catch (e) {
+      if (mounted) toast(context, 'Gruppe nicht erreichbar - Internet?');
+    }
+  }
+
+  Future<void> _leaveGroup() async {
+    final g = GroupRide.current.value;
+    GroupRide.current.value = null;
+    await g?.leave();
+  }
+
+  void _showGroup() {
+    final codeCtrl = TextEditingController();
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: panel,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: ValueListenableBuilder<GroupSession?>(
+            valueListenable: GroupRide.current,
+            builder: (ctx, g, _) => g == null
+                ? _groupJoinSheet(ctx, codeCtrl)
+                : ListenableBuilder(
+                    listenable: g,
+                    builder: (ctx, _) => _groupSheet(ctx, g),
+                  ),
+          ),
+        ),
+      ),
+    ).whenComplete(codeCtrl.dispose);
+  }
+
+  Widget _groupJoinSheet(BuildContext ctx, TextEditingController codeCtrl) {
+    const small = TextStyle(fontSize: 10, color: steel, height: 1.4);
+    return ListView(
+      shrinkWrap: true,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      children: [
+        const Text('GRUPPENFAHRT',
+            style: TextStyle(fontSize: 12, letterSpacing: 2, color: chalk)),
+        const SizedBox(height: 4),
+        const Text(
+          'Alle sehen sich gegenseitig auf der Karte, eine Tour kann an '
+          'alle geschickt werden, und bei einem Sturz werden die anderen '
+          'sofort alarmiert. Verschlüsselt - nur wer den Code hat, kann '
+          'mitlesen. Name: aus dem Notfall-Bereich ("Eigener Name").',
+          style: small,
+        ),
+        const SizedBox(height: 12),
+        FlatButton2(
+          label: 'NEUE GRUPPE GRÜNDEN',
+          color: signal,
+          fill: signal,
+          strong: true,
+          onTap: () => _startGroup(GroupSession.newCode()),
+        ),
+        const SizedBox(height: 14),
+        const TinyLabel('ODER BEITRETEN'),
+        const SizedBox(height: 6),
+        Row(children: [
+          Expanded(
+            child: TextField(
+              controller: codeCtrl,
+              textCapitalization: TextCapitalization.characters,
+              style: const TextStyle(color: chalk, letterSpacing: 2),
+              decoration: const InputDecoration(hintText: 'CODE, z. B. K7Q2M-9XA4F'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          FlatButton2(
+            label: 'BEITRETEN',
+            onTap: () {
+              final c = GroupSession.normalize(codeCtrl.text);
+              if (c == null) {
+                toast(context, 'Code: 10 Zeichen, z. B. K7Q2M-9XA4F');
+                return;
+              }
+              _startGroup(c);
+            },
+          ),
+        ]),
+      ],
+    );
+  }
+
+  Widget _groupSheet(BuildContext ctx, GroupSession g) {
+    const small = TextStyle(fontSize: 10, color: steel, height: 1.4);
+    final now = DateTime.now();
+    final me = t.lat != null ? RoutePoint(t.lat!, t.lon!) : null;
+    final list = g.members.values.toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    return ListView(
+      shrinkWrap: true,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      children: [
+        const Text('GRUPPENFAHRT',
+            style: TextStyle(fontSize: 12, letterSpacing: 2, color: chalk)),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(
+            child: SelectableText(g.code,
+                style: const TextStyle(
+                    fontSize: 22,
+                    letterSpacing: 3,
+                    fontWeight: FontWeight.w700,
+                    color: cool)),
+          ),
+          IconButton(
+            tooltip: 'Code teilen',
+            icon: const Icon(Icons.share, color: cool),
+            onPressed: () => SharePlus.instance.share(ShareParams(
+              text: 'Fahr mit! Gruppenfahrt in der Schräglage-App: '
+                  'Karte -> Gruppen-Symbol -> Beitreten, Code ${g.code}',
+            )),
+          ),
+        ]),
+        const Text('Code an die anderen schicken - sie treten damit bei.',
+            style: small),
+        const SizedBox(height: 10),
+        TinyLabel('MITFAHRER (${list.length})'),
+        const SizedBox(height: 4),
+        if (list.isEmpty)
+          const Text('Noch niemand da.', style: small),
+        for (final m in list)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(children: [
+              Icon(Icons.two_wheeler,
+                  size: 16, color: m.staleAt(now) ? steel : cool),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(m.name,
+                    style: const TextStyle(fontSize: 12, color: chalk)),
+              ),
+              Text(
+                [
+                  if (me != null) _fmtDist(dist(me, m.point)),
+                  if (m.staleAt(now))
+                    'vor ${now.difference(m.seen).inMinutes} min'
+                  else
+                    '${(m.speedMs * 3.6).round()} km/h',
+                ].join(' · '),
+                style: const TextStyle(fontSize: 10.5, color: steel),
+              ),
+            ]),
+          ),
+        const SizedBox(height: 10),
+        if (_route != null)
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.send, color: cool, size: 20),
+            title: const Text('Meine Tour an die Gruppe schicken',
+                style: TextStyle(fontSize: 12.5, color: chalk)),
+            onTap: () async {
+              await g.shareTour(_route!);
+              if (mounted) toast(context, 'Tour an die Gruppe geschickt');
+            },
+          ),
+        if (g.groupTour != null)
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.download, color: signal, size: 20),
+            title: Text(
+                'Tour von ${g.tourFrom ?? 'der Gruppe'} laden'
+                ' (${_fmtKm(g.groupTour!.distanceM)})',
+                style: const TextStyle(fontSize: 12.5, color: chalk)),
+            onTap: () {
+              Navigator.pop(ctx);
+              _setRoute(g.groupTour!);
+            },
+          ),
+        const SizedBox(height: 6),
+        FlatButton2(
+          label: 'GRUPPE VERLASSEN',
+          color: amber,
+          onTap: () {
+            Navigator.pop(ctx);
+            _leaveGroup();
+          },
+        ),
+      ],
     );
   }
 
@@ -1720,6 +1991,41 @@ class _MapScreenState extends State<MapScreen>
       final loop = const Distance().as(LengthUnit.Meter, a, b) < 150;
       if (!loop) out.add(_flag(a, const Color(0xFF7FBF4F), Icons.trip_origin));
       out.add(_flag(b, loop ? const Color(0xFF7FBF4F) : redline, Icons.flag));
+    }
+
+    final group = GroupRide.current.value;
+    if (group != null) {
+      final now = DateTime.now();
+      for (final m in group.members.values) {
+        final stale = m.staleAt(now);
+        out.add(Marker(
+          point: LatLng(m.point.lat, m.point.lon),
+          width: 90,
+          height: 46,
+          alignment: Alignment.topCenter,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              color: panel.withValues(alpha: 0.9),
+              child: Text(m.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 9.5, color: stale ? steel : chalk)),
+            ),
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: stale ? steel : cool,
+                shape: BoxShape.circle,
+                border: Border.all(color: chalk, width: 2),
+              ),
+              child: const Icon(Icons.two_wheeler, size: 12, color: asphalt),
+            ),
+          ]),
+        ));
+      }
     }
 
     final pin = _editPin;

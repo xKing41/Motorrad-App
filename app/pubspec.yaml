@@ -1,7 +1,7 @@
 name: schraeglage
 description: Schraeglage - Telemetrie, Karte und Navigation fuers Motorrad
 publish_to: 'none'
-version: 4.25.0+35
+version: 4.26.0+36
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -23,6 +23,11 @@ dependencies:
   vector_tile_renderer: ^5.2.0
   # Strassen aus den Kartenkacheln lesen (Neuberechnung ohne Netz).
   vector_tile: ^2.0.1
+  # Gruppenfahrt: Positionen austauschen (MQTT), Ende-zu-Ende verschluesselt.
+  mqtt_client: ^10.11.0
+  cryptography: ^2.9.0
+  crypto: ^3.0.6
+  typed_data: ^1.4.0
 
   # Daten / Netz / Dateien
   shared_preferences: ^2.3.2

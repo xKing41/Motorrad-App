@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/emergency.dart';
+import '../services/group_ride.dart';
 import '../services/voice.dart';
 import '../theme.dart';
 
@@ -81,6 +82,11 @@ class _CrashAlarmScreenState extends State<CrashAlarmScreen> {
     if (_fired) return;
     _fired = true;
     _timer?.cancel();
+    // Laufende Gruppenfahrt: die anderen sofort alarmieren - sie sind
+    // meist am naechsten dran.
+    unawaited(GroupRide.current.value
+        ?.sendSos(widget.lat, widget.lon)
+        .catchError((_) {}));
     // Erst direkt senden (wenn eingeschaltet und erlaubt) - sonst die
     // SMS-App mit fertiger Nachricht oeffnen.
     final sent = await em.sendSmsDirect(lat: widget.lat, lon: widget.lon);

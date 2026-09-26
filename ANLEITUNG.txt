@@ -14,6 +14,42 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.26 - Spurempfehlung, Neuberechnung ohne Netz, Gruppenfahrt
+--------------------------------------------------------------------
+
+SPUREMPFEHLUNG (normale App und Test-App)
+- Vor Abbiegungen, Ausfahrten und Gabelungen zeigt das Navi-Feld ab
+  1,5 km die Spuren wie auf dem Schild: die richtigen hell, die anderen
+  grau. Die Ansage sagt es mit ("In einem Kilometer: Ausfahrt rechts.
+  Benutzen Sie die rechte Spur.").
+- Daten aus OpenStreetMap, einmal beim Planen geholt - funktioniert
+  danach auch im Funkloch. In Deutschland fast alle Autobahnausfahrten
+  und groesseren Kreuzungen; wo nichts eingetragen ist, erscheint nichts.
+
+NEUBERECHNUNG OHNE NETZ (vorerst nur Test-App)
+- Verfahren im Funkloch: Die App berechnet den Weg zurueck zur Tour
+  selbst - aus dem Strassennetz der gespeicherten Vektorkarte.
+  Meldung: "Zurueck zur Tour - ohne Netz auf dem Handy berechnet".
+- Braucht die Vektorkarte (Standard) und gespeicherte Kacheln in der
+  Gegend (entlang geplanter Routen automatisch).
+- Grenzen: Abbiegeverbote kennt die Karte nicht - Schilder beachten.
+  Mit Netz rechnet wie bisher der Routing-Server.
+
+GRUPPENFAHRT (vorerst nur Test-App)
+- Karte -> Gruppen-Symbol rechts -> "Neue Gruppe gruenden". Den Code
+  (z. B. K7Q2M-9XA4F) per Teilen-Knopf an die anderen schicken, die
+  treten mit dem Code bei.
+- Alle sehen sich auf der Karte (Name, Tempo, Entfernung; grau = seit
+  2 Minuten nichts gehoert).
+- "Meine Tour an die Gruppe schicken" - die anderen laden sie mit
+  einem Tipp, auch wer spaeter dazukommt.
+- Loest bei jemandem die Sturzerkennung aus, bekommen alle anderen
+  sofort eine Warnung mit Ansage.
+- Angezeigter Name: Notfall-Bereich -> "Eigener Name".
+- Technik: oeffentlicher Nachrichtendienst (MQTT), alles mit dem Code
+  verschluesselt (AES-256) - der Dienst sieht nur Zeichensalat. Fuer die
+  normale App ist spaeter ein eigener Server noetig.
+
 VERSION 4.25 - Zwei Ausgaben: normale App und Test-App
 ------------------------------------------------------
 
