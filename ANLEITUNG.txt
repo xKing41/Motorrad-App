@@ -14,6 +14,32 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.31 - Motorradverbote werden umfahren
+----------------------------------------------
+
+FEHLER BEHOBEN
+- Touren konnten ueber Strassen fuehren, die fuer Motorraeder gesperrt
+  sind - z. B. die L 701 (Prioreier Strasse) von Breckerfeld nach
+  Hagen-Priorei. Solche Sperrungen gelten oft nur zeitweise ("Sa, So,
+  Feiertag", "Mo-Fr ab 15 Uhr"). Der Routing-Server beachtet zeitweise
+  Verbote nur, wenn er die Uhrzeit kennt - die App hat sie nie
+  mitgeschickt.
+
+NEU
+- Jede geplante Tour wird auf Motorradverbote abgeglichen (Daten aus
+  OpenStreetMap), auch auf zeitweise Verbote, "Anlieger frei",
+  "Land-/Forstwirtschaft frei" und Privatwege. Solche Stuecke werden
+  umfahren - auch wenn das Verbot gerade nicht gilt, denn eine Tour
+  faehrt man selten genau zur Planungszeit.
+- Laesst sich ein Verbot nicht umfahren, steht es mit Zeiten in den
+  Hinweisen: "Achtung: 1,8 km Motorradverbot (Sa,Su,PH) bei km 12".
+- Beim Start der Navigation werden auch alte und importierte Touren
+  (GPX) geprueft: Ansage und Hinweis, wenn ein Verbot darauf liegt.
+- Neuberechnung unterwegs rechnet mit der aktuellen Uhrzeit: gerade
+  geltende Sperrungen werden nicht mehr genommen.
+- Grenze: Nur was in OpenStreetMap eingetragen ist. Ein Schild vor Ort
+  gilt immer.
+
 VERSION 4.30 - Keine Feldwege mehr in geplanten Touren
 ------------------------------------------------------
 

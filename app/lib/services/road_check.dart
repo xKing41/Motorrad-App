@@ -92,7 +92,7 @@ class ValhallaRoadCheck implements RoadCheck {
     final uri = Uri.parse('$base/trace_attributes');
     const headers = {
       'Content-Type': 'application/json',
-      'User-Agent': 'Schraeglage/4.30 (Motorrad-App)',
+      'User-Agent': 'Schraeglage/4.31 (Motorrad-App)',
     };
     Future<http.Response> send(String costing) async {
       final body = jsonEncode({
@@ -226,4 +226,31 @@ List<RoutePoint> issueAvoidPoints(List<RoadIssue> issues, List<RoutePoint> pts,
     }
   }
   return out;
+}
+
+/// Mehrere Pruefungen zusammen (Belag/Wegart und Verbote). Faellt eine
+/// aus (kein Netz), zaehlen die anderen; fallen alle aus, gilt die Tour
+/// als ungeprueft.
+class CombinedRoadCheck implements RoadCheck {
+  CombinedRoadCheck(this.checks);
+  final List<RoadCheck> checks;
+
+  @override
+  Future<List<RoadIssue>> check(List<RoutePoint> pts,
+      {bool unpaved = true}) async {
+    final out = <RoadIssue>[];
+    var ok = 0;
+    Object? last;
+    for (final c in checks) {
+      try {
+        out.addAll(await c.check(pts, unpaved: unpaved));
+        ok++;
+      } catch (e) {
+        last = e;
+      }
+    }
+    if (ok == 0 && checks.isNotEmpty) throw last ?? StateError('ungeprueft');
+    out.sort((a, b) => a.fromM.compareTo(b.fromM));
+    return out;
+  }
 }

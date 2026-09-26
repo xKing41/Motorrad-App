@@ -1230,9 +1230,14 @@ class TourPlanner {
         '${km(i.lengthM)} ${i.kind} bei km ${(i.fromM / 1000).round()}',
     ];
     final more = issues.length > 3 ? ' und ${issues.length - 3} weitere' : '';
-    return 'Achtung: ${parts.join(', ')}$more - laut Karte kein normaler '
-        'Straßenbelag bzw. keine Straße für Motorräder. Vor Ort auf '
-        'Schilder achten oder die Stelle mit "Bearbeiten" umgehen.';
+    final ban = issues.any((i) =>
+        i.kind.startsWith('Motorradverbot') ||
+        i.kind.startsWith('gesperrt') ||
+        i.kind.startsWith('nur ') ||
+        i.kind == 'Privatweg');
+    return 'Achtung: ${parts.join(', ')}$more - ließ sich nicht umfahren. '
+        '${ban ? 'Vor Ort auf die Schilder achten - bei Verbot umdrehen ' : 'Vor Ort auf Schilder achten '}'
+        'oder die Stelle mit "Bearbeiten" umgehen.';
   }
 
   // -------------------------------------------------------------------------

@@ -2,6 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'routing_engine.dart';
 import 'fuel_prices.dart';
+import 'motorcycle_bans.dart';
 import 'road_check.dart';
 import 'speed_limits.dart';
 import 'traffic_service.dart';
@@ -80,12 +81,16 @@ class RoutingSettings {
         : ValhallaSpeedLimits.forBase(base);
   }
 
-  /// Prueft geplante Touren auf Feldwege, Fuss-/Radwege und Schotter
+  /// Prueft geplante Touren auf Motorradverbote, Feldwege, Fuss-/Radwege
+  /// und Schotter
   /// (Valhalla - auch wenn mit GraphHopper geplant wird).
   RoadCheck roadCheck() {
     final base = ValhallaEngine.normalizeUrl(valhallaUrl);
-    return ValhallaRoadCheck(
-        base: base.isEmpty ? ValhallaEngine.publicUrl : base);
+    return CombinedRoadCheck([
+      ValhallaRoadCheck(base: base.isEmpty ? ValhallaEngine.publicUrl : base),
+      // Motorradverbote, auch zeitweise (Overpass).
+      MotorcycleBans(),
+    ]);
   }
 
   /// Schluessel fuer HERE Traffic (optional, zweite Quelle).

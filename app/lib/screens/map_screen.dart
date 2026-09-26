@@ -23,10 +23,12 @@ import '../services/gpx_service.dart';
 import '../services/group_ride.dart';
 import '../services/headset.dart';
 import '../services/lanes.dart';
+import '../services/motorcycle_bans.dart';
 import '../services/navigation.dart';
 import '../services/offline_maps.dart';
 import '../services/offline_router.dart';
 import '../services/poi_service.dart';
+import '../services/road_check.dart';
 import '../services/route_follow.dart';
 import '../services/route_patch.dart';
 import '../services/route_weather.dart';
@@ -410,9 +412,10 @@ class _MapScreenState extends State<MapScreen>
     final nav = NavigationSession(
       plan: r,
       engine: settings.engine(),
-      prefs: r.request != null
-          ? RoutingPrefs.of(r.request!)
-          : const RoutingPrefs(),
+      prefs: (r.request != null
+              ? RoutingPrefs.of(r.request!)
+              : const RoutingPrefs())
+          .asLive(),
       traffic: settings.trafficFeed(),
       limits: settings.limitSource(),
       lanes: OverpassLanes.instance,
@@ -452,9 +455,30 @@ class _MapScreenState extends State<MapScreen>
         toast(context, 'Headset-Akku nur noch ${st.battery} %');
       }
     }
+    // Gespeicherte/importierte Touren wurden evtl. nie auf Verbote
+    // geprueft (aeltere Version, GPX): jetzt nachholen und warnen.
+    unawaited(_warnBans(r));
     // Navigation ohne Aufzeichnung waere schade - die Fahrt gleich mit
     // aufzeichnen. (Nicht bei der Probefahrt - das ist keine Fahrt.)
     if (!simulated && !t.recording) widget.onToggleRide();
+  }
+
+  Future<void> _warnBans(RoutePlan r) async {
+    try {
+      final issues = relevantIssues(
+          await MotorcycleBans().check(r.points), r.points,
+          keepNear: [for (final p in r.pois) RoutePoint(p.lat, p.lon)]);
+      if (issues.isEmpty || !mounted) return;
+      final i = issues.first;
+      final km = (i.fromM / 1000).round();
+      Voice.instance.say(
+          'Achtung: Auf der Tour liegt nach $km Kilometern ein Verbot für '
+          'Motorräder.');
+      toast(context,
+          'Achtung: ${i.kind} bei km $km${issues.length > 1 ? ' (+${issues.length - 1} weitere)' : ''} - Tour neu planen oder umfahren');
+    } catch (_) {
+      // Kein Netz: ohne Pruefung weiter.
+    }
   }
 
   void _onNavChanged() {

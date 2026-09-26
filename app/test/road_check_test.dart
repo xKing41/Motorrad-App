@@ -166,6 +166,22 @@ void main() {
       }
     }
   });
+  test('Navigation: mit Uhrzeit, damit zeitweise Sperrungen gelten', () {
+    final e = ValhallaEngine();
+    final wps = [
+      const Waypoint(home, WaypointKind.endpoint),
+      Waypoint(destinationPoint(home, 90, 5000), WaypointKind.endpoint),
+    ];
+    expect(e.buildRequest(wps, const RoutingPrefs()).containsKey('date_time'),
+        isFalse);
+    final live = e.buildRequest(wps, const RoutingPrefs().asLive());
+    expect(live['date_time'], {'type': 0});
+    // Bleibt beim Meiden erhalten.
+    expect(
+        e.buildRequest(wps, const RoutingPrefs().asLive().withAvoid([home]))
+            ['date_time'],
+        {'type': 0});
+  });
 }
 
 class _Failing implements RoadCheck {

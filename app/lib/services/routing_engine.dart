@@ -64,6 +64,7 @@ class RoutingPrefs {
     this.avoidTolls = false,
     this.avoidUnpaved = true,
     this.avoid = const [],
+    this.live = false,
   });
 
   factory RoutingPrefs.of(RouteRequest r) => RoutingPrefs(
@@ -82,12 +83,27 @@ class RoutingPrefs {
   /// Stau). Die Engine meidet die Strasse an dieser Stelle.
   final List<RoutePoint> avoid;
 
+  /// Unterwegs (Navigation): mit der aktuellen Uhrzeit rechnen, damit
+  /// zeitweise Sperrungen ("Motorraeder Sa/So gesperrt") gelten. Ohne
+  /// Uhrzeit ignoriert Valhalla sie.
+  final bool live;
+
   RoutingPrefs withAvoid(List<RoutePoint> more) => RoutingPrefs(
         curviness: curviness,
         avoidMotorways: avoidMotorways,
         avoidTolls: avoidTolls,
         avoidUnpaved: avoidUnpaved,
         avoid: [...avoid, ...more],
+        live: live,
+      );
+
+  RoutingPrefs asLive() => RoutingPrefs(
+        curviness: curviness,
+        avoidMotorways: avoidMotorways,
+        avoidTolls: avoidTolls,
+        avoidUnpaved: avoidUnpaved,
+        avoid: avoid,
+        live: true,
       );
 }
 
@@ -129,7 +145,7 @@ abstract class RoutingEngine {
 
 const Map<String, String> _headers = {
   'Content-Type': 'application/json',
-  'User-Agent': 'Schraeglage/4.30 (Motorrad-App)',
+  'User-Agent': 'Schraeglage/4.31 (Motorrad-App)',
 };
 
 // ===========================================================================
@@ -307,6 +323,9 @@ class ValhallaEngine implements RoutingEngine {
       'costing_options': {costing: opts},
       'directions_options': {'units': 'kilometers', 'language': 'de-DE'},
       if (alternates > 0 && wps.length == 2) 'alternates': alternates,
+      // "jetzt losfahren": zeitweise Sperrungen gelten (nicht mit
+      // Alternativen - die rechnet Valhalla nur ohne Uhrzeit).
+      if (prefs.live && alternates == 0) 'date_time': {'type': 0},
       if (prefs.avoid.isNotEmpty)
         'exclude_locations': [
           for (final a in prefs.avoid.take(maxAvoid))
