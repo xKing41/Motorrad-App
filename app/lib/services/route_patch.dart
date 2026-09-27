@@ -130,8 +130,11 @@ List<RoutePoint> avoidPointsFor(TrafficIncident inc, {int max = 12}) {
 
 /// Ergebnis einer Umfahrung oder Rueckfuehrung.
 class PatchResult {
-  PatchResult(this.route, this.extraM, this.extraSec);
+  PatchResult(this.route, this.extraM, this.extraSec, {this.changedToM});
   final EngineRoute route;
+
+  /// Bis wohin (m ab Start der neuen Route) sie neu ist - zum Pruefen.
+  final double? changedToM;
 
   /// Mehr-Strecke und Mehr-Zeit gegenueber dem ersetzten Stueck.
   final double extraM;
@@ -168,7 +171,8 @@ class RoutePatcher {
     final old = sliceRoute(base, a, b, cum: cum);
     final joined = replaceSection(base, a, b, detour);
     return PatchResult(joined, detour.distanceM - old.distanceM,
-        detour.durationSec - old.durationSec);
+        detour.durationSec - old.durationSec,
+        changedToM: a + pathLength(detour.points));
   }
 
   // -------------------------------------------------------------------
@@ -293,7 +297,8 @@ class RoutePatcher {
     final joined = joinRoutes([detour, if (rest != null) rest]);
     final skipped = target - lastAlongM;
     return PatchResult(joined, detour.distanceM - skipped,
-        detour.durationSec);
+        detour.durationSec,
+        changedToM: pathLength(detour.points));
   }
 
   /// Wo die Rueckfuehrung auf die Route treffen soll (m ab Start):

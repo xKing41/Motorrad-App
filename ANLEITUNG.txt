@@ -14,6 +14,37 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.32 - Mehr Sicherheit gegen gesperrte und unbefahrbare Wege
+-------------------------------------------------------------------
+
+EIGENE SPERRLISTE
+- Auf der Karte lange druecken -> "Strasse hier dauerhaft sperren"
+  (Motorradverbot, nicht befahrbar, Baustelle ...). Jede Route meidet
+  die Stelle danach: Planen, Bearbeiten, Neuberechnung unterwegs, auch
+  ohne Netz (Test-App). Gesperrte Stellen zeigt die Karte als rotes
+  Verbotszeichen.
+- Aufheben: lange auf die Stelle druecken -> "Sperre aufheben", oder
+  PLANEN -> EINSTELLUNGEN -> "EIGENE SPERREN".
+- Die Sperrliste ist in der Sicherung (Fahrten -> Sichern) enthalten.
+
+NICHTS BLEIBT UNGEPRUEFT
+- Liess sich eine Tour beim Planen nicht pruefen (kein Netz, Dienst
+  ueberlastet), steht das in den Hinweisen: "Nicht geprueft: ...".
+- Beim Start der Navigation wird JEDE Tour geprueft - auch alte,
+  gespeicherte und importierte (GPX): Motorradverbote, Feldwege,
+  Schotter, eigene Sperren.
+- Findet die App etwas, fragt sie: "UMFAHREN" oder "TROTZDEM FAHREN".
+  Umfahren rechnet nur ein Stueck um jede Stelle neu. Bei "trotzdem"
+  kommt 1,5 km vorher eine Warnung.
+- Geht die Pruefung beim Start nicht (kein Netz), sagt die App das.
+
+UNTERWEGS
+- Nach jeder Neuberechnung (verfahren, Umleitung) wird das neue Stueck
+  geprueft. Liegt dort ein Verbot oder Feldweg, wird es umfahren - geht
+  das nicht, kommt eine Warnung statt einer Endlosschleife.
+- Ohne Netz neu rechnen (Test-App): meidet jetzt auch Motorradverbote
+  rund um die Tour (beim Start geladen) und die eigenen Sperren.
+
 VERSION 4.31 - Motorradverbote werden umfahren
 ----------------------------------------------
 

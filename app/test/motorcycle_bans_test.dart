@@ -124,7 +124,7 @@ void main() {
   });
 }
 
-class _Fixed implements RoadCheck {
+class _Fixed extends RoadCheck {
   @override
   Future<List<RoadIssue>> check(List<RoutePoint> pts,
           {bool unpaved = true}) async =>

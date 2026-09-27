@@ -28,7 +28,6 @@ import '../services/navigation.dart';
 import '../services/offline_maps.dart';
 import '../services/offline_router.dart';
 import '../services/poi_service.dart';
-import '../services/road_check.dart';
 import '../services/route_follow.dart';
 import '../services/route_patch.dart';
 import '../services/route_weather.dart';
@@ -41,6 +40,7 @@ import '../services/telemetry.dart';
 import '../services/tour_store.dart';
 import '../services/vector_map.dart';
 import '../services/traffic_eta.dart';
+import '../services/user_blocks.dart';
 import '../services/tile_cache.dart';
 import '../services/voice.dart';
 import '../theme.dart';
@@ -112,6 +112,7 @@ class _MapScreenState extends State<MapScreen>
     _offline.offline.addListener(_onOffline);
     VectorMap.instance.addListener(_onOffline);
     VectorMap.instance.init();
+    UserBlocks.instance.addListener(_onOffline);
     if (kTestBuild) {
       _hub.addListener(_onGroupChanged);
       _onGroupChanged();
@@ -141,6 +142,7 @@ class _MapScreenState extends State<MapScreen>
     _offline.removeListener(_onOffline);
     _offline.offline.removeListener(_onOffline);
     VectorMap.instance.removeListener(_onOffline);
+    UserBlocks.instance.removeListener(_onOffline);
     _hub.removeListener(_onGroupChanged);
     for (final sub in _voiceSubs.values) {
       sub.cancel();
@@ -427,6 +429,7 @@ class _MapScreenState extends State<MapScreen>
       etaSource: settings.tomtomKey.trim().isEmpty
           ? null
           : TomTomEta(settings.tomtomKey.trim()),
+      roadCheck: settings.roadCheck(),
       speedWarning: settings.speedWarn,
       curveWarning: settings.curveWarn,
       speak: settings.voice ? (s) => Voice.instance.say(s) : null,
@@ -457,28 +460,110 @@ class _MapScreenState extends State<MapScreen>
     }
     // Gespeicherte/importierte Touren wurden evtl. nie auf Verbote
     // geprueft (aeltere Version, GPX): jetzt nachholen und warnen.
-    unawaited(_warnBans(r));
+    unawaited(_checkTourAtStart(nav));
+    // Ohne Netz neu rechnen (Test-App): Verbote rund um die Tour jetzt
+    // laden, solange Netz da ist.
+    if (kTestBuild) {
+      unawaited(MotorcycleBans()
+          .around(r.points)
+          .then((w) => nav.offlineBlockedLines = [for (final x in w) x.points])
+          .catchError((_) => const <List<RoutePoint>>[]));
+    }
     // Navigation ohne Aufzeichnung waere schade - die Fahrt gleich mit
     // aufzeichnen. (Nicht bei der Probefahrt - das ist keine Fahrt.)
     if (!simulated && !t.recording) widget.onToggleRide();
   }
 
-  Future<void> _warnBans(RoutePlan r) async {
-    try {
-      final issues = relevantIssues(
-          await MotorcycleBans().check(r.points), r.points,
-          keepNear: [for (final p in r.pois) RoutePoint(p.lat, p.lon)]);
-      if (issues.isEmpty || !mounted) return;
-      final i = issues.first;
-      final km = (i.fromM / 1000).round();
-      Voice.instance.say(
-          'Achtung: Auf der Tour liegt nach $km Kilometern ein Verbot für '
-          'Motorräder.');
+  /// Ganze Tour vor der Fahrt pruefen (auch alte und importierte
+  /// Touren): Verbote, Feldwege, eigene Sperren. Bei Treffern fragen:
+  /// umfahren oder trotzdem fahren.
+  Future<void> _checkTourAtStart(NavigationSession nav) async {
+    final found = await nav.checkSection(nav.alongM, nav.totalM);
+    if (!mounted || !identical(_nav, nav)) return;
+    if (found == null) {
       toast(context,
-          'Achtung: ${i.kind} bei km $km${issues.length > 1 ? ' (+${issues.length - 1} weitere)' : ''} - Tour neu planen oder umfahren');
-    } catch (_) {
-      // Kein Netz: ohne Pruefung weiter.
+          'Straßen konnten nicht geprüft werden (kein Netz) - auf Schilder achten');
+      return;
     }
+    if (found.isEmpty) return;
+    String km(double m) => m < 1000
+        ? '${(m / 10).round() * 10} m'
+        : '${(m / 1000).toStringAsFixed(1).replaceAll('.', ',')} km';
+    Voice.instance.say(found.length == 1
+        ? 'Achtung: Auf der Tour liegt eine Stelle, die für Motorräder nicht geeignet ist.'
+        : 'Achtung: Auf der Tour liegen ${found.length} Stellen, die für Motorräder nicht geeignet sind.');
+    final avoid = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: panel,
+        shape: const RoundedRectangleBorder(
+            side: BorderSide(color: redline, width: 1.5)),
+        title: const Row(children: [
+          Icon(Icons.warning_amber, color: redline),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text('NICHT FÜR MOTORRÄDER',
+                style: TextStyle(
+                    fontSize: 14, letterSpacing: 1.5, color: chalk)),
+          ),
+        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final i in found.take(4))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                    '• km ${(i.fromM / 1000).round()}: ${km(i.lengthM)} ${i.kind}',
+                    style: const TextStyle(fontSize: 13, color: chalk)),
+              ),
+            if (found.length > 4)
+              Text('... und ${found.length - 4} weitere',
+                  style: const TextStyle(fontSize: 12, color: steel)),
+            const SizedBox(height: 6),
+            const Text(
+                'Laut Karte gesperrt oder kein fester Belag. Die App kann '
+                'diese Stellen umfahren - nur ein Stück um jede Stelle '
+                'wird neu berechnet.',
+                style: TextStyle(fontSize: 11, color: steel, height: 1.4)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('TROTZDEM FAHREN',
+                style: TextStyle(color: steel)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: signal,
+                shape: const RoundedRectangleBorder()),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('UMFAHREN',
+                style: TextStyle(
+                    color: asphalt, fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || !identical(_nav, nav)) return;
+    if (avoid != true) {
+      // Bewusst in Kauf genommen: kurz vorher trotzdem warnen.
+      nav.hazards = found;
+      return;
+    }
+    final n = await nav.avoidIssues(found);
+    if (!mounted) return;
+    toast(
+        context,
+        n == 0
+            ? 'Keine Umfahrung gefunden - kurz vorher kommt eine Warnung'
+            : n < found.length
+                ? '$n Stellen umfahren - die Tour wird noch einmal geprüft'
+                : 'Umfahren - die Tour wird noch einmal geprüft');
+    if (n == 0) nav.hazards = found;
   }
 
   void _onNavChanged() {
@@ -630,12 +715,28 @@ class _MapScreenState extends State<MapScreen>
                   style: const TextStyle(fontSize: 12.5, color: chalk)),
               onTap: () => Navigator.pop(ctx, 'stop'),
             ),
+          ..._blockTiles(ctx, p),
         ]),
       ),
     );
     if (what == null || !mounted) {
       if (mounted) setState(() => _editPin = null);
       return;
+    }
+    if (what == 'unblock') {
+      await _unblockAt(p);
+      return;
+    }
+    var action = what;
+    if (what == 'block') {
+      // Auf der Tour: genau auf die Linie setzen (die Strasse selbst).
+      final at = onRoute ? pointAlong(r.points, cum, hit.alongM) : p;
+      if (!await _blockAt(at)) return;
+      if (!onRoute) {
+        setState(() => _editPin = null);
+        return;
+      }
+      action = 'avoid';
     }
     final settings = await RoutingSettings.load();
     final patcher = RoutePatcher(
@@ -647,7 +748,7 @@ class _MapScreenState extends State<MapScreen>
       final base = engineRouteOf(r);
       final PatchResult res;
       var pois = r.pois;
-      switch (what) {
+      switch (action) {
         case 'via':
           res = await patcher.via(base, p);
         case 'avoid':
@@ -725,7 +826,7 @@ class _MapScreenState extends State<MapScreen>
           lat: p.lat,
           lon: p.lon,
         );
-    final go = await showModalBottomSheet<bool>(
+    final go = await showModalBottomSheet<Object>(
       context: context,
       backgroundColor: panel,
       shape: const RoundedRectangleBorder(),
@@ -745,12 +846,93 @@ class _MapScreenState extends State<MapScreen>
                 style: TextStyle(fontSize: 12.5, color: chalk)),
             onTap: () => Navigator.pop(ctx, true),
           ),
+          ..._blockTiles(ctx, p),
         ]),
       ),
     );
+    if (go == 'block') {
+      await _blockAt(p);
+    } else if (go == 'unblock') {
+      await _unblockAt(p);
+    }
     if (mounted) setState(() => _editPin = null);
     if (go != true || !mounted) return;
     await _openPlanner(dest: place);
+  }
+
+  // ------------------------------------------------------------------
+  // Eigene Sperrliste
+  // ------------------------------------------------------------------
+
+  List<Widget> _blockTiles(BuildContext ctx, RoutePoint p) {
+    final existing = UserBlocks.instance.near(p);
+    return [
+      if (existing != null)
+        ListTile(
+          leading: const Icon(Icons.lock_open, color: cool),
+          title: Text('Sperre aufheben: ${existing.label}',
+              style: const TextStyle(fontSize: 12.5, color: chalk)),
+          onTap: () => Navigator.pop(ctx, 'unblock'),
+        )
+      else
+        ListTile(
+          leading: const Icon(Icons.block, color: redline),
+          title: const Text('Straße hier dauerhaft sperren',
+              style: TextStyle(fontSize: 12.5, color: chalk)),
+          subtitle: const Text(
+              'Motorradverbot, nicht befahrbar ... - jede Route meidet sie '
+              'künftig, auch unterwegs und ohne Netz',
+              style: TextStyle(fontSize: 10, color: steel)),
+          onTap: () => Navigator.pop(ctx, 'block'),
+        ),
+    ];
+  }
+
+  /// Grund fragen und sperren. false = abgebrochen.
+  Future<bool> _blockAt(RoutePoint p) async {
+    final label = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: panel,
+      shape: const RoundedRectangleBorder(),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 14, 16, 6),
+            child: Text('WARUM GESPERRT?',
+                style: TextStyle(fontSize: 11, letterSpacing: 2, color: chalk)),
+          ),
+          for (final (icon, text) in const [
+            (Icons.two_wheeler, 'Motorradverbot'),
+            (Icons.terrain, 'Nicht befahrbar (Feldweg, Schotter)'),
+            (Icons.construction, 'Baustelle / dauerhaft gesperrt'),
+            (Icons.block, 'Anderer Grund'),
+          ])
+            ListTile(
+              leading: Icon(icon, color: redline),
+              title: Text(text,
+                  style: const TextStyle(fontSize: 12.5, color: chalk)),
+              onTap: () => Navigator.pop(ctx, text.split(' (').first),
+            ),
+        ]),
+      ),
+    );
+    if (label == null || !mounted) {
+      if (mounted) setState(() => _editPin = null);
+      return false;
+    }
+    await UserBlocks.instance.add(p, label);
+    if (mounted) {
+      toast(context, 'Gesperrt: $label - wird ab jetzt immer gemieden');
+    }
+    return true;
+  }
+
+  Future<void> _unblockAt(RoutePoint p) async {
+    final b = UserBlocks.instance.near(p);
+    if (b != null) await UserBlocks.instance.remove(b.id);
+    if (!mounted) return;
+    setState(() => _editPin = null);
+    if (b != null) toast(context, 'Sperre aufgehoben: ${b.label}');
   }
 
   void _undoEdit() {
@@ -2105,6 +2287,22 @@ class _MapScreenState extends State<MapScreen>
           ]),
         ));
       }
+    }
+
+    for (final b in UserBlocks.instance.blocks) {
+      out.add(Marker(
+        point: LatLng(b.point.lat, b.point.lon),
+        width: 22,
+        height: 22,
+        child: Container(
+          decoration: BoxDecoration(
+            color: panel,
+            shape: BoxShape.circle,
+            border: Border.all(color: redline, width: 2),
+          ),
+          child: const Icon(Icons.block, size: 13, color: redline),
+        ),
+      ));
     }
 
     final pin = _editPin;

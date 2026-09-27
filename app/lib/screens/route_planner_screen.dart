@@ -15,6 +15,7 @@ import '../services/route_patch.dart';
 import '../services/routing_engine.dart';
 import '../services/routing_settings.dart';
 import '../services/traffic_service.dart';
+import '../services/user_blocks.dart';
 import '../services/voice.dart';
 import '../theme.dart';
 import 'ai_connect_screen.dart';
@@ -991,6 +992,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
         _switchRow('Sprachansagen bei der Navigation', _voice,
             (v) => setState(() => _voice = v)),
         if (_voice) const _VoicePicker(),
+        const _BlockList(),
         _switchRow('Vor engen Kurven warnen (wenn zu schnell)', _curveWarn,
             (v) => setState(() => _curveWarn = v)),
         _switchRow('Tempolimit anzeigen (OpenStreetMap)', _showLimits,
@@ -1410,6 +1412,50 @@ class _VoicePickerState extends State<_VoicePicker> {
             label: const Text('WEITERE STIMMEN',
                 style: TextStyle(fontSize: 10, letterSpacing: 1.2, color: cool)),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Eigene Sperrliste: ansehen und Sperren aufheben.
+class _BlockList extends StatelessWidget {
+  const _BlockList();
+
+  @override
+  Widget build(BuildContext context) {
+    final u = UserBlocks.instance;
+    return ListenableBuilder(
+      listenable: u,
+      builder: (context, _) => ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: EdgeInsets.zero,
+        title: Text('EIGENE SPERREN (${u.blocks.length})',
+            style: const TextStyle(
+                fontSize: 11, letterSpacing: 1.6, color: chalk)),
+        subtitle: const Text(
+            'Straßen, die jede Route meidet. Neu: auf der Karte lange '
+            'drücken -> "Straße hier dauerhaft sperren".',
+            style: TextStyle(fontSize: 10, color: steel, height: 1.4)),
+        children: [
+          for (final b in u.blocks.reversed)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.block, color: redline, size: 18),
+              title: Text(b.label,
+                  style: const TextStyle(fontSize: 12.5, color: chalk)),
+              subtitle: Text(
+                  '${b.point.lat.toStringAsFixed(5)}, '
+                  '${b.point.lon.toStringAsFixed(5)} · '
+                  '${b.created.day}.${b.created.month}.${b.created.year}',
+                  style: const TextStyle(fontSize: 10, color: steel)),
+              trailing: IconButton(
+                tooltip: 'Sperre aufheben',
+                icon: const Icon(Icons.delete_outline, color: steel),
+                onPressed: () => u.remove(b.id),
+              ),
+            ),
         ],
       ),
     );

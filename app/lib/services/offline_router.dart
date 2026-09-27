@@ -104,6 +104,56 @@ List<RoadLine> roadsFromTile(Uint8List bytes, int tx, int ty) {
   return out;
 }
 
+/// Sperren fuer die Wegsuche ohne Netz: eigene Sperrpunkte (die Strasse
+/// dort) und gesperrte Wege (auf ihnen, nicht quer dazu).
+class EdgeBlocker {
+  EdgeBlocker(this.points, this.lines);
+  final List<RoutePoint> points;
+  final List<List<RoutePoint>> lines;
+
+  /// Abstand Sperrpunkt - Strassenstueck (m).
+  static const double pointM = 20;
+
+  /// Abstand Mitte des Strassenstuecks - gesperrter Weg (m). Die Kacheln
+  /// sind etwas vereinfacht, daher nicht 0.
+  static const double lineM = 8;
+
+  bool get isEmpty => points.isEmpty && lines.isEmpty;
+
+  bool blocks(RoutePoint a, RoutePoint b) {
+    for (final p in points) {
+      if ((p.lat - a.lat).abs() > 0.01 || (p.lon - a.lon).abs() > 0.015) {
+        continue;
+      }
+      if (_segDist(p, a, b) <= pointM) return true;
+    }
+    if (lines.isEmpty) return false;
+    final m = RoutePoint((a.lat + b.lat) / 2, (a.lon + b.lon) / 2);
+    for (final l in lines) {
+      for (var i = 0; i < l.length - 1; i++) {
+        final x = l[i];
+        if ((x.lat - m.lat).abs() > 0.02 || (x.lon - m.lon).abs() > 0.03) {
+          continue;
+        }
+        if (_segDist(m, l[i], l[i + 1]) <= lineM) return true;
+      }
+    }
+    return false;
+  }
+
+  static double _segDist(RoutePoint p, RoutePoint a, RoutePoint b) {
+    final kx = 111320 * math.cos(p.lat * math.pi / 180);
+    const ky = 110540.0;
+    final ax = (a.lon - p.lon) * kx, ay = (a.lat - p.lat) * ky;
+    final dx = (b.lon - a.lon) * kx, dy = (b.lat - a.lat) * ky;
+    final l2 = dx * dx + dy * dy;
+    var t = l2 > 0 ? -(ax * dx + ay * dy) / l2 : 0.0;
+    t = t.clamp(0.0, 1.0);
+    final x = ax + t * dx, y = ay + t * dy;
+    return math.sqrt(x * x + y * y);
+  }
+}
+
 class _Edge {
   _Edge(this.to, this.lengthM, this.cost);
   final int to;
@@ -147,7 +197,9 @@ class RoadNet {
   RoutePoint pointOf(int n) => gridToLatLon(_pos[n].$1, _pos[n].$2);
 
   static RoadNet build(Iterable<RoadLine> lines,
-      {bool avoidMotorways = false, bool avoidUnpaved = true}) {
+      {bool avoidMotorways = false,
+      bool avoidUnpaved = true,
+      bool Function(RoutePoint a, RoutePoint b)? blocked}) {
     final net = RoadNet();
     for (final l in lines) {
       // Feldwege sind fuer Motorraeder fast immer gesperrt (Schild
@@ -163,8 +215,10 @@ class RoadNet {
       for (var i = 0; i < l.nodes.length - 1; i++) {
         final a = l.nodes[i], b = l.nodes[i + 1];
         if (a == b) continue;
+        final pa = gridToLatLon(a.$1, a.$2), pb = gridToLatLon(b.$1, b.$2);
+        if (blocked != null && blocked(pa, pb)) continue;
         final ia = net._node(a), ib = net._node(b);
-        final d = dist(gridToLatLon(a.$1, a.$2), gridToLatLon(b.$1, b.$2));
+        final d = dist(pa, pb);
         if (l.oneway >= 0) net._adj[ia].add(_Edge(ib, d, d / ms));
         if (l.oneway <= 0) net._adj[ib].add(_Edge(ia, d, d / ms));
       }
@@ -251,7 +305,15 @@ class OfflineRouteInput {
     required this.targets,
     this.avoidMotorways = false,
     this.avoidUnpaved = true,
+    this.blockedPoints = const [],
+    this.blockedLines = const [],
   });
+
+  /// Eigene Sperren (Punkte auf der Strasse).
+  final List<RoutePoint> blockedPoints;
+
+  /// Gesperrte Wege (Motorradverbote aus OpenStreetMap).
+  final List<List<RoutePoint>> blockedLines;
 
   /// (x, y, Bytes) der Kacheln im Suchgebiet.
   final List<(int, int, Uint8List)> tiles;
@@ -277,8 +339,11 @@ OfflineRouteResult? offlineRoute(OfflineRouteInput input) {
     for (final (x, y, b) in input.tiles) ...roadsFromTile(b, x, y),
   ];
   if (lines.isEmpty) return null;
+  final blocker = EdgeBlocker(input.blockedPoints, input.blockedLines);
   final net = RoadNet.build(lines,
-      avoidMotorways: input.avoidMotorways, avoidUnpaved: input.avoidUnpaved);
+      avoidMotorways: input.avoidMotorways,
+      avoidUnpaved: input.avoidUnpaved,
+      blocked: blocker.isEmpty ? null : blocker.blocks);
   final starts = net.nodesNear(input.here, 150, max: 4);
   if (starts.isEmpty) return null;
   final goals = <int, double>{};
@@ -354,6 +419,8 @@ class OfflineRerouter {
     required double fromAlongM,
     bool avoidMotorways = false,
     bool avoidUnpaved = true,
+    List<RoutePoint> blockedPoints = const [],
+    List<List<RoutePoint>> blockedLines = const [],
   }) async {
     if (route.length < 2) return null;
     final cum = cumulativeDistances(route);
@@ -394,6 +461,8 @@ class OfflineRerouter {
       targets: targets,
       avoidMotorways: avoidMotorways,
       avoidUnpaved: avoidUnpaved,
+      blockedPoints: blockedPoints,
+      blockedLines: blockedLines,
     );
     // Rechnen im Hintergrund, damit die Karte fluessig bleibt.
     return Isolate.run(() => offlineRoute(input));

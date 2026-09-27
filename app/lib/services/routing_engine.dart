@@ -141,11 +141,52 @@ abstract class RoutingEngine {
     RoutingPrefs prefs, {
     int alternates = 0,
   });
+
+  /// Stellen, die JEDE Berechnung meidet (eigene Sperrliste).
+  static List<RoutePoint> Function() globalAvoid = () => const [];
+
+  /// [prefs] plus die eigenen Sperren in der Gegend der Wegpunkte (die
+  /// zuerst - die Zahl gemiedener Punkte je Anfrage ist begrenzt).
+  /// Sperren direkt an einem Wegpunkt bleiben weg, sonst gibt es
+  /// dort gar keinen Weg.
+  static RoutingPrefs withGlobalAvoid(List<Waypoint> wps, RoutingPrefs prefs) {
+    final g = globalAvoid();
+    if (g.isEmpty || wps.isEmpty) return prefs;
+    var s = 90.0, w = 180.0, n = -90.0, e = -180.0;
+    for (final x in wps) {
+      s = math.min(s, x.point.lat);
+      n = math.max(n, x.point.lat);
+      w = math.min(w, x.point.lon);
+      e = math.max(e, x.point.lon);
+    }
+    final padLat = math.max(0.2, (n - s) * 0.5);
+    final padLon = math.max(0.3, (e - w) * 0.5);
+    final have = {for (final a in prefs.avoid) '${a.lat},${a.lon}'};
+    final near = [
+      for (final p in g)
+        if (p.lat >= s - padLat &&
+            p.lat <= n + padLat &&
+            p.lon >= w - padLon &&
+            p.lon <= e + padLon &&
+            !have.contains('${p.lat},${p.lon}') &&
+            !wps.any((x) => dist(x.point, p) < 150))
+          p,
+    ];
+    if (near.isEmpty) return prefs;
+    return RoutingPrefs(
+      curviness: prefs.curviness,
+      avoidMotorways: prefs.avoidMotorways,
+      avoidTolls: prefs.avoidTolls,
+      avoidUnpaved: prefs.avoidUnpaved,
+      avoid: [...near.take(30), ...prefs.avoid],
+      live: prefs.live,
+    );
+  }
 }
 
 const Map<String, String> _headers = {
   'Content-Type': 'application/json',
-  'User-Agent': 'Schraeglage/4.31 (Motorrad-App)',
+  'User-Agent': 'Schraeglage/4.32 (Motorrad-App)',
 };
 
 // ===========================================================================
@@ -225,6 +266,7 @@ class ValhallaEngine implements RoutingEngine {
     int alternates = 0,
   }) async {
     if (wps.length < 2) throw RouteException('Zu wenige Wegpunkte.');
+    prefs = RoutingEngine.withGlobalAvoid(wps, prefs);
     var costing = _noMotorcycle.contains(baseUrl) ? 'auto' : 'motorcycle';
     try {
       return await _send(buildRequest(wps, prefs,
@@ -554,6 +596,7 @@ class GraphHopperEngine implements RoutingEngine {
     RoutingPrefs prefs, {
     int alternates = 0,
   }) async {
+    prefs = RoutingEngine.withGlobalAvoid(wps, prefs);
     try {
       return await _send(wps, prefs, alternates, withCurvature: true);
     } on _GhCurvatureMissing {

@@ -84,7 +84,10 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
 - **Straßen-Prüfung**: jede geplante Tour wird Stück für Stück mit der
   Karte abgeglichen – Motorradverbote (auch zeitweise), Anlieger-/
   Privatwege, Feldwege, Fuß-/Radwege und Schotter werden umfahren oder
-  mit genauer Stelle gemeldet
+  mit genauer Stelle gemeldet; vor jeder Navigation wird auch eine alte
+  oder importierte Tour geprüft (Umfahren / trotzdem fahren)
+- **Eigene Sperrliste**: Straße per langem Druck auf die Karte sperren –
+  jede Berechnung meidet sie, auch unterwegs und ohne Netz
 - Mehrere Varianten zur Auswahl, bewertet nach Kurvigkeit, Länge und
   doppelt gefahrenen Abschnitten; Sackgassen-Stiche werden
   herausgeschnitten
@@ -249,6 +252,7 @@ app/lib/
     routing_engine.dart         Valhalla (Standard) und GraphHopper
     road_check.dart             Prüfung auf Feldwege/Schotter (trace_attributes)
     motorcycle_bans.dart        Motorradverbote entlang der Route (Overpass)
+    user_blocks.dart            eigene Sperrliste
     routing_settings.dart       gespeicherte Routing-Einstellungen
     geo.dart                    Geometrie: Kurvigkeit, Doppelstrecken,
                                 Sackgassen, Projektion auf die Route

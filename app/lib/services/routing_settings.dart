@@ -5,6 +5,7 @@ import 'fuel_prices.dart';
 import 'motorcycle_bans.dart';
 import 'road_check.dart';
 import 'speed_limits.dart';
+import 'user_blocks.dart';
 import 'traffic_service.dart';
 import 'traffic_sources.dart';
 
@@ -90,6 +91,8 @@ class RoutingSettings {
       ValhallaRoadCheck(base: base.isEmpty ? ValhallaEngine.publicUrl : base),
       // Motorradverbote, auch zeitweise (Overpass).
       MotorcycleBans(),
+      // Selbst gesperrte Stellen.
+      UserBlockCheck(),
     ]);
   }
 

@@ -13,6 +13,7 @@ import 'services/group_ride.dart';
 import 'services/power.dart';
 import 'services/ride_store.dart';
 import 'services/telemetry.dart';
+import 'services/user_blocks.dart';
 import 'services/vector_map.dart';
 import 'theme.dart';
 
@@ -73,6 +74,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     });
     // Vektorkarte vorbereiten (Stile laden, Kachel-Adresse holen).
     VectorMap.instance.init();
+    // Eigene Sperrliste: gilt fuer jede Routenberechnung.
+    UserBlocks.instance.load();
     t.start();
     t.addListener(_onTick);
     t.crashAlarm.addListener(_onCrashAlarm);

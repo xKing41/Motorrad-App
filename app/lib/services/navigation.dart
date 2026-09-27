@@ -9,6 +9,7 @@ import 'geo.dart';
 import 'lanes.dart';
 import 'offline_router.dart';
 import 'phrases.dart';
+import 'road_check.dart';
 import 'route_follow.dart';
 import 'route_patch.dart';
 import 'routing_engine.dart';
@@ -50,6 +51,7 @@ class NavigationSession extends ChangeNotifier {
     this.limits,
     this.lanes,
     this.offlineRouter,
+    this.roadCheck,
     this.etaSource,
     this.speedWarning = false,
     this.curveWarning = true,
@@ -78,6 +80,13 @@ class NavigationSession extends ChangeNotifier {
   /// null = nur online.
   final OfflineRerouter? offlineRouter;
 
+  /// Prueft neu berechnete Stuecke auf Motorradverbote, Feldwege & Co.
+  final RoadCheck? roadCheck;
+
+  /// Gesperrte Wege rund um die Tour (beim Start geladen, solange Netz
+  /// da war) - die Neuberechnung ohne Netz meidet sie.
+  List<List<RoutePoint>> offlineBlockedLines = const [];
+
   /// Letzte Neuberechnung kam vom Handy (ohne Netz)?
   bool lastRerouteOffline = false;
 
@@ -93,6 +102,8 @@ class NavigationSession extends ChangeNotifier {
         fromAlongM: _onRouteAlong,
         avoidMotorways: prefs.avoidMotorways,
         avoidUnpaved: prefs.avoidUnpaved,
+        blockedPoints: RoutingEngine.globalAvoid(),
+        blockedLines: offlineBlockedLines,
       );
     } catch (_) {
       res = null;
@@ -536,6 +547,7 @@ class NavigationSession extends ChangeNotifier {
       _advanceSteps();
       _announceStops();
       _checkCurves();
+      _checkHazards();
     }
 
     if (!arrived && f.remainingM < 40 && f.offRouteM < 60) {
@@ -662,6 +674,8 @@ class NavigationSession extends ChangeNotifier {
   RoutePatcher get _patcher => RoutePatcher(engine, prefs);
 
   void _apply(EngineRoute r, String msg) {
+    // Bekannte Stellen gehoerten zur alten Linie.
+    hazards = const [];
     _plan = planWith(_plan, r);
     _rebuild();
     follow = null;
@@ -688,6 +702,7 @@ class NavigationSession extends ChangeNotifier {
       lastRerouteOffline = false;
       _apply(res.route, 'Zurück zur Tour');
       _noRerouteUntil = DateTime.now().add(const Duration(seconds: 10));
+      unawaited(_ensureClear(0, res.changedToM ?? 5000));
     } on RouteException catch (e) {
       // Server nicht erreichbar: auf dem Handy rechnen (Kartenkacheln).
       if (await _rejoinOffline(h)) {
@@ -752,16 +767,30 @@ class NavigationSession extends ChangeNotifier {
     required double toM,
     required List<RoutePoint> avoid,
     required String msg,
+    int checkDepth = 0,
+    bool postCheck = true,
   }) async {
     rerouting = true;
     notifyListeners();
     try {
+      // Ab der eigenen Position nur, wenn das Stueck hier beginnt -
+      // sonst bliebe vom geplanten Weg bis dahin nichts uebrig.
+      final fromHere = fromM <= alongM + 50;
       final res = await _patcher.avoidSection(engineRouteOf(_plan),
-          fromM: fromM, toM: toM, avoid: avoid, here: _here, heading: _heading);
+          fromM: fromM,
+          toM: toM,
+          avoid: avoid,
+          here: fromHere ? _here : null,
+          heading: fromHere ? _heading : null);
       final km = res.extraM / 1000;
       _apply(res.route,
           '$msg (${km >= 0 ? '+' : ''}${km.toStringAsFixed(1).replaceAll('.', ',')} km)');
       _say('Neue Route.');
+      if (postCheck) {
+        final from = fromHere ? alongM : fromM;
+        unawaited(_ensureClear(from, res.changedToM ?? toM,
+            depth: checkDepth));
+      }
       return true;
     } on RouteException catch (e) {
       _flash('Keine Umfahrung gefunden: ${e.message}');
@@ -770,6 +799,113 @@ class NavigationSession extends ChangeNotifier {
       rerouting = false;
       notifyListeners();
     }
+  }
+
+  // ---------------------------------------------------------------------
+  //  Strassen pruefen (Verbote, Feldwege, eigene Sperren)
+  // ---------------------------------------------------------------------
+
+  /// Prueft [fromM] bis [toM] der aktuellen Route. Probleme voraus werden
+  /// umfahren (hoechstens zweimal nacheinander), sonst gibt es eine
+  /// Warnung. Ohne Netz: nichts.
+  Future<void> _ensureClear(double fromM, double toM, {int depth = 0}) async {
+    final found = await checkSection(fromM, toM);
+    if (found == null || found.isEmpty) return;
+    final i = found.first;
+    if (depth >= 2 || rerouting) {
+      _warnIssue(i);
+      return;
+    }
+    final ok = await _detour(
+      fromM: math.max(alongM, i.fromM - 4000),
+      toM: i.toM + 3000,
+      avoid: issueAvoidPoints([i], _plan.points),
+      msg: 'Umfahren: ${i.kind}',
+      checkDepth: depth + 1,
+    );
+    if (!ok) _warnIssue(i);
+  }
+
+  /// Probleme auf [fromM]..[toM] der aktuellen Route (m ab Start),
+  /// nur die vor dem Fahrer. null = nicht pruefbar (kein Netz) oder die
+  /// Route hat sich waehrenddessen geaendert.
+  Future<List<RoadIssue>?> checkSection(double fromM, double toM) async {
+    final c = roadCheck;
+    if (c == null) return null;
+    final plan = _plan;
+    final a = fromM.clamp(0.0, totalM);
+    final b = toM.clamp(a, totalM);
+    if (b - a < 100) return const [];
+    final slice = sliceRoute(engineRouteOf(plan), a, b, cum: _cum).points;
+    final r = await c.run(slice, unpaved: prefs.avoidUnpaved);
+    if (!identical(plan, _plan)) return null;
+    if (r.issues.isEmpty && !r.complete) return null;
+    return [
+      for (final i in relevantIssues(r.issues, slice,
+          keepNear: [for (final p in plan.pois) RoutePoint(p.lat, p.lon)],
+          nearM: 120))
+        if (i.toM + a > alongM + 50) RoadIssue(i.fromM + a, i.toM + a, i.kind),
+    ];
+  }
+
+  /// Alle genannten Stellen umfahren - von hinten nach vorn, damit die
+  /// Kilometerangaben der vorderen stimmen. Danach die ganze Rest-Route
+  /// noch einmal pruefen. Liefert, wie viele umfahren wurden.
+  Future<int> avoidIssues(List<RoadIssue> issues) async {
+    // Nahe beieinander liegende Stellen gemeinsam umfahren.
+    final groups = <RoadIssue>[];
+    for (final i in [...issues]..sort((a, b) => a.fromM.compareTo(b.fromM))) {
+      if (i.toM <= alongM) continue;
+      if (groups.isNotEmpty && i.fromM - groups.last.toM < 8000) {
+        final g = groups.removeLast();
+        groups.add(RoadIssue(g.fromM, math.max(g.toM, i.toM), g.kind));
+      } else {
+        groups.add(i);
+      }
+    }
+    var done = 0;
+    for (final g in groups.reversed) {
+      final parts = [
+        for (final i in issues)
+          if (i.fromM >= g.fromM && i.toM <= g.toM) i,
+      ];
+      final ok = await _detour(
+        fromM: math.max(alongM, g.fromM - 4000),
+        toM: math.min(totalM, g.toM + 3000),
+        avoid: issueAvoidPoints(parts.isEmpty ? [g] : parts, _plan.points),
+        msg: 'Umfahren: ${g.kind}',
+        postCheck: false,
+      );
+      if (ok) done++;
+    }
+    if (done > 0) unawaited(_ensureClear(alongM, totalM, depth: 1));
+    return done;
+  }
+
+  /// Stellen, die der Fahrer bewusst in Kauf nimmt ("trotzdem fahren"):
+  /// kurz vorher wird gewarnt.
+  List<RoadIssue> hazards = const [];
+  final Set<int> _hazardWarned = {};
+
+  void _checkHazards() {
+    for (final h in hazards) {
+      final d = h.fromM - alongM;
+      if (d < -h.lengthM || d > 1500) continue;
+      if (_hazardWarned.add(h.fromM.round())) _warnIssue(h);
+    }
+  }
+
+  void _warnIssue(RoadIssue i) {
+    final d = i.fromM - alongM;
+    final where = d > 50 ? 'in ${spokenDistance(d)}' : 'hier';
+    _flash('ACHTUNG: ${i.kind} $where - '
+        'nicht umfahrbar. Auf Schilder achten.', seconds: 20);
+    final ban = i.kind.startsWith('Motorradverbot') ||
+        i.kind.startsWith('von dir gesperrt') ||
+        i.kind.startsWith('gesperrt');
+    _say(ban
+        ? 'Achtung: $where Straße für Motorräder gesperrt.'
+        : 'Achtung: $where ${i.kind == 'unbefestigt' ? 'kein fester Straßenbelag' : i.kind}.');
   }
 
   // ---------------------------------------------------------------------

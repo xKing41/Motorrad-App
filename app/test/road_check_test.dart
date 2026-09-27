@@ -14,7 +14,7 @@ import 'helpers.dart';
 
 /// Meldet in jeder Route ein Stueck Feldweg in der Mitte - die ersten
 /// [badCalls] Male.
-class FakeRoadCheck implements RoadCheck {
+class FakeRoadCheck extends RoadCheck {
   FakeRoadCheck({this.badCalls = 1});
   final int badCalls;
   int calls = 0;
@@ -149,6 +149,7 @@ void main() {
               random: math.Random(4), maxVariants: 1, roadCheck: _Failing())
           .plan(loop());
       expect(plan.points, isNotEmpty);
+      expect(plan.notes.any((n) => n.startsWith('Nicht geprüft')), isTrue);
     });
   });
 
@@ -184,7 +185,7 @@ void main() {
   });
 }
 
-class _Failing implements RoadCheck {
+class _Failing extends RoadCheck {
   @override
   Future<List<RoadIssue>> check(List<RoutePoint> pts, {bool unpaved = true}) =>
       Future.error(http.ClientException('offline'));

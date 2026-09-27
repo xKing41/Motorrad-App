@@ -36,11 +36,36 @@ class RoadIssue {
   String toString() => 'RoadIssue($kind ${fromM.round()}-${toM.round()})';
 }
 
-abstract class RoadCheck {
-  Future<List<RoadIssue>> check(List<RoutePoint> pts, {bool unpaved = true});
+/// Ergebnis einer Pruefung: gefundene Stellen und was sich nicht
+/// pruefen liess (kein Netz, Dienst ueberlastet).
+class RoadCheckResult {
+  const RoadCheckResult(this.issues, [this.unchecked = const []]);
+  final List<RoadIssue> issues;
+
+  /// Namen der Pruefungen, die ausgefallen sind ("Motorradverbote").
+  final List<String> unchecked;
+
+  bool get complete => unchecked.isEmpty;
 }
 
-class ValhallaRoadCheck implements RoadCheck {
+abstract class RoadCheck {
+  /// Wofuer die Pruefung steht (fuer "nicht geprueft: ...").
+  String get name => 'Straßen';
+
+  Future<List<RoadIssue>> check(List<RoutePoint> pts, {bool unpaved = true});
+
+  /// Wie [check], wirft aber nie: Ausfall steht in [RoadCheckResult.unchecked].
+  Future<RoadCheckResult> run(List<RoutePoint> pts,
+      {bool unpaved = true}) async {
+    try {
+      return RoadCheckResult(await check(pts, unpaved: unpaved));
+    } catch (_) {
+      return RoadCheckResult(const [], [name]);
+    }
+  }
+}
+
+class ValhallaRoadCheck extends RoadCheck {
   ValhallaRoadCheck({
     this.base = 'https://valhalla1.openstreetmap.de',
     http.Client? client,
@@ -50,6 +75,9 @@ class ValhallaRoadCheck implements RoadCheck {
 
   /// Abstand zwischen Anfragen an den oeffentlichen Server.
   final Duration minInterval;
+
+  @override
+  String get name => 'Belag und Wegart';
 
   final String base;
   final http.Client? _client;
@@ -92,7 +120,7 @@ class ValhallaRoadCheck implements RoadCheck {
     final uri = Uri.parse('$base/trace_attributes');
     const headers = {
       'Content-Type': 'application/json',
-      'User-Agent': 'Schraeglage/4.31 (Motorrad-App)',
+      'User-Agent': 'Schraeglage/4.32 (Motorrad-App)',
     };
     Future<http.Response> send(String costing) async {
       final body = jsonEncode({
@@ -231,26 +259,31 @@ List<RoutePoint> issueAvoidPoints(List<RoadIssue> issues, List<RoutePoint> pts,
 /// Mehrere Pruefungen zusammen (Belag/Wegart und Verbote). Faellt eine
 /// aus (kein Netz), zaehlen die anderen; fallen alle aus, gilt die Tour
 /// als ungeprueft.
-class CombinedRoadCheck implements RoadCheck {
+class CombinedRoadCheck extends RoadCheck {
   CombinedRoadCheck(this.checks);
   final List<RoadCheck> checks;
 
   @override
+  Future<RoadCheckResult> run(List<RoutePoint> pts,
+      {bool unpaved = true}) async {
+    final issues = <RoadIssue>[];
+    final unchecked = <String>[];
+    for (final c in checks) {
+      final r = await c.run(pts, unpaved: unpaved);
+      issues.addAll(r.issues);
+      unchecked.addAll(r.unchecked);
+    }
+    issues.sort((a, b) => a.fromM.compareTo(b.fromM));
+    return RoadCheckResult(issues, unchecked);
+  }
+
+  @override
   Future<List<RoadIssue>> check(List<RoutePoint> pts,
       {bool unpaved = true}) async {
-    final out = <RoadIssue>[];
-    var ok = 0;
-    Object? last;
-    for (final c in checks) {
-      try {
-        out.addAll(await c.check(pts, unpaved: unpaved));
-        ok++;
-      } catch (e) {
-        last = e;
-      }
+    final r = await run(pts, unpaved: unpaved);
+    if (r.unchecked.length == checks.length && checks.isNotEmpty) {
+      throw StateError('ungeprueft');
     }
-    if (ok == 0 && checks.isNotEmpty) throw last ?? StateError('ungeprueft');
-    out.sort((a, b) => a.fromM.compareTo(b.fromM));
-    return out;
+    return r.issues;
   }
 }

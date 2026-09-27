@@ -5,6 +5,7 @@ import 'dart:io';
 import '../models/ride.dart';
 import 'ride_store.dart';
 import 'tour_store.dart';
+import 'user_blocks.dart';
 
 // ---------------------------------------------------------------------------
 //  SICHERUNG
@@ -50,7 +51,8 @@ class BackupService {
 
   /// Schreibt die Sicherung nach [out].
   static Future<BackupResult> export(
-      File out, RideStore rides, TourStore tours) async {
+      File out, RideStore rides, TourStore tours,
+      {UserBlocks? blocks}) async {
     final res = BackupResult();
     final sink = out.openWrite();
     final gz = gzip.encoder.startChunkedConversion(sink);
@@ -79,6 +81,13 @@ class BackupService {
         line({'type': 'tour', 'meta': m.toJson(), 'plan': planToJson(plan)});
         res.tours++;
       }
+      // Eigene Sperrliste - muehsam gesammelt, gehoert mit aufs neue Handy.
+      if (blocks != null && blocks.blocks.isNotEmpty) {
+        line({
+          'type': 'blocks',
+          'list': [for (final b in blocks.blocks) b.toJson()],
+        });
+      }
     } finally {
       // Schliesst auch die Datei (der Packer reicht das close() weiter).
       gz.close();
@@ -90,7 +99,8 @@ class BackupService {
   /// Spielt eine Sicherung ein. Vorhandenes bleibt, doppelte Eintraege
   /// werden uebersprungen.
   static Future<BackupResult> import(
-      Stream<List<int>> input, RideStore rides, TourStore tours) async {
+      Stream<List<int>> input, RideStore rides, TourStore tours,
+      {UserBlocks? blocks}) async {
     final res = BackupResult();
     final haveRides = {for (final r in await rides.listRides()) r.id};
     final haveTours = {for (final t in await tours.list()) t.id};
@@ -145,6 +155,12 @@ class BackupService {
           await tours.save(plan, title: m.title, id: m.id, savedAt: m.savedAt);
           haveTours.add(m.id);
           res.tours++;
+        case 'blocks':
+          if (blocks == null) break;
+          for (final x in (j['list'] as List? ?? const [])) {
+            final b = UserBlock.fromJson(x);
+            if (b != null) await blocks.addExisting(b);
+          }
       }
     }
     if (first) throw const FormatException('Leere Datei');

@@ -1170,12 +1170,12 @@ class TourPlanner {
             keepNear: keep);
     double badM(List<RoadIssue> l) => l.fold(0.0, (s, i) => s + i.lengthM);
 
-    List<RoadIssue> issues;
-    try {
-      issues = await issuesOf(c.route.points);
-    } catch (_) {
-      // Kein Netz / Server voll: ungeprueft weiter.
-      return (c, 0.0);
+    final first = await check.run(c.route.points, unpaved: req.avoidUnpaved);
+    final issues =
+        relevantIssues(first.issues, c.route.points, keepNear: keep);
+    // Was sich nicht pruefen liess, sagt die Tour dazu - nicht still.
+    if (!first.complete) {
+      c = c.copyWith(notes: [...c.notes, uncheckedNote(first.unchecked)]);
     }
     if (issues.isEmpty) return (c, 0.0);
 
@@ -1219,6 +1219,10 @@ class TourPlanner {
       badM(bestIssues),
     );
   }
+
+  static String uncheckedNote(List<String> what) =>
+      'Nicht geprüft: ${what.join(' und ')} (kein Netz oder Dienst '
+      'überlastet). Die Prüfung wird beim Start der Navigation nachgeholt.';
 
   /// Hinweis fuer den Fahrer, wenn sich ein Stueck nicht vermeiden liess.
   static String roadWarning(List<RoadIssue> issues) {

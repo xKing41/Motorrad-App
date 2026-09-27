@@ -41,8 +41,11 @@ class BannedWay {
   }();
 }
 
-class MotorcycleBans implements RoadCheck {
+class MotorcycleBans extends RoadCheck {
   MotorcycleBans({this.fetch});
+
+  @override
+  String get name => 'Motorradverbote';
 
   /// Overpass-Abfrage (austauschbar fuer Tests). null = Standard.
   final Future<Map<String, dynamic>?> Function(String query)? fetch;
@@ -51,8 +54,8 @@ class MotorcycleBans implements RoadCheck {
       'no|private|agricultural|forestry|agricultural;forestry|delivery|destination|permit|customers';
   static const _allowed = 'yes|designated|permissive';
 
-  static String query(List<RoutePoint> route) {
-    final area = PoiService.corridor(route, 120);
+  static String query(List<RoutePoint> route, {double corridorM = 120}) {
+    final area = PoiService.corridor(route, corridorM);
     return '[out:json][timeout:25];('
         'way["highway"]["motorcycle"~"^($_restricted)\$"]$area;'
         'way["highway"]["motorcycle:conditional"~"^ *($_restricted) *@"]$area;'
@@ -64,7 +67,7 @@ class MotorcycleBans implements RoadCheck {
         '["motor_vehicle"!~"^($_allowed)\$"]["motorcycle"!~"^($_allowed)\$"]$area;'
         'way["highway"]["access"~"^($_restricted)\$"]["vehicle"!~"^($_allowed)\$"]'
         '["motor_vehicle"!~"^($_allowed)\$"]["motorcycle"!~"^($_allowed)\$"]$area;'
-        ');out tags geom 500;';
+        ');out tags geom 2000;';
   }
 
   static List<BannedWay> parse(Map<String, dynamic> data) {
@@ -139,6 +142,17 @@ class MotorcycleBans implements RoadCheck {
     final data = await f(query(pts));
     if (data == null) throw StateError('Overpass nicht erreichbar');
     return match(pts, parse(data));
+  }
+
+  /// Gesperrte Wege im weiten Umkreis der Tour - fuer die Neuberechnung
+  /// ohne Netz (wer sich verfaehrt, landet auch neben der Tour).
+  Future<List<BannedWay>> around(List<RoutePoint> pts,
+      {double corridorM = 2000}) async {
+    if (pts.length < 2) return const [];
+    final f = fetch ?? PoiService.overpass;
+    final data = await f(query(pts, corridorM: corridorM));
+    if (data == null) throw StateError('Overpass nicht erreichbar');
+    return parse(data);
   }
 
   /// Wo faehrt die Route auf einem gesperrten Weg? Nur Stuecke, die

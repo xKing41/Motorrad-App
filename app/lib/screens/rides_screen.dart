@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/ride.dart';
+import '../services/user_blocks.dart';
 import '../services/backup_service.dart';
 import '../services/ride_store.dart';
 import '../services/tour_store.dart';
@@ -89,7 +90,8 @@ class RidesScreenState extends State<RidesScreen> {
       final dir = await getTemporaryDirectory();
       final f = File('${dir.path}/${BackupService.fileName(DateTime.now())}');
       final res = await BackupService.export(
-          f, RideStore.instance, await TourStore.open());
+          f, RideStore.instance, await TourStore.open(),
+          blocks: UserBlocks.instance);
       if (!mounted) return;
       await SharePlus.instance.share(ShareParams(
         files: [XFile(f.path, mimeType: 'application/gzip')],
@@ -114,7 +116,8 @@ class RidesScreenState extends State<RidesScreen> {
     setState(() => _backupBusy = true);
     try {
       final res = await BackupService.import(
-          f.readAsByteStream(), RideStore.instance, await TourStore.open());
+          f.readAsByteStream(), RideStore.instance, await TourStore.open(),
+          blocks: UserBlocks.instance);
       await reload();
       if (mounted) toast(context, 'Eingespielt: ${res.text}');
     } on FormatException {
