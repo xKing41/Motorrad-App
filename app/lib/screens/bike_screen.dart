@@ -54,7 +54,7 @@ class _BikeScreenState extends State<BikeScreen> {
               ),
               child: Text(label(v),
                   style: TextStyle(
-                      fontSize: 11,
+                      fontSize: 14.5,
                       color: v == selected ? chalk : steel)),
             ),
           ),
@@ -100,7 +100,7 @@ class _BikeScreenState extends State<BikeScreen> {
             'rechnet die App aus, wie viel tiefer das Motorrad liegt als die '
             'Linie Reifen–Schwerpunkt: bei 40° gerade '
             '+${corr40.toStringAsFixed(1).replaceAll('.', ',')}°.',
-            style: const TextStyle(fontSize: 10.5, color: steel, height: 1.45),
+            style: const TextStyle(fontSize: 14, color: steel, height: 1.45),
           ),
           const SizedBox(height: 22),
           const TinyLabel('MESSQUALITÄT'),
@@ -150,11 +150,11 @@ class _BikeScreenState extends State<BikeScreen> {
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(children: [
           Expanded(
-              child: Text(k, style: const TextStyle(fontSize: 11.5, color: steel))),
+              child: Text(k, style: const TextStyle(fontSize: 15, color: steel))),
           Flexible(
             child: Text(v,
                 textAlign: TextAlign.right,
-                style: const TextStyle(fontSize: 11.5, color: chalk)),
+                style: const TextStyle(fontSize: 15, color: chalk)),
           ),
         ]),
       );
@@ -174,7 +174,7 @@ class _Tip extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(text,
-                style: const TextStyle(fontSize: 11, color: chalk, height: 1.45)),
+                style: const TextStyle(fontSize: 14.5, color: chalk, height: 1.45)),
           ),
         ]),
       );

@@ -53,22 +53,22 @@ class RidesScreenState extends State<RidesScreen> {
         backgroundColor: panel,
         shape: const RoundedRectangleBorder(side: BorderSide(color: line)),
         title: const Text('FAHRT LÖSCHEN?',
-            style: TextStyle(fontSize: 12, letterSpacing: 2.5, color: chalk)),
+            style: TextStyle(fontSize: 15.5, letterSpacing: 1.5, color: chalk)),
         content: Text(
           '${fmtDate(r.start)} · ${r.distanceKm.toStringAsFixed(1)} km\n'
           'Das lässt sich nicht rückgängig machen.',
-          style: const TextStyle(fontSize: 11.5, color: steel, height: 1.4),
+          style: const TextStyle(fontSize: 15, color: steel, height: 1.4),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('BEHALTEN',
-                style: TextStyle(fontSize: 11, color: steel)),
+                style: TextStyle(fontSize: 14.5, color: steel)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('LÖSCHEN',
-                style: TextStyle(fontSize: 11, color: redline)),
+                style: TextStyle(fontSize: 14.5, color: redline)),
           ),
         ],
       ),
@@ -171,7 +171,7 @@ class RidesScreenState extends State<RidesScreen> {
               'und beende die Fahrt – sie landet dann hier,\n'
               'mit Karte und Kurvenauswertung.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: steel, height: 1.7, fontSize: 12),
+              style: TextStyle(color: steel, height: 1.7, fontSize: 15.5),
             ),
             const SizedBox(height: 24),
             // Neues Handy: alte Fahrten und Touren zurueckholen.
@@ -278,14 +278,14 @@ class RidesScreenState extends State<RidesScreen> {
               children: [
                 Text('${fmtDate(r.start)}   ·   ${fmtDur(r.durationSec)}',
                     style: const TextStyle(
-                        fontSize: 10, letterSpacing: 1, color: steel)),
+                        fontSize: 13.5, letterSpacing: 1, color: steel)),
                 const SizedBox(height: 4),
                 Text(
                   '${r.distanceKm.toStringAsFixed(1)} km   ·   '
                   'Ø ${r.avgSpeedKmh.round()}   ·   '
                   'Vmax ${r.maxSpeedKmh.round()} km/h',
                   style: const TextStyle(
-                      fontSize: 12,
+                      fontSize: 15.5,
                       fontWeight: FontWeight.w600,
                       color: chalk),
                 ),
@@ -294,7 +294,7 @@ class RidesScreenState extends State<RidesScreen> {
                   'Schräglage ${r.maxLeanL.round()}° L / '
                   '${r.maxLeanR.round()}° R   ·   '
                   'Brems ${r.maxBrakeG.toStringAsFixed(2)} G',
-                  style: const TextStyle(fontSize: 10.5, color: steel),
+                  style: const TextStyle(fontSize: 14, color: steel),
                 ),
               ],
             ),

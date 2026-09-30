@@ -136,8 +136,9 @@ class _ScalePainter extends CustomPainter {
           text: TextSpan(
             text: '${a.abs()}',
             style: TextStyle(
-              fontSize: r * 0.078,
-              fontWeight: FontWeight.w600,
+              fontFamily: kFont,
+              fontSize: r * 0.095,
+              fontWeight: FontWeight.w700,
               color: steel,
             ),
           ),

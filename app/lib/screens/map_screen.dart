@@ -53,9 +53,12 @@ import 'tours_screen.dart';
 /// Karte mit Live-Position, aufgezeichneter Spur, geladener Route
 /// und Zwischenstopps.
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key, required this.onToggleRide});
+  const MapScreen({super.key, required this.onToggleRide, this.debugRoute});
 
   final VoidCallback onToggleRide;
+
+  /// Nur fuer Bildschirmfotos/Tests: mit dieser Tour starten.
+  final RoutePlan? debugRoute;
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -124,6 +127,12 @@ class _MapScreenState extends State<MapScreen>
     }
     _loadTrafficKey();
     _offline.cache();
+    final dr = widget.debugRoute;
+    if (dr != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _setRoute(dr);
+      });
+    }
   }
 
   void _onOffline() {
@@ -251,6 +260,17 @@ class _MapScreenState extends State<MapScreen>
   /// den Knoepfen. Jetzt wird der freie Bereich zwischen oberem und
   /// unterem Feld gemessen, und der Pfeil steht etwas unter dessen Mitte
   /// (60 %) - so sieht man sich selbst und die Strecke voraus.
+  /// Hoehe der unteren Leiste (gemessen) - die Kartenquelle steht
+  /// darueber.
+  double _bottomH = 150;
+
+  void _measureBottom() {
+    final o = _bottomKey.currentContext?.findRenderObject();
+    if (o is! RenderBox || !o.hasSize) return;
+    final h = o.size.height;
+    if ((h - _bottomH).abs() > 2 && mounted) setState(() => _bottomH = h);
+  }
+
   double _riderOffsetPx() {
     RenderBox? box(GlobalKey k) {
       final o = k.currentContext?.findRenderObject();
@@ -367,7 +387,7 @@ class _MapScreenState extends State<MapScreen>
               ),
               child: Text(label,
                   style: TextStyle(
-                      fontSize: 10,
+                      fontSize: 13.5,
                       letterSpacing: 1.2,
                       fontWeight: FontWeight.w700,
                       color: active ? cool : chalk)),
@@ -382,7 +402,7 @@ class _MapScreenState extends State<MapScreen>
           color: cool,
           child: const Text('PROBEFAHRT',
               style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 13.5,
                   letterSpacing: 1.2,
                   fontWeight: FontWeight.w800,
                   color: asphalt)),
@@ -436,7 +456,11 @@ class _MapScreenState extends State<MapScreen>
     );
     nav.addListener(_onNavChanged);
     if (!mounted) return;
-    await t.setNavigating(true);
+    try {
+      await t.setNavigating(true);
+    } catch (_) {
+      // GPS-Modus liess sich nicht umstellen - Navigation trotzdem.
+    }
     setState(() {
       _nav = nav;
       _autoFollow = true;
@@ -505,7 +529,7 @@ class _MapScreenState extends State<MapScreen>
           Expanded(
             child: Text('NICHT FÜR MOTORRÄDER',
                 style: TextStyle(
-                    fontSize: 14, letterSpacing: 1.5, color: chalk)),
+                    fontSize: 17.5, letterSpacing: 0.9, color: chalk)),
           ),
         ]),
         content: Column(
@@ -517,17 +541,17 @@ class _MapScreenState extends State<MapScreen>
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Text(
                     '• km ${(i.fromM / 1000).round()}: ${km(i.lengthM)} ${i.kind}',
-                    style: const TextStyle(fontSize: 13, color: chalk)),
+                    style: const TextStyle(fontSize: 16.5, color: chalk)),
               ),
             if (found.length > 4)
               Text('... und ${found.length - 4} weitere',
-                  style: const TextStyle(fontSize: 12, color: steel)),
+                  style: const TextStyle(fontSize: 15.5, color: steel)),
             const SizedBox(height: 6),
             const Text(
                 'Laut Karte gesperrt oder kein fester Belag. Die App kann '
                 'diese Stellen umfahren - nur ein Stück um jede Stelle '
                 'wird neu berechnet.',
-                style: TextStyle(fontSize: 11, color: steel, height: 1.4)),
+                style: TextStyle(fontSize: 14.5, color: steel, height: 1.4)),
           ],
         ),
         actions: [
@@ -623,23 +647,23 @@ class _MapScreenState extends State<MapScreen>
           ListTile(
             leading: const Icon(Icons.bookmarks, color: signal),
             title: const Text('Gespeicherte Touren',
-                style: TextStyle(fontSize: 12.5, color: chalk)),
+                style: TextStyle(fontSize: 16, color: chalk)),
             subtitle: const Text('Eigene Touren und die zuletzt geplante',
-                style: TextStyle(fontSize: 10, color: steel)),
+                style: TextStyle(fontSize: 13.5, color: steel)),
             onTap: () => Navigator.pop(ctx, 'tours'),
           ),
           ListTile(
             leading: const Icon(Icons.folder_open, color: cool),
             title: const Text('GPX-Datei auswählen',
-                style: TextStyle(fontSize: 12.5, color: chalk)),
+                style: TextStyle(fontSize: 16, color: chalk)),
             subtitle: const Text('Downloads, Google Drive, Dateimanager ...',
-                style: TextStyle(fontSize: 10, color: steel)),
+                style: TextStyle(fontSize: 13.5, color: steel)),
             onTap: () => Navigator.pop(ctx, 'file'),
           ),
           ListTile(
             leading: const Icon(Icons.content_paste, color: cool),
             title: const Text('GPX-Text einfügen',
-                style: TextStyle(fontSize: 12.5, color: chalk)),
+                style: TextStyle(fontSize: 16, color: chalk)),
             onTap: () => Navigator.pop(ctx, 'paste'),
           ),
         ]),
@@ -689,30 +713,30 @@ class _MapScreenState extends State<MapScreen>
             child: Text(
               'Nur ein Stück von rund 8 km um die Stelle wird neu '
               'berechnet - der Rest der Tour bleibt, wie er ist.',
-              style: TextStyle(fontSize: 10, color: steel, height: 1.4),
+              style: TextStyle(fontSize: 13.5, color: steel, height: 1.4),
             ),
           ),
           if (!onRoute)
             ListTile(
               leading: const Icon(Icons.add_location_alt, color: signal),
               title: const Text('Tour über diesen Punkt führen',
-                  style: TextStyle(fontSize: 12.5, color: chalk)),
+                  style: TextStyle(fontSize: 16, color: chalk)),
               onTap: () => Navigator.pop(ctx, 'via'),
             ),
           if (onRoute)
             ListTile(
               leading: const Icon(Icons.do_not_disturb_on, color: amber),
               title: const Text('Diese Straße meiden',
-                  style: TextStyle(fontSize: 12.5, color: chalk)),
+                  style: TextStyle(fontSize: 16, color: chalk)),
               subtitle: const Text('Baustelle, schlechter Belag, kennst du schon ...',
-                  style: TextStyle(fontSize: 10, color: steel)),
+                  style: TextStyle(fontSize: 13.5, color: steel)),
               onTap: () => Navigator.pop(ctx, 'avoid'),
             ),
           if (stop != null)
             ListTile(
               leading: const Icon(Icons.wrong_location, color: amber),
               title: Text('Stopp entfernen: ${stop.displayName}',
-                  style: const TextStyle(fontSize: 12.5, color: chalk)),
+                  style: const TextStyle(fontSize: 16, color: chalk)),
               onTap: () => Navigator.pop(ctx, 'stop'),
             ),
           ..._blockTiles(ctx, p),
@@ -835,15 +859,15 @@ class _MapScreenState extends State<MapScreen>
           ListTile(
             leading: const Icon(Icons.place, color: signal),
             title: Text(place.name,
-                style: const TextStyle(fontSize: 13, color: chalk)),
+                style: const TextStyle(fontSize: 16.5, color: chalk)),
             subtitle: Text(
                 [place.detail, place.kind].where((x) => x.isNotEmpty).join(' · '),
-                style: const TextStyle(fontSize: 10, color: steel)),
+                style: const TextStyle(fontSize: 13.5, color: steel)),
           ),
           ListTile(
             leading: const Icon(Icons.directions, color: cool),
             title: const Text('Hierhin fahren (Route planen)',
-                style: TextStyle(fontSize: 12.5, color: chalk)),
+                style: TextStyle(fontSize: 16, color: chalk)),
             onTap: () => Navigator.pop(ctx, true),
           ),
           ..._blockTiles(ctx, p),
@@ -871,18 +895,18 @@ class _MapScreenState extends State<MapScreen>
         ListTile(
           leading: const Icon(Icons.lock_open, color: cool),
           title: Text('Sperre aufheben: ${existing.label}',
-              style: const TextStyle(fontSize: 12.5, color: chalk)),
+              style: const TextStyle(fontSize: 16, color: chalk)),
           onTap: () => Navigator.pop(ctx, 'unblock'),
         )
       else
         ListTile(
           leading: const Icon(Icons.block, color: redline),
           title: const Text('Straße hier dauerhaft sperren',
-              style: TextStyle(fontSize: 12.5, color: chalk)),
+              style: TextStyle(fontSize: 16, color: chalk)),
           subtitle: const Text(
               'Motorradverbot, nicht befahrbar ... - jede Route meidet sie '
               'künftig, auch unterwegs und ohne Netz',
-              style: TextStyle(fontSize: 10, color: steel)),
+              style: TextStyle(fontSize: 13.5, color: steel)),
           onTap: () => Navigator.pop(ctx, 'block'),
         ),
     ];
@@ -899,7 +923,7 @@ class _MapScreenState extends State<MapScreen>
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 14, 16, 6),
             child: Text('WARUM GESPERRT?',
-                style: TextStyle(fontSize: 11, letterSpacing: 2, color: chalk)),
+                style: TextStyle(fontSize: 14.5, letterSpacing: 1.2, color: chalk)),
           ),
           for (final (icon, text) in const [
             (Icons.two_wheeler, 'Motorradverbot'),
@@ -910,7 +934,7 @@ class _MapScreenState extends State<MapScreen>
             ListTile(
               leading: Icon(icon, color: redline),
               title: Text(text,
-                  style: const TextStyle(fontSize: 12.5, color: chalk)),
+                  style: const TextStyle(fontSize: 16, color: chalk)),
               onTap: () => Navigator.pop(ctx, text.split(' (').first),
             ),
         ]),
@@ -957,7 +981,7 @@ class _MapScreenState extends State<MapScreen>
         backgroundColor: panel,
         shape: const RoundedRectangleBorder(side: BorderSide(color: line)),
         title: const Text('TOUR SPEICHERN',
-            style: TextStyle(fontSize: 12, letterSpacing: 2.5, color: chalk)),
+            style: TextStyle(fontSize: 15.5, letterSpacing: 1.5, color: chalk)),
         content: TextField(
           controller: ctrl,
           autofocus: true,
@@ -969,12 +993,12 @@ class _MapScreenState extends State<MapScreen>
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('ABBRECHEN',
-                style: TextStyle(fontSize: 11, color: steel)),
+                style: TextStyle(fontSize: 14.5, color: steel)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text),
             child: const Text('SPEICHERN',
-                style: TextStyle(fontSize: 11, color: signal)),
+                style: TextStyle(fontSize: 14.5, color: signal)),
           ),
         ],
       ),
@@ -1025,7 +1049,7 @@ class _MapScreenState extends State<MapScreen>
         ),
         title: const Text(
           'GPX EINFÜGEN',
-          style: TextStyle(fontSize: 12, letterSpacing: 2.5, color: chalk),
+          style: TextStyle(fontSize: 15.5, letterSpacing: 1.5, color: chalk),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1034,16 +1058,16 @@ class _MapScreenState extends State<MapScreen>
             const Text(
               'GPX-Datei öffnen, kompletten Inhalt kopieren und hier '
               'einfügen. Erkannt werden Track-, Routen- und Wegpunkte.',
-              style: TextStyle(fontSize: 11, color: steel, height: 1.4),
+              style: TextStyle(fontSize: 14.5, color: steel, height: 1.4),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: ctrl,
               maxLines: 6,
-              style: const TextStyle(fontSize: 10, color: chalk),
+              style: const TextStyle(fontSize: 13.5, color: chalk),
               decoration: const InputDecoration(
                 hintText: '<gpx ...> ... </gpx>',
-                hintStyle: TextStyle(fontSize: 10, color: steel),
+                hintStyle: TextStyle(fontSize: 13.5, color: steel),
                 filled: true,
                 fillColor: asphalt,
                 border: OutlineInputBorder(
@@ -1058,12 +1082,12 @@ class _MapScreenState extends State<MapScreen>
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('ABBRECHEN',
-                style: TextStyle(fontSize: 11, color: steel)),
+                style: TextStyle(fontSize: 14.5, color: steel)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('LADEN',
-                style: TextStyle(fontSize: 11, color: signal)),
+                style: TextStyle(fontSize: 14.5, color: signal)),
           ),
         ],
       ),
@@ -1215,7 +1239,7 @@ class _MapScreenState extends State<MapScreen>
             child: Text(warn.first,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 10.5, color: chalk)),
+                style: const TextStyle(fontSize: 14, color: chalk)),
           ),
         ]),
       ),
@@ -1381,9 +1405,9 @@ class _MapScreenState extends State<MapScreen>
           contentPadding: EdgeInsets.zero,
           leading: Icon(icon, color: cool, size: 20),
           title: Text(title,
-              style: const TextStyle(fontSize: 12.5, color: chalk)),
+              style: const TextStyle(fontSize: 16, color: chalk)),
           subtitle: Text(sub,
-              style: const TextStyle(fontSize: 10, color: steel, height: 1.3)),
+              style: const TextStyle(fontSize: 13.5, color: steel, height: 1.3)),
           onTap: onTap,
         );
 
@@ -1402,13 +1426,13 @@ class _MapScreenState extends State<MapScreen>
             children: [
               const Text('IN NAVI-APP ÖFFNEN',
                   style: TextStyle(
-                      fontSize: 12, letterSpacing: 2, color: chalk)),
+                      fontSize: 15.5, letterSpacing: 1.2, color: chalk)),
               const SizedBox(height: 4),
               const Text(
                 'Die exakte Tour überträgt nur die GPX-Datei. Links an '
                 'Google & Co. geben Zwischenpunkte auf der Tour vor - die '
                 'App rechnet dazwischen selbst.',
-                style: TextStyle(fontSize: 10, color: steel, height: 1.4),
+                style: TextStyle(fontSize: 13.5, color: steel, height: 1.4),
               ),
               const SizedBox(height: 8),
               tile(
@@ -1450,6 +1474,7 @@ class _MapScreenState extends State<MapScreen>
         ? LatLng(t.lat!, t.lon!)
         : const LatLng(51.1657, 10.4515); // Mitte Deutschland als Rueckfall
 
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measureBottom());
     return SafeArea(
       child: Stack(key: _stackKey, children: [
         FlutterMap(
@@ -1504,8 +1529,8 @@ class _MapScreenState extends State<MapScreen>
                   : MarkerLayer(markers: [
                       Marker(
                         point: r.$1,
-                        width: 34,
-                        height: 34,
+                        width: 46,
+                        height: 46,
                         child: _nav != null || t.speedKmh > 5
                             // Pfeil in Fahrtrichtung (dreht mit der Karte).
                             ? Transform.rotate(
@@ -1517,7 +1542,7 @@ class _MapScreenState extends State<MapScreen>
                                     border: Border.all(color: chalk, width: 2),
                                   ),
                                   child: const Icon(Icons.navigation,
-                                      size: 22, color: signal),
+                                      size: 30, color: signal),
                                 ),
                               )
                             : Container(
@@ -1536,29 +1561,40 @@ class _MapScreenState extends State<MapScreen>
             Align(
               alignment: Alignment.bottomLeft,
               child: Padding(
-                padding: EdgeInsets.only(
-                    left: 4,
-                    bottom: _nav == null
-                        ? 104
-                        : 237 +
-                            (_nav!.speedLimit != null ||
-                                    _nav!.curveAhead != null
-                                ? 62
-                                : 0)),
+                padding: EdgeInsets.only(left: 4, bottom: _bottomH + 16),
                 child: const MapAttribution(),
               ),
             ),
           ],
         ),
 
-        // Kopfzeile: Abbiegehinweis bei Navigation, sonst Route-Info
+        // Kopfzeile: Abbiegehinweis bei Navigation, sonst Route-Info.
+        // Darunter Wetter links und die Kartenknoepfe rechts - sie
+        // rutschen mit, wenn die Kopfzeile hoeher wird.
         Positioned(
           top: 8,
           left: 12,
           right: 12,
-          child: KeyedSubtree(
-              key: _topKey,
-              child: _nav != null ? _navTop(_nav!) : _topBar()),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              KeyedSubtree(
+                  key: _topKey,
+                  child: _nav != null ? _navTop(_nav!) : _topBar()),
+              const SizedBox(height: 10),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Align(
+                        alignment: Alignment.topLeft, child: _weatherChip()),
+                  ),
+                  const SizedBox(width: 8),
+                  _mapRail(),
+                ],
+              ),
+            ],
+          ),
         ),
 
         // Bedienleiste unten
@@ -1571,52 +1607,6 @@ class _MapScreenState extends State<MapScreen>
               child: _nav != null ? _navBottom(_nav!) : _bottomBar()),
         ),
 
-        Positioned(
-          left: 12,
-          right: 60,
-          top: _nav != null ? 150 : 80,
-          child: Align(alignment: Alignment.topLeft, child: _weatherChip()),
-        ),
-        Positioned(
-          right: 12,
-          top: (_nav != null ? 150 : 80) + (_tomtomKey.isNotEmpty ? 44 : 0),
-          child: _offlineButton(),
-        ),
-        Positioned(
-          right: 12,
-          top: (_nav != null ? 150 : 80) + (_tomtomKey.isNotEmpty ? 88 : 44),
-          child: _styleButton(),
-        ),
-        // Gruppenfahrt: vorerst nur in der Test-App.
-        if (kTestBuild)
-          Positioned(
-            right: 12,
-            top: (_nav != null ? 150 : 80) + (_tomtomKey.isNotEmpty ? 132 : 88),
-            child: _groupButton(),
-          ),
-        if (kTestBuild)
-          Positioned(
-            right: 12,
-            top: (_nav != null ? 150 : 80) + (_tomtomKey.isNotEmpty ? 176 : 132),
-            child: _headsetButton(),
-          ),
-        if (_tomtomKey.isNotEmpty)
-          Positioned(
-            right: 12,
-            top: _nav != null ? 150 : 80,
-            child: InkWell(
-              onTap: () => setState(() => _showFlow = !_showFlow),
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: panel.withValues(alpha: 0.94),
-                  border: Border.all(color: _showFlow ? signal : line),
-                ),
-                child: Icon(Icons.traffic,
-                    size: 18, color: _showFlow ? signal : steel),
-              ),
-            ),
-          ),
         if (_busy)
           const Positioned(
             top: 70,
@@ -1635,56 +1625,253 @@ class _MapScreenState extends State<MapScreen>
   }
 
   // ------------------------------------------------------------------
-  // Offline-Karten
+  // Kartenknoepfe rechts: nur zwei grosse statt sechs kleiner
   // ------------------------------------------------------------------
-  Widget _offlineButton() {
+  Widget _mapRail() {
     final job = _offline.job;
     final running = job?.running == true;
     final off = _offline.offline.value;
-    return InkWell(
-      onTap: _showOffline,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: panel.withValues(alpha: 0.94),
-          border: Border.all(color: off ? amber : (running ? cool : line)),
+    final hs = Headset.instance.status;
+    // Punkt am Menueknopf: etwas verlangt Aufmerksamkeit.
+    final Color? dot = off
+        ? amber
+        : running
+            ? cool
+            : (kTestBuild && hs.connected && hs.batteryLow)
+                ? amber
+                : null;
+    final now = DateTime.now();
+    final riders = _hub.members.where((m) => !m.staleAt(now)).length;
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      _railBtn(
+        icon: _night && VectorMap.instance.useVector
+            ? Icons.dark_mode
+            : Icons.layers,
+        tooltip: 'Karte, Offline, Verkehr',
+        onTap: _showMapMenu,
+        dot: dot,
+        progress: running ? job!.progress : null,
+      ),
+      if (kTestBuild) ...[
+        const SizedBox(height: 10),
+        _railBtn(
+          icon: Icons.groups,
+          tooltip: 'Gruppen',
+          onTap: _openGroups,
+          color: _hub.sessions.isNotEmpty ? cool : chalk,
+          dot: _hub.unread > 0 ? signal : null,
+          label: riders > 0 ? '$riders' : null,
         ),
-        child: SizedBox(
-          width: 18,
-          height: 18,
-          child: running
-              ? CircularProgressIndicator(
-                  value: job!.progress,
-                  strokeWidth: 2,
-                  color: cool,
-                  backgroundColor: line,
-                )
-              : Icon(off ? Icons.cloud_off : Icons.download_for_offline,
-                  size: 18, color: off ? amber : steel),
+      ],
+    ]);
+  }
+
+  /// Runder Kartenknopf, gross genug fuer Handschuhe.
+  Widget _railBtn({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+    Color color = chalk,
+    Color? dot,
+    String? label,
+    double? progress,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: panel.withValues(alpha: 0.95),
+        shape: const CircleBorder(side: BorderSide(color: line, width: 1.5)),
+        elevation: 3,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: SizedBox(
+            width: 58,
+            height: 58,
+            child: Stack(alignment: Alignment.center, children: [
+              if (progress != null)
+                SizedBox(
+                  width: 52,
+                  height: 52,
+                  child: CircularProgressIndicator(
+                      value: progress, strokeWidth: 3, color: cool),
+                ),
+              Icon(icon, size: 30, color: color),
+              if (label != null)
+                Positioned(
+                  bottom: 5,
+                  child: Text(label,
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: color)),
+                ),
+              if (dot != null)
+                Positioned(
+                  top: 7,
+                  right: 7,
+                  child: Container(
+                    width: 13,
+                    height: 13,
+                    decoration: BoxDecoration(
+                      color: dot,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: panel, width: 2),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
         ),
       ),
     );
   }
 
+  /// Alles rund um die Karte an einer Stelle - grosse Kacheln.
+  void _showMapMenu() {
+    final vm = VectorMap.instance;
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) {
+        Widget tile(IconData icon, String title, String sub, VoidCallback onTap,
+                {Color color = chalk, bool active = false}) =>
+            _menuTile(icon, title, sub, () {
+              Navigator.pop(ctx);
+              onTap();
+            }, color: color, active: active);
+        final off = _offline.offline.value;
+        final job = _offline.job;
+        final hs = Headset.instance.status;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('KARTE',
+                    style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        fontStyle: FontStyle.italic,
+                        color: chalk)),
+              ),
+              const SizedBox(height: 12),
+              _tileGrid([
+                tile(
+                  _night && vm.useVector ? Icons.dark_mode : Icons.layers,
+                  'Kartenstil',
+                  vm.style.label,
+                  _showStyles,
+                ),
+                tile(
+                  off ? Icons.cloud_off : Icons.download_for_offline,
+                  'Offline-Karten',
+                  job?.running == true
+                      ? 'Lädt ... ${((job!.progress) * 100).round()} %'
+                      : off
+                          ? 'Offline-Modus an'
+                          : 'Gebiet speichern',
+                  _showOffline,
+                  color: off ? amber : chalk,
+                  active: off,
+                ),
+                if (_tomtomKey.isNotEmpty)
+                  tile(Icons.traffic, 'Verkehr',
+                      _showFlow ? 'Anzeige an' : 'Anzeige aus', () {
+                    setState(() => _showFlow = !_showFlow);
+                  }, color: _showFlow ? signal : chalk, active: _showFlow),
+                if (kTestBuild)
+                  tile(
+                    hs.connected ? Icons.headset_mic : Icons.headset_off,
+                    'Headset',
+                    hs.connected
+                        ? '${hs.label}${hs.battery >= 0 ? ' · ${hs.battery} %' : ''}'
+                        : 'Nicht verbunden',
+                    _showHeadset,
+                    color: hs.connected
+                        ? (hs.batteryLow ? amber : signal)
+                        : chalk,
+                  ),
+                tile(
+                  Icons.block,
+                  'Eigene Sperren',
+                  '${UserBlocks.instance.blocks.length} · lange auf die Karte drücken',
+                  () => toast(context,
+                      'Lange auf eine Straße drücken -> "Straße hier dauerhaft sperren"'),
+                  color: redline,
+                ),
+              ]),
+            ]),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Zwei Kacheln je Reihe.
+  Widget _tileGrid(List<Widget> tiles) {
+    final rows = <Widget>[];
+    for (var i = 0; i < tiles.length; i += 2) {
+      rows.add(Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: IntrinsicHeight(
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Expanded(child: tiles[i]),
+            const SizedBox(width: 10),
+            Expanded(
+                child: i + 1 < tiles.length ? tiles[i + 1] : const SizedBox()),
+          ]),
+        ),
+      ));
+    }
+    return Column(mainAxisSize: MainAxisSize.min, children: rows);
+  }
+
+  /// Grosse Kachel fuer Menues (auch mit Handschuh gut zu treffen).
+  Widget _menuTile(IconData icon, String title, String sub, VoidCallback onTap,
+      {Color color = chalk,
+      bool active = false,
+      VoidCallback? onLongPress}) {
+    return Material(
+      color: active ? color.withValues(alpha: 0.14) : panel2,
+      shape: BeveledRectangleBorder(
+        borderRadius: const BorderRadius.all(Radius.circular(8)),
+        side: BorderSide(color: active ? color : line, width: 1.5),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 84),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon, size: 30, color: color),
+                const SizedBox(height: 6),
+                Text(title,
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w800, color: chalk)),
+                if (sub.isNotEmpty)
+                  Text(sub,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 14, color: steel)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ------------------------------------------------------------------
+  // Offline-Karten
+  // ------------------------------------------------------------------
   // ------------------------------------------------------------------
   // Kartendarstellung (Vektor hell/dunkel, klassisch)
   // ------------------------------------------------------------------
-  Widget _styleButton() {
-    final night = _night && VectorMap.instance.useVector;
-    return InkWell(
-      onTap: _showStyles,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: panel.withValues(alpha: 0.94),
-          border: Border.all(color: line),
-        ),
-        child: Icon(night ? Icons.dark_mode : Icons.layers,
-            size: 18, color: steel),
-      ),
-    );
-  }
-
   void _showStyles() {
     final vm = VectorMap.instance;
     showModalBottomSheet<void>(
@@ -1701,7 +1888,7 @@ class _MapScreenState extends State<MapScreen>
                 alignment: Alignment.centerLeft,
                 child: Text('KARTE',
                     style: TextStyle(
-                        fontSize: 12, letterSpacing: 2, color: chalk)),
+                        fontSize: 15.5, letterSpacing: 1.2, color: chalk)),
               ),
             ),
             for (final m in MapStyle.values)
@@ -1714,7 +1901,7 @@ class _MapScreenState extends State<MapScreen>
                     color: vm.style == m ? signal : steel,
                     size: 20),
                 title: Text(m.label,
-                    style: const TextStyle(fontSize: 12.5, color: chalk)),
+                    style: const TextStyle(fontSize: 16, color: chalk)),
                 onTap: () => vm.setStyle(m),
               ),
             if (!vm.ready && vm.style != MapStyle.classic)
@@ -1723,7 +1910,7 @@ class _MapScreenState extends State<MapScreen>
                 child: Text(
                   'Die Vektorkarte braucht einmal Internet, bis dahin '
                   'zeigt die App die klassische Karte.',
-                  style: TextStyle(fontSize: 10, color: amber, height: 1.4),
+                  style: TextStyle(fontSize: 13.5, color: amber, height: 1.4),
                 ),
               ),
             const Padding(
@@ -1731,7 +1918,7 @@ class _MapScreenState extends State<MapScreen>
               child: Text(
                 'Vektorkarte: scharf in jeder Zoomstufe, nachts dunkel '
                 '(blendet nicht im Helm), offline deutlich kleiner.',
-                style: TextStyle(fontSize: 10, color: steel, height: 1.4),
+                style: TextStyle(fontSize: 13.5, color: steel, height: 1.4),
               ),
             ),
           ]),
@@ -1870,29 +2057,12 @@ class _MapScreenState extends State<MapScreen>
             const SizedBox(width: 8),
             Text(rec ? 'SENDEN' : 'SPRECHEN (GRUPPE)',
                 style: TextStyle(
-                    fontSize: 12,
-                    letterSpacing: 1.4,
+                    fontSize: 15.5,
+                    letterSpacing: 0.8,
                     fontWeight: FontWeight.w800,
                     color: rec ? chalk : cool)),
           ]),
         ),
-      ),
-    );
-  }
-
-  Widget _headsetButton() {
-    final st = Headset.instance.status;
-    final c = st.connected ? (st.batteryLow ? amber : signal) : steel;
-    return InkWell(
-      onTap: _showHeadset,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: panel.withValues(alpha: 0.94),
-          border: Border.all(color: st.connected ? c : line),
-        ),
-        child: Icon(st.connected ? Icons.headset_mic : Icons.headset_off,
-            size: 18, color: c),
       ),
     );
   }
@@ -1909,14 +2079,14 @@ class _MapScreenState extends State<MapScreen>
           listenable: h,
           builder: (ctx, _) {
             final st = h.status;
-            const small = TextStyle(fontSize: 10, color: steel, height: 1.4);
+            const small = TextStyle(fontSize: 13.5, color: steel, height: 1.4);
             return ListView(
               shrinkWrap: true,
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
               children: [
                 const Text('HELM-HEADSET',
                     style: TextStyle(
-                        fontSize: 12, letterSpacing: 2, color: chalk)),
+                        fontSize: 15.5, letterSpacing: 1.2, color: chalk)),
                 const SizedBox(height: 8),
                 Row(children: [
                   Icon(st.connected ? Icons.headset_mic : Icons.headset_off,
@@ -1927,14 +2097,14 @@ class _MapScreenState extends State<MapScreen>
                         st.connected
                             ? '${st.label}${st.brand.isNotEmpty && !st.name.toLowerCase().contains(st.brand.toLowerCase()) ? ' (${st.brand})' : ''}'
                             : 'Kein Headset verbunden',
-                        style: const TextStyle(fontSize: 13, color: chalk)),
+                        style: const TextStyle(fontSize: 16.5, color: chalk)),
                   ),
                 ]),
                 if (st.connected && st.battery < 0 && !st.btPermission)
                   TextButton(
                     onPressed: h.requestPermissions,
                     child: const Text('AKKUSTAND ANZEIGEN (ERLAUBEN)',
-                        style: TextStyle(fontSize: 10, color: cool)),
+                        style: TextStyle(fontSize: 13.5, color: cool)),
                   ),
                 const SizedBox(height: 6),
                 const Text(
@@ -1951,7 +2121,7 @@ class _MapScreenState extends State<MapScreen>
                   activeTrackColor: signal,
                   inactiveTrackColor: line,
                   title: const Text('Headset-Tasten steuern die App',
-                      style: TextStyle(fontSize: 12.5, color: chalk)),
+                      style: TextStyle(fontSize: 16, color: chalk)),
                   subtitle: const Text(
                       'Play/Pause: Ansage wiederholen · Weiter: Sprechen an '
                       'die Gruppe (nochmal: senden) · Zurück: Restweg, '
@@ -1965,34 +2135,6 @@ class _MapScreenState extends State<MapScreen>
             );
           },
         ),
-      ),
-    );
-  }
-
-  Widget _groupButton() {
-    final on = _hub.sessions.isNotEmpty;
-    final now = DateTime.now();
-    final n = _hub.members.where((m) => !m.staleAt(now)).length;
-    final unread = _hub.unread;
-    return InkWell(
-      onTap: _openGroups,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: panel.withValues(alpha: 0.94),
-          border: Border.all(color: unread > 0 ? signal : (on ? cool : line)),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.groups, size: 18, color: on ? cool : steel),
-          if (n > 0) ...[
-            const SizedBox(width: 4),
-            Text('$n', style: const TextStyle(fontSize: 11, color: cool)),
-          ],
-          if (unread > 0) ...[
-            const SizedBox(width: 4),
-            const Icon(Icons.chat_bubble, size: 11, color: signal),
-          ],
-        ]),
       ),
     );
   }
@@ -2034,7 +2176,7 @@ class _MapScreenState extends State<MapScreen>
 
   Widget _offlineSheet(BuildContext ctx, LatLngBounds? visible) {
     final job = _offline.job;
-    const small = TextStyle(fontSize: 10, color: steel, height: 1.4);
+    const small = TextStyle(fontSize: 13.5, color: steel, height: 1.4);
     String areaInfo() {
       if (visible == null) return '';
       final z = OfflineMaps.areaMaxZoom(visible.south, visible.west,
@@ -2070,7 +2212,7 @@ class _MapScreenState extends State<MapScreen>
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       children: [
         const Text('OFFLINE-KARTEN',
-            style: TextStyle(fontSize: 12, letterSpacing: 2, color: chalk)),
+            style: TextStyle(fontSize: 15.5, letterSpacing: 1.2, color: chalk)),
         const SizedBox(height: 4),
         const Text(
           'Jede angesehene Karte bleibt auf dem Handy. Vorab geladene '
@@ -2081,7 +2223,7 @@ class _MapScreenState extends State<MapScreen>
         if (_offline.offline.value) ...[
           const SizedBox(height: 6),
           const Text('Gerade kein Netz - Karte kommt vom Handy.',
-              style: TextStyle(fontSize: 10.5, color: amber)),
+              style: TextStyle(fontSize: 14, color: amber)),
         ],
         if (job != null) ...[
           const SizedBox(height: 10),
@@ -2094,7 +2236,7 @@ class _MapScreenState extends State<MapScreen>
               TextButton(
                 onPressed: _offline.cancel,
                 child: const Text('ABBRECHEN',
-                    style: TextStyle(fontSize: 10, color: amber)),
+                    style: TextStyle(fontSize: 13.5, color: amber)),
               ),
           ]),
         ],
@@ -2105,7 +2247,7 @@ class _MapScreenState extends State<MapScreen>
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.route, color: cool, size: 20),
             title: const Text('Route offline speichern',
-                style: TextStyle(fontSize: 12.5, color: chalk)),
+                style: TextStyle(fontSize: 16, color: chalk)),
             subtitle: Text(routeInfo(_route!), style: small),
             onTap: () => _offline.saveRoute(_route!.points,
                 label: _route!.title ?? 'Route'),
@@ -2116,7 +2258,7 @@ class _MapScreenState extends State<MapScreen>
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.crop_free, color: cool, size: 20),
             title: const Text('Sichtbaren Ausschnitt speichern',
-                style: TextStyle(fontSize: 12.5, color: chalk)),
+                style: TextStyle(fontSize: 16, color: chalk)),
             subtitle: Text(areaInfo(), style: small),
             onTap: () => _offline.saveArea(
                 visible.south, visible.west, visible.north, visible.east),
@@ -2127,7 +2269,7 @@ class _MapScreenState extends State<MapScreen>
           activeTrackColor: signal,
           inactiveTrackColor: line,
           title: const Text('Geplante Routen automatisch speichern',
-              style: TextStyle(fontSize: 12.5, color: chalk)),
+              style: TextStyle(fontSize: 16, color: chalk)),
           subtitle: const Text(
               'Lädt die Karte entlang jeder neuen Route gleich mit. '
               'Braucht mobile Daten - im WLAN planen spart Datenvolumen.',
@@ -2147,7 +2289,7 @@ class _MapScreenState extends State<MapScreen>
                   s == null
                       ? 'Speicher wird gezählt ...'
                       : 'Belegt: ${formatBytes(s.bytes)} (${s.tiles} Kacheln)',
-                  style: const TextStyle(fontSize: 12, color: chalk)),
+                  style: const TextStyle(fontSize: 15.5, color: chalk)),
               subtitle: const Text(
                   'Höchstens 600 MB - älteste Kacheln werden automatisch '
                   'gelöscht.',
@@ -2158,7 +2300,7 @@ class _MapScreenState extends State<MapScreen>
                   PaintingBinding.instance.imageCache.clear();
                 },
                 child: const Text('LEEREN',
-                    style: TextStyle(fontSize: 10, color: amber)),
+                    style: TextStyle(fontSize: 13.5, color: amber)),
               ),
             );
           },
@@ -2272,7 +2414,7 @@ class _MapScreenState extends State<MapScreen>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                      fontSize: 9.5, color: stale ? steel : chalk)),
+                      fontSize: 13, color: stale ? steel : chalk)),
             ),
             Container(
               width: 22,
@@ -2496,10 +2638,16 @@ class _MapScreenState extends State<MapScreen>
     }
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
+      padding: const EdgeInsets.fromLTRB(14, 6, 2, 6),
       decoration: BoxDecoration(
-        color: panel.withValues(alpha: 0.94),
-        border: Border.all(color: f?.isOffRoute == true ? amber : line),
+        color: panel.withValues(alpha: 0.95),
+        border: Border(
+          left: BorderSide(
+              color: f?.isOffRoute == true ? amber : signal, width: 4),
+          top: const BorderSide(color: line),
+          right: const BorderSide(color: line),
+          bottom: const BorderSide(color: line),
+        ),
       ),
       child: Row(children: [
         Expanded(
@@ -2515,7 +2663,10 @@ class _MapScreenState extends State<MapScreen>
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        fontSize: 11, letterSpacing: 1.5, color: chalk),
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                        fontStyle: FontStyle.italic,
+                        color: chalk),
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -2523,8 +2674,8 @@ class _MapScreenState extends State<MapScreen>
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 9.5,
-                      letterSpacing: 1.2,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
                       color: f?.isOffRoute == true ? amber : steel,
                     ),
                   ),
@@ -2543,10 +2694,10 @@ class _MapScreenState extends State<MapScreen>
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 const Text('VARIANTE',
                     style: TextStyle(
-                        fontSize: 7.5, letterSpacing: 1.2, color: cool)),
+                        fontSize: 11, letterSpacing: 1.2, color: cool)),
                 Text('${_variantIdx + 1}/${_variants.length} ›',
                     style: const TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.w700, color: cool)),
+                        fontSize: 14.5, fontWeight: FontWeight.w700, color: cool)),
               ]),
             ),
           ),
@@ -2554,30 +2705,26 @@ class _MapScreenState extends State<MapScreen>
         if (r != null && kTestBuild)
           IconButton(
             tooltip: 'Probefahrt (Simulation)',
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.play_circle_outline, size: 18, color: cool),
+            icon: const Icon(Icons.play_circle_outline, size: 28, color: cool),
             onPressed: _startSim,
           ),
         if (r != null)
           IconButton(
             tooltip: 'Tour speichern',
-            visualDensity: VisualDensity.compact,
             icon: const Icon(Icons.bookmark_add_outlined,
-                size: 17, color: steel),
+                size: 27, color: chalk),
             onPressed: _saveTour,
           ),
         if (r != null)
           IconButton(
-            tooltip: 'Details',
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.info_outline, size: 17, color: steel),
-            onPressed: _showRouteInfo,
+            tooltip: 'In anderer Navi-App öffnen',
+            icon: const Icon(Icons.ios_share, size: 26, color: chalk),
+            onPressed: _showExport,
           ),
         if (r != null)
           IconButton(
             tooltip: 'Route entfernen',
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.close, size: 16, color: steel),
+            icon: const Icon(Icons.close, size: 27, color: steel),
             onPressed: _clearRoute,
           ),
       ]),
@@ -2595,8 +2742,8 @@ class _MapScreenState extends State<MapScreen>
           child: Row(children: [
             Expanded(
                 child: Text(k,
-                    style: const TextStyle(fontSize: 11, color: steel))),
-            Text(v, style: const TextStyle(fontSize: 11.5, color: chalk)),
+                    style: const TextStyle(fontSize: 14.5, color: steel))),
+            Text(v, style: const TextStyle(fontSize: 15, color: chalk)),
           ]),
         );
 
@@ -2615,10 +2762,10 @@ class _MapScreenState extends State<MapScreen>
             children: [
               Text((r.title ?? 'ROUTE').toUpperCase(),
                   style: const TextStyle(
-                      fontSize: 12, letterSpacing: 2, color: chalk)),
+                      fontSize: 15.5, letterSpacing: 1.2, color: chalk)),
               if (_variants.length > 1)
                 Text('Variante ${_variantIdx + 1} von ${_variants.length}',
-                    style: const TextStyle(fontSize: 10, color: cool)),
+                    style: const TextStyle(fontSize: 13.5, color: cool)),
               const SizedBox(height: 10),
               row('Länge', _fmtKm(r.distanceM)),
               if (r.durationSec > 0)
@@ -2643,7 +2790,7 @@ class _MapScreenState extends State<MapScreen>
                 child: Text(
                   'Tipp: Lange auf die Karte drücken, um die Tour zu ändern - '
                   'über einen Punkt führen, Straße meiden, Stopp entfernen.',
-                  style: TextStyle(fontSize: 10, color: cool, height: 1.4),
+                  style: TextStyle(fontSize: 13.5, color: cool, height: 1.4),
                 ),
               ),
               if (r.pois.isNotEmpty) ...[
@@ -2664,14 +2811,14 @@ class _MapScreenState extends State<MapScreen>
                             if (_fuelPrices[p.id] != null)
                               _fuelPrices[p.id]!.text,
                           ].join(' · '),
-                          style: const TextStyle(fontSize: 11, color: chalk),
+                          style: const TextStyle(fontSize: 14.5, color: chalk),
                         ),
                       ),
                     ]),
                   ),
                 if (_fuelPrices.isNotEmpty)
                   const Text(FuelPrices.attribution,
-                      style: TextStyle(fontSize: 8.5, color: steel)),
+                      style: TextStyle(fontSize: 12, color: steel)),
               ],
               if (_weather != null) ...[
                 const SizedBox(height: 10),
@@ -2683,7 +2830,7 @@ class _MapScreenState extends State<MapScreen>
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 2),
                     child: Text(w,
-                        style: const TextStyle(fontSize: 11, color: chalk)),
+                        style: const TextStyle(fontSize: 14.5, color: chalk)),
                   ),
                 if (_betterDeparture != null)
                   Padding(
@@ -2691,11 +2838,11 @@ class _MapScreenState extends State<MapScreen>
                     child: Text(
                       'Besser um ${RouteWeatherReport.clock(_betterDeparture!.departure)} '
                       'losfahren: ${_betterDeparture!.summary()}',
-                      style: const TextStyle(fontSize: 11, color: signal),
+                      style: const TextStyle(fontSize: 14.5, color: signal),
                     ),
                   ),
                 const Text(RouteWeather.attribution,
-                    style: TextStyle(fontSize: 8.5, color: steel)),
+                    style: TextStyle(fontSize: 12, color: steel)),
               ],
               if (r.traffic.isNotEmpty) ...[
                 const SizedBox(height: 10),
@@ -2715,7 +2862,7 @@ class _MapScreenState extends State<MapScreen>
                               'km ${(i.alongM / 1000).round()}: ${i.label}',
                               if (i.description != null) i.description!,
                             ].join(' · '),
-                            style: const TextStyle(fontSize: 11, color: chalk),
+                            style: const TextStyle(fontSize: 14.5, color: chalk),
                           ),
                         ),
                       ],
@@ -2726,13 +2873,13 @@ class _MapScreenState extends State<MapScreen>
                 const SizedBox(height: 10),
                 Text(r.description!,
                     style: const TextStyle(
-                        fontSize: 11.5, color: cool, height: 1.45)),
+                        fontSize: 15, color: cool, height: 1.45)),
               ],
               for (final n in r.notes)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(n,
-                      style: const TextStyle(fontSize: 10.5, color: amber)),
+                      style: const TextStyle(fontSize: 14, color: amber)),
                 ),
             ],
           ),
@@ -2781,18 +2928,8 @@ class _MapScreenState extends State<MapScreen>
             },
           ),
         ),
-        if (_route != null) ...[
-          const SizedBox(width: 8),
-          Expanded(
-            child: _mapBtn(
-              icon: Icons.ios_share,
-              label: 'NAVI-APP',
-              onTap: _showExport,
-            ),
-          ),
-        ],
       ]),
-      const SizedBox(height: 8),
+      const SizedBox(height: 10),
       Row(children: [
         if (_route != null) ...[
           Expanded(
@@ -2800,6 +2937,7 @@ class _MapScreenState extends State<MapScreen>
               label: 'NAVIGATION',
               color: signal,
               strong: true,
+              tall: true,
               fill: signal,
               onTap: _startNav,
             ),
@@ -2811,6 +2949,7 @@ class _MapScreenState extends State<MapScreen>
             label: t.recording ? 'FAHRT BEENDEN' : 'FAHRT STARTEN',
             color: t.recording ? amber : (_route != null ? cool : signal),
             strong: true,
+            tall: true,
             fill: _route == null && !t.recording
                 ? signal
                 : panel.withValues(alpha: 0.96),
@@ -2841,12 +2980,12 @@ class _MapScreenState extends State<MapScreen>
         SizedBox(width: 12),
         Expanded(
           child: Text('Route wird neu berechnet ...',
-              style: TextStyle(fontSize: 14, color: chalk)),
+              style: TextStyle(fontSize: 17.5, color: chalk)),
         ),
       ]));
     } else if (step != null) {
       children.add(Row(children: [
-        Icon(maneuverIcon(step.type), size: 44, color: signal),
+        Icon(maneuverIcon(step.type), size: 64, color: signal),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -2857,27 +2996,31 @@ class _MapScreenState extends State<MapScreen>
                       ? nav.distanceToNextFrom(_tracker.shownAlongM!)
                       : nav.distanceToNext),
                   style: const TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 42,
+                      fontWeight: FontWeight.w800,
+                      fontStyle: FontStyle.italic,
+                      fontFeatures: tabular,
                       color: chalk,
-                      height: 1.1)),
+                      height: 1.0)),
               Text(step.text,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12.5, color: chalk)),
+                  style: const TextStyle(
+                      fontSize: 19, fontWeight: FontWeight.w600, color: chalk)),
             ],
           ),
         ),
         if (then != null)
           Column(children: [
             const Text('DANN',
-                style: TextStyle(fontSize: 8, letterSpacing: 1.2, color: steel)),
-            Icon(maneuverIcon(then.type), size: 22, color: steel),
+                style: TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w800, color: steel)),
+            Icon(maneuverIcon(then.type), size: 34, color: steel),
           ]),
       ]));
     } else {
       children.add(const Text('Der Route folgen',
-          style: TextStyle(fontSize: 14, color: chalk)));
+          style: TextStyle(fontSize: 17.5, color: chalk)));
     }
     final lanes = nav.rerouting ? null : nav.nextLanes;
     if (lanes != null) {
@@ -2892,7 +3035,7 @@ class _MapScreenState extends State<MapScreen>
         padding: const EdgeInsets.only(top: 6),
         child: Text(
           'ABSEITS DER ROUTE · ${_fmtDist(f.offRouteM)}',
-          style: const TextStyle(fontSize: 10, letterSpacing: 1.2, color: amber),
+          style: const TextStyle(fontSize: 13.5, letterSpacing: 1.2, color: amber),
         ),
       ));
     }
@@ -2900,7 +3043,7 @@ class _MapScreenState extends State<MapScreen>
       children.add(Padding(
         padding: const EdgeInsets.only(top: 6),
         child: Text(nav.banner!,
-            style: const TextStyle(fontSize: 11, color: cool)),
+            style: const TextStyle(fontSize: 14.5, color: cool)),
       ));
     }
     if (offer != null) {
@@ -2917,7 +3060,7 @@ class _MapScreenState extends State<MapScreen>
               Expanded(
                 child: Text(
                   '${offer.label} in ${_fmtDist(offer.alongM - nav.alongM)}',
-                  style: const TextStyle(fontSize: 12, color: chalk),
+                  style: const TextStyle(fontSize: 15.5, color: chalk),
                 ),
               ),
             ]),
@@ -2927,7 +3070,7 @@ class _MapScreenState extends State<MapScreen>
                 child: Text(offer.description!,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 10, color: steel)),
+                    style: const TextStyle(fontSize: 13.5, color: steel)),
               ),
             const SizedBox(height: 6),
             Row(children: [
@@ -2955,7 +3098,7 @@ class _MapScreenState extends State<MapScreen>
       children.add(Padding(
         padding: const EdgeInsets.only(top: 4),
         child: Text(nav.trafficError!,
-            style: const TextStyle(fontSize: 9, color: steel)),
+            style: const TextStyle(fontSize: 12.5, color: steel)),
       ));
     }
 
@@ -2964,10 +3107,16 @@ class _MapScreenState extends State<MapScreen>
       behavior: HitTestBehavior.opaque,
       onTap: () => Voice.instance.say(nav.repeatText(), repeat: true),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         decoration: BoxDecoration(
           color: panel.withValues(alpha: 0.96),
-          border: Border.all(color: f?.isOffRoute == true ? amber : line),
+          border: Border(
+            left: BorderSide(
+                color: f?.isOffRoute == true ? amber : signal, width: 5),
+            top: const BorderSide(color: line),
+            right: const BorderSide(color: line),
+            bottom: const BorderSide(color: line),
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -3013,6 +3162,80 @@ class _MapScreenState extends State<MapScreen>
     );
   }
 
+  /// Alles, was man unterwegs seltener braucht - grosse Kacheln.
+  void _showNavMenu(NavigationSession nav) {
+    final stop = nav.nextStop;
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) {
+        Widget tile(IconData icon, String title, String sub, VoidCallback f,
+                {Color color = chalk}) =>
+            _menuTile(icon, title, sub, () {
+              Navigator.pop(ctx);
+              f();
+            }, color: color);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              _tileGrid([
+                tile(Icons.refresh, 'Neu berechnen', 'ab hier', nav.rerouteNow),
+                if (stop != null)
+                  tile(Icons.skip_next, 'Stopp auslassen',
+                      stop.poi.displayName, nav.skipNextStop)
+                else
+                  tile(Icons.ios_share, 'Navi-App', 'Tour dort öffnen',
+                      _showExport),
+                if (stop != null)
+                  tile(Icons.ios_share, 'Navi-App', 'Tour dort öffnen',
+                      _showExport),
+                tile(Icons.layers, 'Karte', 'Stil, Offline, Verkehr',
+                    _showMapMenu),
+              ]),
+              const SizedBox(height: 4),
+              Row(children: [
+                Expanded(
+                  child: FlatButton2(
+                    label: 'NAVI BEENDEN\n(halten)',
+                    color: amber,
+                    strong: true,
+                    tall: true,
+                    onTap: _holdHint,
+                    onLongPress: () {
+                      Navigator.pop(ctx);
+                      _stopNav();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FlatButton2(
+                    label: t.recording
+                        ? 'FAHRT BEENDEN\n(halten)'
+                        : 'FAHRT AUFZEICHNEN',
+                    color: t.recording ? amber : signal,
+                    strong: true,
+                    tall: true,
+                    onTap: t.recording
+                        ? _holdHint
+                        : () {
+                            Navigator.pop(ctx);
+                            widget.onToggleRide();
+                          },
+                    onLongPress: () {
+                      Navigator.pop(ctx);
+                      widget.onToggleRide();
+                    },
+                  ),
+                ),
+              ]),
+            ]),
+          ),
+        );
+      },
+    );
+  }
+
   /// Warnung vor einer engen Kurve: Richtung, Entfernung, Richttempo.
   Widget _curveChip(RoadCurve c, double distM) {
     return Container(
@@ -3038,13 +3261,13 @@ class _MapScreenState extends State<MapScreen>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 11,
+                      fontSize: 14.5,
                       fontWeight: FontWeight.w800,
                       color: Colors.black)),
               Text(
                   '${distM < 20 ? 'jetzt' : _fmtDist(distM)} · '
                   'ca. ${c.adviseKmh} km/h',
-                  style: const TextStyle(fontSize: 11, color: Colors.black)),
+                  style: const TextStyle(fontSize: 14.5, color: Colors.black)),
             ],
           ),
         ),
@@ -3056,8 +3279,8 @@ class _MapScreenState extends State<MapScreen>
   /// hinterlegt, daneben das eigene Tempo.
   Widget _limitSign(SpeedLimit l, bool speeding) {
     final sign = Container(
-      width: 54,
-      height: 54,
+      width: 70,
+      height: 70,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: speeding ? redline : Colors.white,
@@ -3068,11 +3291,11 @@ class _MapScreenState extends State<MapScreen>
       child: l.isUnlimited
           ? Transform.rotate(
               angle: -math.pi / 4,
-              child: Container(width: 40, height: 3, color: Colors.black54),
+              child: Container(width: 52, height: 4, color: Colors.black54),
             )
           : Text('${l.kmh}',
               style: TextStyle(
-                  fontSize: l.kmh >= 100 ? 17 : 21,
+                  fontSize: l.kmh >= 100 ? 24 : 30,
                   fontWeight: FontWeight.w800,
                   color: speeding ? Colors.white : Colors.black)),
     );
@@ -3085,7 +3308,7 @@ class _MapScreenState extends State<MapScreen>
           color: panel.withValues(alpha: 0.94),
           child: Text('${t.speedKmh.round()}',
               style: const TextStyle(
-                  fontSize: 20, fontWeight: FontWeight.w800, color: redline)),
+                  fontSize: 32, fontWeight: FontWeight.w800, color: redline)),
         ),
       ],
     ]);
@@ -3126,10 +3349,13 @@ class _MapScreenState extends State<MapScreen>
             Row(children: [
               Text(_fmtKm(nav.remainingM),
                   style: const TextStyle(
-                      fontSize: 17, fontWeight: FontWeight.w700, color: chalk)),
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      fontFeatures: tabular,
+                      color: chalk)),
               const SizedBox(width: 10),
               Text(_fmtDuration(nav.remainingTime.inSeconds),
-                  style: const TextStyle(fontSize: 12, color: steel)),
+                  style: const TextStyle(fontSize: 18, color: steel)),
               const Spacer(),
               if (nav.etaWithTraffic)
                 const Padding(
@@ -3138,11 +3364,15 @@ class _MapScreenState extends State<MapScreen>
                 ),
               Text('AN ${_fmtClock(nav.eta)}',
                   style: const TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.w700, color: signal)),
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      fontStyle: FontStyle.italic,
+                      fontFeatures: tabular,
+                      color: signal)),
             ]),
             if (delay >= 60)
               Text('davon ca. ${(delay / 60).round()} min Verzögerung durch Verkehr',
-                  style: const TextStyle(fontSize: 9.5, color: redline)),
+                  style: const TextStyle(fontSize: 13, color: redline)),
             if (stop != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
@@ -3156,7 +3386,7 @@ class _MapScreenState extends State<MapScreen>
                       '${_fuelPrices[stop.poi.id] != null ? ' · ${_fuelPrices[stop.poi.id]!.text}' : ''}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 11, color: chalk),
+                      style: const TextStyle(fontSize: 14.5, color: chalk),
                     ),
                   ),
                 ]),
@@ -3164,7 +3394,9 @@ class _MapScreenState extends State<MapScreen>
           ],
         ),
       ),
-      const SizedBox(height: 8),
+      const SizedBox(height: 10),
+      // Waehrend der Fahrt nur drei grosse Knoepfe - der Rest liegt im
+      // Menue. Beenden nur durch Gedrueckthalten.
       Row(children: [
         Expanded(
           child: _mapBtn(
@@ -3177,69 +3409,23 @@ class _MapScreenState extends State<MapScreen>
             },
           ),
         ),
-        const SizedBox(width: 8),
-        if (stop != null) ...[
-          Expanded(
-            child: _mapBtn(
-            big: true,
-              icon: Icons.skip_next,
-              label: 'STOPP ÜBERSPR.',
-              onTap: nav.skipNextStop,
-            ),
-          ),
-          const SizedBox(width: 8),
-        ],
+        const SizedBox(width: 10),
         Expanded(
           child: _mapBtn(
             big: true,
-            icon: Icons.refresh,
-            label: 'NEU',
-            onTap: nav.rerouteNow,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _mapBtn(
-            big: true,
-            icon: Icons.ios_share,
-            label: 'NAVI-APP',
-            onTap: _showExport,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _mapBtn(
-            big: true,
-            icon: _autoFollow ? Icons.navigation : Icons.location_searching,
-            label: 'FOLGEN',
+            icon: _autoFollow ? Icons.navigation : Icons.center_focus_strong,
+            label: _autoFollow ? 'FOLGEN' : 'ZENTRIEREN',
             active: _autoFollow,
             onTap: () => setState(() => _autoFollow = !_autoFollow),
           ),
         ),
-      ]),
-      const SizedBox(height: 8),
-      Row(children: [
+        const SizedBox(width: 10),
         Expanded(
-          child: FlatButton2(
-            label: 'NAVIGATION BEENDEN',
-            color: amber,
-            strong: true,
-            fill: panel.withValues(alpha: 0.96),
-            tall: true,
-            onTap: _holdHint,
-            onLongPress: _stopNav,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: FlatButton2(
-            label: t.recording ? 'FAHRT BEENDEN' : 'FAHRT STARTEN',
-            color: t.recording ? amber : signal,
-            strong: true,
-            fill: panel.withValues(alpha: 0.96),
-            tall: true,
-            onTap: t.recording ? _holdHint : widget.onToggleRide,
-            onLongPress: widget.onToggleRide,
+          child: _mapBtn(
+            big: true,
+            icon: Icons.menu,
+            label: 'MENÜ',
+            onTap: () => _showNavMenu(nav),
           ),
         ),
       ]),
@@ -3254,25 +3440,40 @@ class _MapScreenState extends State<MapScreen>
     required VoidCallback onTap,
     bool active = false,
     bool big = false,
+    VoidCallback? onLongPress,
+    Color? color,
   }) {
-    final c = active ? signal : chalk;
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.symmetric(vertical: big ? 13 : 8),
-        decoration: BoxDecoration(
-          color: panel.withValues(alpha: 0.94),
-          border: Border.all(color: active ? signal : line),
+    final c = color ?? (active ? signal : chalk);
+    return Material(
+      color: panel.withValues(alpha: 0.96),
+      shape: BeveledRectangleBorder(
+        borderRadius: const BorderRadius.all(Radius.circular(7)),
+        side: BorderSide(color: active ? signal : line, width: active ? 2 : 1.5),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: big ? kTouchRide + 8 : 62),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: big ? 32 : 27, color: c),
+                const SizedBox(height: 3),
+                Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: big ? 14 : 13,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                        color: c)),
+              ],
+            ),
+          ),
         ),
-        child: Column(children: [
-          Icon(icon, size: big ? 24 : 17, color: c),
-          const SizedBox(height: 3),
-          Text(label,
-              maxLines: 1,
-              overflow: TextOverflow.clip,
-              style: TextStyle(
-                  fontSize: big ? 8.5 : 8, letterSpacing: 1.2, color: c)),
-        ]),
       ),
     );
   }

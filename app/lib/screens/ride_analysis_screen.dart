@@ -71,7 +71,7 @@ class _RideAnalysisScreenState extends State<RideAnalysisScreen> {
                       'Sagt mehr als ein Spitzenwert: Ein einzelner Ausreißer '
                       'ist etwas anderes als eine halbe Stunde am Anschlag.',
                       style:
-                          TextStyle(fontSize: 10.5, color: steel, height: 1.4),
+                          TextStyle(fontSize: 14, color: steel, height: 1.4),
                     ),
                     const SizedBox(height: 10),
                     LeanHistogramChart(histogram: a.histogram),
@@ -85,7 +85,7 @@ class _RideAnalysisScreenState extends State<RideAnalysisScreen> {
                       'übertragen. Bremsen und Kurve teilen sich dieses '
                       'Budget. Punkte weit außen heißen: wenig Reserve.',
                       style:
-                          TextStyle(fontSize: 10.5, color: steel, height: 1.4),
+                          TextStyle(fontSize: 14, color: steel, height: 1.4),
                     ),
                     const SizedBox(height: 10),
                     KammCircleChart(
@@ -103,7 +103,7 @@ class _RideAnalysisScreenState extends State<RideAnalysisScreen> {
                       'Alle Werte sind Näherungen aus Sensor- und '
                       'GPS-Daten. Radien und Beschleunigungen werden '
                       'gerechnet, nicht gemessen.',
-                      style: TextStyle(fontSize: 9.5, color: steel, height: 1.5),
+                      style: TextStyle(fontSize: 13, color: steel, height: 1.5),
                     ),
                   ],
                 ),
@@ -132,20 +132,20 @@ class _RideAnalysisScreenState extends State<RideAnalysisScreen> {
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text('${s.total.round()}',
                 style: TextStyle(
-                    fontSize: 46,
+                    fontSize: 50,
                     height: 1,
                     fontWeight: FontWeight.w700,
                     color: col)),
             const Padding(
               padding: EdgeInsets.only(bottom: 6, left: 2),
               child: Text('/100',
-                  style: TextStyle(fontSize: 14, color: steel)),
+                  style: TextStyle(fontSize: 17.5, color: steel)),
             ),
             const Spacer(),
             Text(s.grade,
                 style: TextStyle(
-                    fontSize: 12,
-                    letterSpacing: 2,
+                    fontSize: 15.5,
+                    letterSpacing: 1.2,
                     fontWeight: FontWeight.w700,
                     color: col)),
           ]),
@@ -164,7 +164,7 @@ class _RideAnalysisScreenState extends State<RideAnalysisScreen> {
           const Text(
             'Mehr Schräglage gibt hier absichtlich keine Punkte. Bewertet '
             'wird, was gute Fahrer ausmacht – nicht, wer am tiefsten legt.',
-            style: TextStyle(fontSize: 9.5, color: steel, height: 1.5),
+            style: TextStyle(fontSize: 13, color: steel, height: 1.5),
           ),
         ],
       ),
@@ -180,7 +180,7 @@ class _RideAnalysisScreenState extends State<RideAnalysisScreen> {
           Expanded(child: TinyLabel(label)),
           Text('${v.round()}',
               style: TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w700, color: col)),
+                  fontSize: 15.5, fontWeight: FontWeight.w700, color: col)),
         ]),
         const SizedBox(height: 4),
         Stack(children: [
@@ -191,7 +191,7 @@ class _RideAnalysisScreenState extends State<RideAnalysisScreen> {
           ),
         ]),
         const SizedBox(height: 3),
-        Text(hint, style: const TextStyle(fontSize: 9.5, color: steel)),
+        Text(hint, style: const TextStyle(fontSize: 13, color: steel)),
       ],
     );
   }
@@ -203,7 +203,7 @@ class _RideAnalysisScreenState extends State<RideAnalysisScreen> {
       'Aufgezeichnet: ${_dur(total.round())}   ·   '
       'davon $over35 % ab 35°   ·   '
       'höchster Summenvektor ${a.maxCombinedG.toStringAsFixed(2)} g',
-      style: const TextStyle(fontSize: 10, color: steel),
+      style: const TextStyle(fontSize: 13.5, color: steel),
     );
   }
 
@@ -274,12 +274,12 @@ class _RideAnalysisScreenState extends State<RideAnalysisScreen> {
         const SizedBox(width: 10),
         Text('${c.maxLean.round()}°',
             style: const TextStyle(
-                fontSize: 17, fontWeight: FontWeight.w700, color: chalk)),
+                fontSize: 20, fontWeight: FontWeight.w700, color: chalk)),
         const SizedBox(width: 12),
         Expanded(
           child: Text(
             '$speeds$radiusPart',
-            style: const TextStyle(fontSize: 10.5, color: steel),
+            style: const TextStyle(fontSize: 14, color: steel),
           ),
         ),
       ]),
@@ -288,8 +288,8 @@ class _RideAnalysisScreenState extends State<RideAnalysisScreen> {
 
   Widget _sectionTitle(String s) => Text(s,
       style: const TextStyle(
-          fontSize: 11,
-          letterSpacing: 2.5,
+          fontSize: 14.5,
+          letterSpacing: 1.5,
           fontWeight: FontWeight.w700,
           color: chalk));
 

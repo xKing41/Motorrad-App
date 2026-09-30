@@ -14,6 +14,45 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.33 - Neues Design: sportlich, aufgeraeumt, mit Handschuh
+------------------------------------------------------------------
+
+SCHRIFT UND GROESSEN
+- Neue Schrift (Barlow): schmal, kraeftig, in der Sonne und durchs
+  Visier gut lesbar. Alle Texte deutlich groesser, Zahlen gleich breit.
+- Knoepfe mindestens so gross wie ein Handschuh-Finger, waehrend der
+  Fahrt noch groesser. Sportliche, schraeg abgeschnittene Ecken.
+
+KARTE
+- Statt sechs kleiner Knoepfe rechts nur noch zwei grosse: KARTE
+  (Stil, Offline-Karten, Verkehr, Headset, eigene Sperren - als grosse
+  Kacheln) und in der Test-App GRUPPEN. Ein farbiger Punkt zeigt, wenn
+  etwas Aufmerksamkeit braucht (offline, Download, Headset-Akku,
+  neue Nachrichten).
+- "In Navi-App oeffnen" oben in der Tourleiste.
+- Meldungen erscheinen in der oberen Haelfte und verdecken nie die
+  Knoepfe unten.
+
+NAVIGATION
+- Grosse Abbiegeanzeige (Entfernung sehr gross), grosses
+  Tempolimit-Schild, Restweg und Ankunft gross.
+- Unten nur drei grosse Knoepfe: SPERRUNG, FOLGEN/ZENTRIEREN, MENUE.
+  Im Menue: Neu berechnen, Stopp auslassen, Navi-App, Karte, Navi und
+  Fahrt beenden (gedrueckt halten).
+
+EINSTELLUNGEN
+- Eigene Seite (Zahnrad im Cockpit oder im Planer), sortiert nach
+  Navigation & Ansagen, Eigene Sperren, Spritpreise, Verkehrslage,
+  KI, Routing-Dienst. Speichert beim Verlassen automatisch.
+
+PLANER
+- "ROUTE BERECHNEN" steht immer gross unten, der Fortschritt direkt
+  darueber.
+
+ERSTER START
+- Kurzer Einstieg in drei Seiten (Planen, Bedienung mit Handschuh,
+  Notfallkontakt).
+
 VERSION 4.32 - Mehr Sicherheit gegen gesperrte und unbefahrbare Wege
 -------------------------------------------------------------------
 

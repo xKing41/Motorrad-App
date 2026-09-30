@@ -181,7 +181,8 @@ void _text(Canvas canvas, String s, Offset at, double size, Color color,
     text: TextSpan(
       text: s,
       style: TextStyle(
-        fontSize: size.clamp(7.0, 13.0),
+        fontFamily: kFont,
+        fontSize: size.clamp(10.0, 15.0) * 1.15,
         color: color,
         fontWeight: FontWeight.w600,
         letterSpacing: 0.5,

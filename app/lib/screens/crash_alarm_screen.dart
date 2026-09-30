@@ -124,8 +124,8 @@ class _CrashAlarmScreenState extends State<CrashAlarmScreen> {
               const SizedBox(height: 10),
               const Text('STURZ ERKANNT',
                   style: TextStyle(
-                      fontSize: 24,
-                      letterSpacing: 4,
+                      fontSize: 27,
+                      letterSpacing: 1.8,
                       fontWeight: FontWeight.w700,
                       color: chalk)),
               const SizedBox(height: 6),
@@ -135,7 +135,7 @@ class _CrashAlarmScreenState extends State<CrashAlarmScreen> {
                       ? 'Nachricht an ${em.contactName.isEmpty ? "den Notfallkontakt" : em.contactName} wird vorbereitet'
                       : 'Kein Notfallkontakt hinterlegt',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 12, color: chalk),
+                  style: const TextStyle(fontSize: 15.5, color: chalk),
                 )
               else
                 Text(
@@ -148,7 +148,7 @@ class _CrashAlarmScreenState extends State<CrashAlarmScreen> {
                           : 'Kein Notfallkontakt hinterlegt – bitte 112 anrufen.'),
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 15.5,
                       color: _smsSent
                           ? signal
                           : (_smsOpened ? amber : redline)),
@@ -157,7 +157,7 @@ class _CrashAlarmScreenState extends State<CrashAlarmScreen> {
               if (!_fired)
                 Text('$_left',
                     style: const TextStyle(
-                        fontSize: 96,
+                        fontSize: 100,
                         height: 1,
                         fontWeight: FontWeight.w700,
                         color: redline)),
@@ -175,8 +175,8 @@ class _CrashAlarmScreenState extends State<CrashAlarmScreen> {
                   ),
                   child: const Text('MIR GEHT ES GUT',
                       style: TextStyle(
-                          fontSize: 20,
-                          letterSpacing: 3,
+                          fontSize: 23,
+                          letterSpacing: 1.4,
                           fontWeight: FontWeight.w700)),
                 ),
               ),
@@ -194,8 +194,8 @@ class _CrashAlarmScreenState extends State<CrashAlarmScreen> {
                       ),
                       child: const Text('112 ANRUFEN',
                           style: TextStyle(
-                              fontSize: 14,
-                              letterSpacing: 2,
+                              fontSize: 17.5,
+                              letterSpacing: 1.2,
                               fontWeight: FontWeight.w700)),
                     ),
                   ),
@@ -213,8 +213,8 @@ class _CrashAlarmScreenState extends State<CrashAlarmScreen> {
                       ),
                       child: const Text('JETZT SENDEN',
                           style: TextStyle(
-                              fontSize: 14,
-                              letterSpacing: 2,
+                              fontSize: 17.5,
+                              letterSpacing: 1.2,
                               fontWeight: FontWeight.w700)),
                     ),
                   ),
@@ -226,7 +226,7 @@ class _CrashAlarmScreenState extends State<CrashAlarmScreen> {
                 'Notrufsystem. Bei einem echten Notfall immer selbst 112 '
                 'rufen, wenn es möglich ist.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 9.5, color: steel, height: 1.4),
+                style: TextStyle(fontSize: 13, color: steel, height: 1.4),
               ),
             ]),
           ),

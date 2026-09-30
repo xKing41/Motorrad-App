@@ -8,6 +8,7 @@ import '../services/weather_service.dart';
 import '../theme.dart';
 import 'bike_screen.dart';
 import 'emergency_screen.dart';
+import 'route_planner_screen.dart';
 import '../widgets/gauge.dart';
 
 /// Live-Cockpit: Schraeglage, Tempo, G-Kraefte, laufende Fahrt.
@@ -97,14 +98,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // und das GPS-Feld stand verloren in der Mitte.
     return Row(
       children: [
-        RichText(
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: RichText(
           text: const TextSpan(
             style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 4,
+              fontFamily: kFont,
+              fontStyle: FontStyle.italic,
+              fontSize: 23,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.8,
               color: chalk,
-              fontFamily: 'monospace',
             ),
             children: [
               TextSpan(text: 'SCHRÄG'),
@@ -112,7 +118,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ],
           ),
         ),
-        const Spacer(),
+          ),
+        ),
+        const SizedBox(width: 8),
         InkWell(
           onTap: (t.gpsDenied || t.gpsServiceOff || !t.hasFix)
               ? () async {
@@ -121,60 +129,79 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 }
               : null,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
             decoration:
                 BoxDecoration(color: panel, border: Border.all(color: line)),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Container(
-                width: 7,
-                height: 7,
+                width: 10,
+                height: 10,
                 decoration:
                     BoxDecoration(color: col, shape: BoxShape.circle),
               ),
               const SizedBox(width: 7),
               Text(txt,
                   style: const TextStyle(
-                      fontSize: 10, letterSpacing: 2, color: chalk)),
+                      fontSize: 15, fontWeight: FontWeight.w700, color: chalk)),
             ]),
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
         // Motorrad, Reifen und Halterung - bestimmt die Messgenauigkeit.
-        InkWell(
+        _headBtn(
+          icon: Icons.two_wheeler,
+          tooltip: 'Motorrad und Halterung',
           onTap: () => Navigator.push(context,
               MaterialPageRoute(builder: (_) => const BikeScreen())),
-          child: Container(
-            padding: const EdgeInsets.all(6),
-            decoration:
-                BoxDecoration(color: panel, border: Border.all(color: line)),
-            child: const Icon(Icons.two_wheeler, size: 16, color: steel),
-          ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
         // Zugang zu den Notfalldaten. Rot, wenn noch kein Kontakt
         // hinterlegt ist - dann bringt die Sturzerkennung nichts.
-        InkWell(
+        _headBtn(
+          icon: Icons.emergency_outlined,
+          tooltip: 'Notfall',
+          color: Emergency.instance.hasContact ? chalk : redline,
+          border: Emergency.instance.hasContact ? line : redline,
           onTap: () async {
             await Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const EmergencyScreen()));
             if (mounted) setState(() {});
           },
-          child: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: panel,
-              border: Border.all(
-                  color: Emergency.instance.hasContact ? line : redline),
-            ),
-            child: Icon(Icons.emergency_outlined,
-                size: 16,
-                color:
-                    Emergency.instance.hasContact ? steel : redline),
-          ),
+        ),
+        const SizedBox(width: 6),
+        _headBtn(
+          icon: Icons.settings,
+          tooltip: 'Einstellungen',
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen())),
         ),
       ],
     );
   }
+
+  Widget _headBtn({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+    Color color = chalk,
+    Color border = line,
+  }) =>
+      Tooltip(
+        message: tooltip,
+        child: Material(
+          color: panel,
+          shape: BeveledRectangleBorder(
+            borderRadius: const BorderRadius.all(Radius.circular(6)),
+            side: BorderSide(color: border, width: 1.5),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            child: SizedBox(
+                width: 46, height: 46, child: Icon(icon, size: 26, color: color)),
+          ),
+        ),
+      );
 
   /// Wetterstreifen samt Regenwarnung.
   ///
@@ -216,20 +243,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: Text(info,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 10.5, color: chalk)),
+                  style: const TextStyle(fontSize: 14, color: chalk)),
             ),
             if (warn != null) const SizedBox(width: 8),
             if (warn != null)
               Text(warn,
                   style: TextStyle(
-                      fontSize: 10,
+                      fontSize: 13.5,
                       letterSpacing: 1,
                       fontWeight: FontWeight.w700,
                       color: col)),
           ]),
           const SizedBox(height: 3),
           const Text(WeatherService.attribution,
-              style: TextStyle(fontSize: 8, color: steel)),
+              style: TextStyle(fontSize: 11.5, color: steel)),
         ],
       ),
     );
@@ -270,8 +297,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           Text(dirTxt,
               style: TextStyle(
-                  fontSize: 10,
-                  letterSpacing: 4,
+                  fontSize: 13.5,
+                  letterSpacing: 1.8,
                   color: abs < 2 ? steel : chalk)),
         ]);
       },
@@ -304,7 +331,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       )),
                   const Text('KM/H',
                       style: TextStyle(
-                          fontSize: 10, letterSpacing: 4, color: steel)),
+                          fontSize: 13.5, letterSpacing: 1.8, color: steel)),
                 ]),
               ),
             ],
@@ -348,8 +375,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         SizedBox(
           width: double.infinity,
           child: FlatButton2(
-            label: t.recording ? 'FAHRT BEENDEN' : 'FAHRT STARTEN',
+            label: t.recording ? 'FAHRT BEENDEN (HALTEN)' : 'FAHRT STARTEN',
             color: t.recording ? amber : signal,
+            fill: t.recording ? null : signal,
             strong: true,
             tall: true,
             // Beenden nur durch Gedrueckthalten: ein Tipp mit dem
@@ -389,7 +417,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _screenToggle(),
         SizedBox(height: compact ? 4 : 8),
         const Text('NÄHERUNGSWERTE · BEDIENUNG NUR IM STAND',
-            style: TextStyle(fontSize: 8.5, letterSpacing: 2, color: steel)),
+            style: TextStyle(fontSize: 12, letterSpacing: 1.2, color: steel)),
       ]),
     );
   }
@@ -414,7 +442,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ? 'Display bleibt während der Fahrt an'
                     : 'Akku sparen: Display geht während der Fahrt aus '
                         '(Aufzeichnung läuft weiter)',
-                style: const TextStyle(fontSize: 10.5, color: steel),
+                style: const TextStyle(fontSize: 14, color: steel),
               ),
             ),
             Switch(value: on, onChanged: p.setScreenOnWhileRiding),
@@ -460,7 +488,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontSize: 10,
+          fontSize: 13.5,
           letterSpacing: 1.2,
           color: t.recording ? chalk : steel,
         ),

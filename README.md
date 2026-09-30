@@ -29,6 +29,11 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
 - **Wetter entlang der Route** zur jeweiligen Ankunftszeit („Regen ab km 140
   gegen 15:30“), Vorschlag für eine trockenere Abfahrtszeit
 
+**Bedienung**
+- Sportliches, aufgeräumtes Design (Schrift Barlow Semi Condensed, SIL OFL),
+  große Knöpfe für die Bedienung mit Handschuhen, während der Navigation
+  nur drei Knöpfe; eigene Einstellungsseite; kurzer Einstieg beim ersten Start
+
 **Karte und Routenplanung**
 - **Spurempfehlung** vor Abbiegungen und Ausfahrten (OSM turn:lanes), auch
   angesagt und offline verfügbar

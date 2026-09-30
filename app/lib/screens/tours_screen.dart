@@ -48,7 +48,7 @@ class _ToursScreenState extends State<ToursScreen> {
         shape: const RoundedRectangleBorder(side: BorderSide(color: line)),
         title: Text(m.isLast ? 'ALS TOUR SPEICHERN' : 'UMBENENNEN',
             style: const TextStyle(
-                fontSize: 12, letterSpacing: 2.5, color: chalk)),
+                fontSize: 15.5, letterSpacing: 1.5, color: chalk)),
         content: TextField(
           controller: ctrl,
           autofocus: true,
@@ -60,12 +60,12 @@ class _ToursScreenState extends State<ToursScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('ABBRECHEN',
-                style: TextStyle(fontSize: 11, color: steel)),
+                style: TextStyle(fontSize: 14.5, color: steel)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text),
             child: const Text('OK',
-                style: TextStyle(fontSize: 11, color: signal)),
+                style: TextStyle(fontSize: 14.5, color: signal)),
           ),
         ],
       ),
@@ -90,22 +90,22 @@ class _ToursScreenState extends State<ToursScreen> {
         backgroundColor: panel,
         shape: const RoundedRectangleBorder(side: BorderSide(color: line)),
         title: const Text('TOUR LÖSCHEN?',
-            style: TextStyle(fontSize: 12, letterSpacing: 2.5, color: chalk)),
+            style: TextStyle(fontSize: 15.5, letterSpacing: 1.5, color: chalk)),
         content: Text(
           '${m.title} · ${(m.distanceM / 1000).round()} km\n'
           'Das lässt sich nicht rückgängig machen.',
-          style: const TextStyle(fontSize: 11.5, color: steel, height: 1.4),
+          style: const TextStyle(fontSize: 15, color: steel, height: 1.4),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('BEHALTEN',
-                style: TextStyle(fontSize: 11, color: steel)),
+                style: TextStyle(fontSize: 14.5, color: steel)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('LÖSCHEN',
-                style: TextStyle(fontSize: 11, color: redline)),
+                style: TextStyle(fontSize: 14.5, color: redline)),
           ),
         ],
       ),
@@ -134,7 +134,7 @@ class _ToursScreenState extends State<ToursScreen> {
                     'Noch keine Touren gespeichert.\n\nNach dem Planen: '
                     'oben auf das Lesezeichen tippen. Die zuletzt '
                     'geplante Route merkt sich die App von selbst.',
-                    style: TextStyle(fontSize: 12, color: steel, height: 1.5),
+                    style: TextStyle(fontSize: 15.5, color: steel, height: 1.5),
                   ),
                 )
               : ListView.separated(
@@ -167,7 +167,7 @@ class _ToursScreenState extends State<ToursScreen> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
-                                      fontSize: 13, color: chalk),
+                                      fontSize: 16.5, color: chalk),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
@@ -178,7 +178,7 @@ class _ToursScreenState extends State<ToursScreen> {
                                     fmtDate(m.savedAt),
                                   ].join(' · '),
                                   style: const TextStyle(
-                                      fontSize: 10, color: steel),
+                                      fontSize: 13.5, color: steel),
                                 ),
                               ],
                             ),

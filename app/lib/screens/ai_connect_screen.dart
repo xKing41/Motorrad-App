@@ -102,7 +102,7 @@ class _AiConnectScreenState extends State<AiConnectScreen> {
         elevation: 0,
         title: const Text('KI VERBINDEN',
             style: TextStyle(
-                fontSize: 13, letterSpacing: 4, fontWeight: FontWeight.w700)),
+                fontSize: 16.5, letterSpacing: 1.8, fontWeight: FontWeight.w700)),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -110,7 +110,7 @@ class _AiConnectScreenState extends State<AiConnectScreen> {
           const Text(
             'Einmal einrichten, danach fragt die App nie wieder nach einem '
             'Schlüssel.',
-            style: TextStyle(fontSize: 12, color: chalk, height: 1.5),
+            style: TextStyle(fontSize: 15.5, color: chalk, height: 1.5),
           ),
           const SizedBox(height: 16),
           const TinyLabel('WEG WÄHLEN'),
@@ -144,7 +144,7 @@ class _AiConnectScreenState extends State<AiConnectScreen> {
                         strokeWidth: 2, color: signal)),
                 SizedBox(width: 10),
                 Text('Verbindung wird geprüft ...',
-                    style: TextStyle(fontSize: 11.5, color: steel)),
+                    style: TextStyle(fontSize: 15, color: steel)),
               ]),
             ),
           SizedBox(
@@ -190,14 +190,14 @@ class _AiConnectScreenState extends State<AiConnectScreen> {
           obscureText: !_show,
           autocorrect: false,
           enableSuggestions: false,
-          style: const TextStyle(fontSize: 12, color: chalk),
+          style: const TextStyle(fontSize: 15.5, color: chalk),
           onChanged: (_) => setState(() {
             _ok = false;
             _error = null;
           }),
           decoration: InputDecoration(
             hintText: 'sk-ant-...',
-            hintStyle: const TextStyle(fontSize: 11, color: steel),
+            hintStyle: const TextStyle(fontSize: 14.5, color: steel),
             isDense: true,
             filled: true,
             fillColor: asphalt,
@@ -235,14 +235,14 @@ class _AiConnectScreenState extends State<AiConnectScreen> {
           controller: _srvCtrl,
           autocorrect: false,
           keyboardType: TextInputType.url,
-          style: const TextStyle(fontSize: 12, color: chalk),
+          style: const TextStyle(fontSize: 15.5, color: chalk),
           onChanged: (_) => setState(() {
             _ok = false;
             _error = null;
           }),
           decoration: InputDecoration(
             hintText: 'https://mein-server.de/plan',
-            hintStyle: const TextStyle(fontSize: 11, color: steel),
+            hintStyle: const TextStyle(fontSize: 14.5, color: steel),
             isDense: true,
             filled: true,
             fillColor: asphalt,
@@ -257,7 +257,7 @@ class _AiConnectScreenState extends State<AiConnectScreen> {
           'Der Server nimmt die Anfrage entgegen, ergänzt den Schlüssel und '
           'gibt die Antwort unverändert zurück. In diesem Modus sendet die '
           'App keinen Schlüssel mit.',
-          style: TextStyle(fontSize: 10.5, color: steel, height: 1.5),
+          style: TextStyle(fontSize: 14, color: steel, height: 1.5),
         ),
       ];
 
@@ -299,14 +299,14 @@ class _AiConnectScreenState extends State<AiConnectScreen> {
               children: [
                 Text(title,
                     style: TextStyle(
-                        fontSize: 11,
-                        letterSpacing: 1.5,
+                        fontSize: 14.5,
+                        letterSpacing: 0.9,
                         fontWeight: FontWeight.w700,
                         color: sel ? chalk : steel)),
                 const SizedBox(height: 3),
                 Text(sub,
                     style: const TextStyle(
-                        fontSize: 10, color: steel, height: 1.4)),
+                        fontSize: 13.5, color: steel, height: 1.4)),
               ],
             ),
           ),
@@ -332,12 +332,12 @@ class _AiConnectScreenState extends State<AiConnectScreen> {
         child: Column(children: [
           Text(title,
               style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 14.5,
                   letterSpacing: 1.2,
                   fontWeight: FontWeight.w700,
                   color: sel ? chalk : steel)),
           const SizedBox(height: 2),
-          Text(sub, style: const TextStyle(fontSize: 9.5, color: steel)),
+          Text(sub, style: const TextStyle(fontSize: 13, color: steel)),
         ]),
       ),
     );
@@ -356,7 +356,7 @@ class _AiConnectScreenState extends State<AiConnectScreen> {
           Expanded(
             child: Text(text,
                 style: const TextStyle(
-                    fontSize: 11, color: chalk, height: 1.45)),
+                    fontSize: 14.5, color: chalk, height: 1.45)),
           ),
         ]),
       );
@@ -383,14 +383,14 @@ class _AiConnectScreenState extends State<AiConnectScreen> {
               'Schlüssel-Modus in Ordnung. Sobald die App an andere geht, '
               'nimm den Server-Modus oder lass jeden seinen eigenen '
               'Schlüssel eintragen.',
-              style: TextStyle(fontSize: 10.5, color: steel, height: 1.55),
+              style: TextStyle(fontSize: 14, color: steel, height: 1.55),
             ),
             SizedBox(height: 10),
             Text(
               'Die KI plant übrigens nie selbst die Strecke. Sie übersetzt '
               'nur deinen Wunsch in Vorgaben und beschreibt danach das '
               'Ergebnis. Wege und Orte kommen immer aus echten Kartendaten.',
-              style: TextStyle(fontSize: 10.5, color: steel, height: 1.55),
+              style: TextStyle(fontSize: 14, color: steel, height: 1.55),
             ),
           ],
         ),

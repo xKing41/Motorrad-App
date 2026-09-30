@@ -24,7 +24,7 @@ class MapAttribution extends StatelessWidget {
           VectorMap.instance.useVector
               ? VectorMap.attribution
               : '© OpenStreetMap-Mitwirkende',
-          style: const TextStyle(fontSize: 9, color: chalk),
+          style: const TextStyle(fontSize: 12.5, color: chalk),
         ),
       ),
     );

@@ -29,7 +29,14 @@ import 'map_pick_screen.dart';
 /// was die KI verstanden hat.
 class RoutePlannerScreen extends StatefulWidget {
   const RoutePlannerScreen(
-      {super.key, this.startLat, this.startLon, this.initialDest});
+      {super.key,
+      this.startLat,
+      this.startLon,
+      this.initialDest,
+      this.settingsOnly = false});
+
+  /// Nur die Einstellungen zeigen (eigene Seite "EINSTELLUNGEN").
+  final bool settingsOnly;
 
   final double? startLat;
   final double? startLon;
@@ -155,7 +162,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
     await sp.setStringList('plan_stops', _stops.map((k) => k.id).toList());
   }
 
-  Future<void> _saveRouting() async {
+  Future<void> _saveRouting({bool quiet = false}) async {
     final r = _routing.copyWith(
       service: _serviceSel,
       valhallaUrl: _valhallaCtrl.text.trim(),
@@ -172,13 +179,13 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       curveWarn: _curveWarn,
     );
     if (r.service == RoutingService.graphhopper && r.ghUrl.isEmpty) {
-      toast(context, 'Für GraphHopper fehlt die Server-Adresse');
+      if (mounted) toast(context, 'Für GraphHopper fehlt die Server-Adresse');
       return;
     }
     await r.save();
     if (!mounted) return;
     setState(() => _routing = r);
-    toast(context, 'Gespeichert');
+    if (!quiet) toast(context, 'Gespeichert');
   }
 
   // ------------------------------------------------------------------
@@ -228,7 +235,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
     }
     if (!_routing.isUsable) {
       setState(() => _status = 'Routing-Dienst unvollständig eingerichtet. '
-          'Unter EINSTELLUNGEN prüfen.');
+          'Unter EINSTELLUNGEN (Zahnrad oben) prüfen.');
       return;
     }
 
@@ -402,8 +409,77 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
   // ------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
+    if (widget.settingsOnly) {
+      // Beim Verlassen automatisch speichern - niemand soll einen
+      // Speichern-Knopf suchen muessen.
+      return PopScope(
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) _saveRouting(quiet: true);
+        },
+        child: Scaffold(
+          appBar: AppBar(title: const Text('EINSTELLUNGEN')),
+          body: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+            children: _settingsChildren(),
+          ),
+        ),
+      );
+    }
     return Scaffold(
-      appBar: AppBar(title: const Text('ROUTE PLANEN')),
+      appBar: AppBar(
+        title: const Text('ROUTE PLANEN'),
+        actions: [
+          IconButton(
+            tooltip: 'Einstellungen',
+            icon: const Icon(Icons.settings, size: 28),
+            onPressed: _openSettings,
+          ),
+        ],
+      ),
+      // Der wichtigste Knopf steht immer unten - nicht am Ende einer
+      // langen Liste.
+      bottomNavigationBar: SafeArea(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          decoration: const BoxDecoration(
+            color: asphalt,
+            border: Border(top: BorderSide(color: line)),
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (_status != null) ...[
+              Row(children: [
+                if (_busy) ...[
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        color: amber, strokeWidth: 2.5),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  child: Text(_status!,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 15.5, color: amber)),
+                ),
+              ]),
+              const SizedBox(height: 10),
+            ],
+            SizedBox(
+              width: double.infinity,
+              child: FlatButton2(
+                label: _busy ? 'BITTE WARTEN ...' : 'ROUTE BERECHNEN',
+                color: signal,
+                fill: signal,
+                strong: true,
+                tall: true,
+                onTap: _busy ? null : () => _plan(),
+              ),
+            ),
+          ]),
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
@@ -487,59 +563,38 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
                 'Stopps werden über die ganze Strecke verteilt: Tanken nach '
                 'Reichweite, Pausen im gewählten Abstand (Rastplatz und '
                 'Einkehr im Wechsel), Aussichtspunkte gleichmäßig.',
-                style: TextStyle(fontSize: 9.5, color: steel, height: 1.4),
+                style: TextStyle(fontSize: 13, color: steel, height: 1.4),
               ),
             ),
-          const SizedBox(height: 20),
-          if (_status != null) ...[
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: panel,
-                border: Border.all(color: line),
-              ),
-              child: Row(children: [
-                if (_busy) ...[
-                  const SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(
-                        color: amber, strokeWidth: 1.5),
-                  ),
-                  const SizedBox(width: 10),
-                ],
-                Expanded(
-                  child: Text(_status!,
-                      style: const TextStyle(fontSize: 11, color: amber)),
-                ),
-              ]),
-            ),
-            const SizedBox(height: 12),
-          ],
-          SizedBox(
-            width: double.infinity,
-            child: FlatButton2(
-              label: _busy ? 'BITTE WARTEN ...' : 'ROUTE BERECHNEN',
-              color: signal,
-              strong: true,
-              onTap: _busy ? null : () => _plan(),
-            ),
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
           Text(
             'Routing: ${_routing.engine().label}',
-            style: const TextStyle(fontSize: 9, color: steel),
+            style: const TextStyle(fontSize: 13.5, color: steel),
           ),
-          const SizedBox(height: 22),
-          _settingsBox(),
         ],
       ),
     );
   }
 
+  Future<void> _openSettings() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+          builder: (_) => const RoutePlannerScreen(settingsOnly: true)),
+    );
+    final routing = await RoutingSettings.load();
+    final ai = await AiConfig.load();
+    if (mounted) {
+      setState(() {
+        _routing = routing;
+        _ai = ai;
+      });
+    }
+  }
+
   Widget _sectionTitle(String s) => Text(
         s,
-        style: const TextStyle(fontSize: 9.5, letterSpacing: 3, color: steel),
+        style: const TextStyle(fontSize: 13, letterSpacing: 1.4, color: steel),
       );
 
   Widget _chip({
@@ -561,7 +616,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
         child: Text(
           label,
           style: TextStyle(
-            fontSize: 11,
+            fontSize: 14.5,
             letterSpacing: 1,
             color: selected ? color : chalk,
           ),
@@ -598,14 +653,14 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
         const SizedBox(width: 8),
         const Expanded(
           child: Text('Start: aktueller Standort',
-              style: TextStyle(fontSize: 11.5, color: chalk)),
+              style: TextStyle(fontSize: 15, color: chalk)),
         ),
         InkWell(
           onTap: () => setState(() => _pickStart = true),
           child: const Padding(
             padding: EdgeInsets.all(4),
             child: Text('ANDERER START',
-                style: TextStyle(fontSize: 9, letterSpacing: 1.5, color: steel)),
+                style: TextStyle(fontSize: 12.5, letterSpacing: 0.9, color: steel)),
           ),
         ),
       ]);
@@ -619,7 +674,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
             padding: EdgeInsets.only(bottom: 6),
             child: Text(
               'Noch kein GPS-Standort. Start suchen oder kurz warten.',
-              style: TextStyle(fontSize: 10.5, color: amber),
+              style: TextStyle(fontSize: 14, color: amber),
             ),
           ),
         _PlaceField(
@@ -642,7 +697,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
                 padding: EdgeInsets.all(4),
                 child: Text('AKTUELLEN STANDORT NEHMEN',
                     style: TextStyle(
-                        fontSize: 9, letterSpacing: 1.5, color: steel)),
+                        fontSize: 12.5, letterSpacing: 0.9, color: steel)),
               ),
             ),
           ),
@@ -676,7 +731,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
             controller: _aiCtrl,
             maxLines: 3,
             minLines: 2,
-            style: const TextStyle(fontSize: 12.5, color: chalk),
+            style: const TextStyle(fontSize: 16, color: chalk),
             decoration: _inputDecoration(
               'z. B. "Nachmittagsrunde, gut 180 km, viele Kurven, über den '
               'Edersee, einmal tanken und eine Pause mit Aussicht"',
@@ -685,7 +740,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
           if (_aiReply != null && _aiReply!.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(_aiReply!,
-                style: const TextStyle(fontSize: 11, color: cool, height: 1.4)),
+                style: const TextStyle(fontSize: 14.5, color: cool, height: 1.4)),
           ],
           const SizedBox(height: 8),
           SizedBox(
@@ -706,19 +761,19 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
               Expanded(
                 child: Text(
                   ready ? 'KI: ${_ai.label}' : 'KI: nicht verbunden',
-                  style: TextStyle(fontSize: 9.5, color: ready ? cool : steel),
+                  style: TextStyle(fontSize: 13, color: ready ? cool : steel),
                 ),
               ),
               const Text('ÄNDERN',
                   style: TextStyle(
-                      fontSize: 9, letterSpacing: 1.5, color: steel)),
+                      fontSize: 12.5, letterSpacing: 0.9, color: steel)),
             ]),
           ),
           const SizedBox(height: 6),
           const Text(
             'Die KI setzt nur die Vorgaben. Strecke und Orte kommen aus '
             'echten Kartendaten – erfundene Ziele sind so ausgeschlossen.',
-            style: TextStyle(fontSize: 9.5, color: steel, height: 1.4),
+            style: TextStyle(fontSize: 13, color: steel, height: 1.4),
           ),
         ],
       ),
@@ -734,7 +789,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
           const Spacer(),
           Text('${_distanceKm.round()} km',
               style: const TextStyle(
-                  fontSize: 15, fontWeight: FontWeight.w700, color: chalk)),
+                  fontSize: 18, fontWeight: FontWeight.w700, color: chalk)),
         ]),
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
@@ -780,7 +835,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
           const Padding(
             padding: EdgeInsets.only(top: 6),
             child: Text('Mit einem "Über"-Ort bestimmt dieser die Richtung.',
-                style: TextStyle(fontSize: 9.5, color: steel)),
+                style: TextStyle(fontSize: 13, color: steel)),
           ),
       ],
     );
@@ -813,7 +868,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       child: Row(children: [
         Expanded(
           child: Text(label,
-              style: const TextStyle(fontSize: 11.5, color: chalk)),
+              style: const TextStyle(fontSize: 15, color: chalk)),
         ),
         Switch(value: value, onChanged: onChanged),
       ]),
@@ -832,7 +887,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
             const Spacer(),
             Text('${value.round()} km',
                 style: TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w700, color: color)),
+                    fontSize: 16.5, fontWeight: FontWeight.w700, color: color)),
           ]),
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
@@ -878,20 +933,110 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
     );
   }
 
-  Widget _settingsBox() {
-    return ExpansionTile(
-      tilePadding: EdgeInsets.zero,
-      childrenPadding: const EdgeInsets.only(bottom: 8),
-      iconColor: steel,
-      collapsedIconColor: steel,
-      title: const Text('EINSTELLUNGEN',
-          style: TextStyle(fontSize: 9.5, letterSpacing: 3, color: steel)),
-      children: [
-        const Align(
-          alignment: Alignment.centerLeft,
-          child: TinyLabel('ROUTING-DIENST'),
+  Widget _settingsHeader(String t) => Padding(
+        padding: const EdgeInsets.only(top: 22, bottom: 10),
+        child: Container(
+          padding: const EdgeInsets.only(left: 10),
+          decoration: const BoxDecoration(
+            border: Border(left: BorderSide(color: signal, width: 4)),
+          ),
+          child: Text(t,
+              style: const TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                  fontStyle: FontStyle.italic,
+                  color: chalk)),
+        ),
+      );
+
+  List<Widget> _settingsChildren() {
+    return [
+        _settingsHeader('NAVIGATION & ANSAGEN'),
+        const SizedBox(height: 6),
+        _switchRow('Sprachansagen bei der Navigation', _voice,
+            (v) => setState(() => _voice = v)),
+        if (_voice) const _VoicePicker(),
+        _switchRow('Vor engen Kurven warnen (wenn zu schnell)', _curveWarn,
+            (v) => setState(() => _curveWarn = v)),
+        _switchRow('Tempolimit anzeigen (OpenStreetMap)', _showLimits,
+            (v) => setState(() => _showLimits = v)),
+        if (_showLimits)
+          _switchRow('Warnen, wenn zu schnell (Ansage)', _speedWarn,
+              (v) => setState(() => _speedWarn = v)),
+        _switchRow('Feste Blitzer bei der Planung zeigen', _showCameras,
+            (v) => setState(() => _showCameras = v)),
+        if (_showCameras)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: Text(
+              'Nur vor der Fahrt: Sobald Navigation oder Aufzeichnung '
+              'laufen, sind die Blitzer ausgeblendet - Blitzerwarner '
+              'während der Fahrt sind in Deutschland, Österreich und der '
+              'Schweiz verboten (DE: § 23 Abs. 1c StVO).',
+              style: TextStyle(fontSize: 13.5, color: steel, height: 1.4),
+            ),
+          ),
+        _settingsHeader('EIGENE SPERREN'),
+        const _BlockList(),
+        _settingsHeader('SPRITPREISE'),
+        const SizedBox(height: 6),
+        const Text(
+          'Spritpreise an den Tankstopps (nur Deutschland): kostenloser '
+          'Schlüssel von Tankerkönig (creativecommons.tankerkoenig.de).',
+          style: TextStyle(fontSize: 13.5, color: steel, height: 1.4),
         ),
         const SizedBox(height: 6),
+        _field(
+          label: 'TANKERKÖNIG-SCHLÜSSEL (optional)',
+          controller: _tankerCtrl,
+          hint: 'API-Key',
+          obscure: true,
+        ),
+        Wrap(spacing: 6, children: [
+          for (final f in FuelType.values)
+            ChoiceChip(
+              label: Text(f.label, style: const TextStyle(fontSize: 14.5)),
+              selected: _fuelType == f,
+              onSelected: (_) => setState(() => _fuelType = f),
+            ),
+        ]),
+        _settingsHeader('VERKEHRSLAGE'),
+        const SizedBox(height: 6),
+        const Text(
+          'Immer dabei (kostenlos): amtliche Baustellen, Sperrungen und '
+          'Staus der Autobahn GmbH auf deutschen Autobahnen.\n'
+          'Für Staus und Sperrungen auf ALLEN Straßen und in ganz Europa: '
+          'TomTom-Schlüssel (developer.tomtom.com, 2.500 Abfragen am Tag '
+          'frei). Zusätzlich HERE (developer.here.com) als zweite Quelle - '
+          'dieselbe Meldung aus mehreren Quellen erscheint nur einmal. '
+          'Mit TomTom färbt die Karte außerdem Straßen nach Verkehrsfluss.',
+          style: TextStyle(fontSize: 13.5, color: steel, height: 1.4),
+        ),
+        const SizedBox(height: 8),
+        _field(
+          label: 'TOMTOM-SCHLÜSSEL (Hauptquelle)',
+          controller: _tomtomCtrl,
+          hint: 'API-Key',
+          obscure: true,
+        ),
+        _field(
+          label: 'HERE-SCHLÜSSEL (optional, zweite Quelle)',
+          controller: _hereCtrl,
+          hint: 'API-Key',
+          obscure: true,
+        ),
+        _settingsHeader('KI-PLANUNG'),
+        const SizedBox(height: 6),
+        // Der KI-Zugang hat seinen eigenen Bildschirm - dort gibt es
+        // auch einen echten Verbindungstest.
+        SizedBox(
+          width: double.infinity,
+          child: FlatButton2(
+            label: 'KI-ANBINDUNG EINRICHTEN',
+            onTap: _openConnect,
+          ),
+        ),
+        _settingsHeader('ROUTING-DIENST (FÜR PROFIS)'),
         Row(children: [
           Expanded(
             child: _chip(
@@ -917,7 +1062,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
             'Kostenlos und ohne Schlüssel, mit eigenem Motorrad-Profil. '
             'Standard ist der öffentliche Server der FOSSGIS '
             '(OpenStreetMap). Bitte fair nutzen.',
-            style: TextStyle(fontSize: 10, color: steel, height: 1.4),
+            style: TextStyle(fontSize: 13.5, color: steel, height: 1.4),
           ),
           const SizedBox(height: 8),
           _field(
@@ -938,101 +1083,23 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
             obscure: true,
           ),
         ],
-        const SizedBox(height: 6),
-        const Align(
-          alignment: Alignment.centerLeft,
-          child: TinyLabel('VERKEHRSLAGE (STAUS, SPERRUNGEN)'),
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Immer dabei (kostenlos): amtliche Baustellen, Sperrungen und '
-          'Staus der Autobahn GmbH auf deutschen Autobahnen.\n'
-          'Für Staus und Sperrungen auf ALLEN Straßen und in ganz Europa: '
-          'TomTom-Schlüssel (developer.tomtom.com, 2.500 Abfragen am Tag '
-          'frei). Zusätzlich HERE (developer.here.com) als zweite Quelle - '
-          'dieselbe Meldung aus mehreren Quellen erscheint nur einmal. '
-          'Mit TomTom färbt die Karte außerdem Straßen nach Verkehrsfluss.',
-          style: TextStyle(fontSize: 10, color: steel, height: 1.4),
-        ),
-        const SizedBox(height: 8),
-        _field(
-          label: 'TOMTOM-SCHLÜSSEL (Hauptquelle)',
-          controller: _tomtomCtrl,
-          hint: 'API-Key',
-          obscure: true,
-        ),
-        _field(
-          label: 'HERE-SCHLÜSSEL (optional, zweite Quelle)',
-          controller: _hereCtrl,
-          hint: 'API-Key',
-          obscure: true,
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Spritpreise an den Tankstopps (nur Deutschland): kostenloser '
-          'Schlüssel von Tankerkönig (creativecommons.tankerkoenig.de).',
-          style: TextStyle(fontSize: 10, color: steel, height: 1.4),
-        ),
-        const SizedBox(height: 6),
-        _field(
-          label: 'TANKERKÖNIG-SCHLÜSSEL (optional)',
-          controller: _tankerCtrl,
-          hint: 'API-Key',
-          obscure: true,
-        ),
-        Wrap(spacing: 6, children: [
-          for (final f in FuelType.values)
-            ChoiceChip(
-              label: Text(f.label, style: const TextStyle(fontSize: 11)),
-              selected: _fuelType == f,
-              onSelected: (_) => setState(() => _fuelType = f),
-            ),
-        ]),
-        const SizedBox(height: 6),
-        _switchRow('Sprachansagen bei der Navigation', _voice,
-            (v) => setState(() => _voice = v)),
-        if (_voice) const _VoicePicker(),
-        const _BlockList(),
-        _switchRow('Vor engen Kurven warnen (wenn zu schnell)', _curveWarn,
-            (v) => setState(() => _curveWarn = v)),
-        _switchRow('Tempolimit anzeigen (OpenStreetMap)', _showLimits,
-            (v) => setState(() => _showLimits = v)),
-        if (_showLimits)
-          _switchRow('Warnen, wenn zu schnell (Ansage)', _speedWarn,
-              (v) => setState(() => _speedWarn = v)),
-        _switchRow('Feste Blitzer bei der Planung zeigen', _showCameras,
-            (v) => setState(() => _showCameras = v)),
-        if (_showCameras)
-          const Padding(
-            padding: EdgeInsets.only(bottom: 6),
-            child: Text(
-              'Nur vor der Fahrt: Sobald Navigation oder Aufzeichnung '
-              'laufen, sind die Blitzer ausgeblendet - Blitzerwarner '
-              'während der Fahrt sind in Deutschland, Österreich und der '
-              'Schweiz verboten (DE: § 23 Abs. 1c StVO).',
-              style: TextStyle(fontSize: 10, color: steel, height: 1.4),
-            ),
-          ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 10),
         SizedBox(
           width: double.infinity,
           child: FlatButton2(
-            label: 'EINSTELLUNGEN SPEICHERN',
+            label: 'SPEICHERN',
+            color: signal,
+            strong: true,
             onTap: _saveRouting,
           ),
         ),
-        const SizedBox(height: 10),
-        // Der KI-Zugang hat seinen eigenen Bildschirm - dort gibt es
-        // auch einen echten Verbindungstest.
-        SizedBox(
-          width: double.infinity,
-          child: FlatButton2(
-            label: 'KI-ANBINDUNG EINRICHTEN',
-            onTap: _openConnect,
-          ),
+        const Padding(
+          padding: EdgeInsets.only(top: 8),
+          child: Text('Wird beim Verlassen der Seite auch automatisch '
+              'gespeichert.',
+              style: TextStyle(fontSize: 13.5, color: steel)),
         ),
-      ],
-    );
+    ];
   }
 
   Widget _field({
@@ -1052,7 +1119,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
             controller: controller,
             obscureText: obscure,
             autocorrect: false,
-            style: const TextStyle(fontSize: 12, color: chalk),
+            style: const TextStyle(fontSize: 15.5, color: chalk),
             decoration: _inputDecoration(hint, dense: true),
           ),
         ],
@@ -1064,7 +1131,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
 InputDecoration _inputDecoration(String? hint, {bool dense = false}) =>
     InputDecoration(
       hintText: hint,
-      hintStyle: const TextStyle(fontSize: 11, color: steel),
+      hintStyle: const TextStyle(fontSize: 14.5, color: steel),
       isDense: dense,
       filled: true,
       fillColor: asphalt,
@@ -1205,10 +1272,10 @@ class _PlaceFieldState extends State<_PlaceField> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(v.name,
-                        style: const TextStyle(fontSize: 12, color: chalk)),
+                        style: const TextStyle(fontSize: 15.5, color: chalk)),
                     if (v.detail.isNotEmpty)
                       Text(v.detail,
-                          style: const TextStyle(fontSize: 9.5, color: steel)),
+                          style: const TextStyle(fontSize: 13, color: steel)),
                   ],
                 ),
               ),
@@ -1234,7 +1301,7 @@ class _PlaceFieldState extends State<_PlaceField> {
               textInputAction: TextInputAction.search,
               onChanged: _onTyped,
               onSubmitted: (_) => _search(),
-              style: const TextStyle(fontSize: 12, color: chalk),
+              style: const TextStyle(fontSize: 15.5, color: chalk),
               decoration: _inputDecoration(widget.hint, dense: true),
             ),
           ),
@@ -1253,14 +1320,14 @@ class _PlaceFieldState extends State<_PlaceField> {
             onPressed: _pickOnMap,
             icon: const Icon(Icons.add_location_alt, size: 16, color: cool),
             label: const Text('AUF DER KARTE WÄHLEN',
-                style: TextStyle(fontSize: 10, letterSpacing: 1.2, color: cool)),
+                style: TextStyle(fontSize: 13.5, letterSpacing: 1.2, color: cool)),
           ),
         ),
         if (_msg != null)
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Text(_msg!,
-                style: const TextStyle(fontSize: 10, color: amber)),
+                style: const TextStyle(fontSize: 13.5, color: amber)),
           ),
         for (final p in _results)
           InkWell(
@@ -1282,10 +1349,10 @@ class _PlaceFieldState extends State<_PlaceField> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(p.name,
-                      style: const TextStyle(fontSize: 11.5, color: chalk)),
+                      style: const TextStyle(fontSize: 15, color: chalk)),
                   if (p.detail.isNotEmpty)
                     Text(p.detail,
-                        style: const TextStyle(fontSize: 9.5, color: steel)),
+                        style: const TextStyle(fontSize: 13, color: steel)),
                   if (p.kind.isNotEmpty || widget.nearLat != null)
                     Text(
                       [
@@ -1294,7 +1361,7 @@ class _PlaceFieldState extends State<_PlaceField> {
                           Geocoder.distanceText(Geocoder.distanceTo(
                               p, widget.nearLat!, widget.nearLon!)),
                       ].join(' · '),
-                      style: const TextStyle(fontSize: 9, color: cool),
+                      style: const TextStyle(fontSize: 12.5, color: cool),
                     ),
                 ],
               ),
@@ -1334,7 +1401,7 @@ class _VoicePickerState extends State<_VoicePicker> {
   @override
   Widget build(BuildContext context) {
     final cur = Voice.instance.current;
-    const small = TextStyle(fontSize: 10, color: steel, height: 1.4);
+    const small = TextStyle(fontSize: 13.5, color: steel, height: 1.4);
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(10),
@@ -1371,7 +1438,7 @@ class _VoicePickerState extends State<_VoicePicker> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(_voices[i].label(i),
-                          style: const TextStyle(fontSize: 11.5, color: chalk)),
+                          style: const TextStyle(fontSize: 15, color: chalk)),
                     ),
                     const Icon(Icons.volume_up, size: 15, color: steel),
                   ]),
@@ -1379,7 +1446,7 @@ class _VoicePickerState extends State<_VoicePicker> {
               ),
           const SizedBox(height: 6),
           Row(children: [
-            const Text('Tempo', style: TextStyle(fontSize: 11, color: steel)),
+            const Text('Tempo', style: TextStyle(fontSize: 14.5, color: steel)),
             Expanded(
               child: Slider(
                 value: Voice.instance.rate,
@@ -1410,7 +1477,7 @@ class _VoicePickerState extends State<_VoicePicker> {
             },
             icon: const Icon(Icons.record_voice_over, size: 16, color: cool),
             label: const Text('WEITERE STIMMEN',
-                style: TextStyle(fontSize: 10, letterSpacing: 1.2, color: cool)),
+                style: TextStyle(fontSize: 13.5, letterSpacing: 1.2, color: cool)),
           ),
         ],
       ),
@@ -1432,11 +1499,11 @@ class _BlockList extends StatelessWidget {
         childrenPadding: EdgeInsets.zero,
         title: Text('EIGENE SPERREN (${u.blocks.length})',
             style: const TextStyle(
-                fontSize: 11, letterSpacing: 1.6, color: chalk)),
+                fontSize: 14.5, letterSpacing: 1, color: chalk)),
         subtitle: const Text(
             'Straßen, die jede Route meidet. Neu: auf der Karte lange '
             'drücken -> "Straße hier dauerhaft sperren".',
-            style: TextStyle(fontSize: 10, color: steel, height: 1.4)),
+            style: TextStyle(fontSize: 13.5, color: steel, height: 1.4)),
         children: [
           for (final b in u.blocks.reversed)
             ListTile(
@@ -1444,12 +1511,12 @@ class _BlockList extends StatelessWidget {
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.block, color: redline, size: 18),
               title: Text(b.label,
-                  style: const TextStyle(fontSize: 12.5, color: chalk)),
+                  style: const TextStyle(fontSize: 16, color: chalk)),
               subtitle: Text(
                   '${b.point.lat.toStringAsFixed(5)}, '
                   '${b.point.lon.toStringAsFixed(5)} · '
                   '${b.created.day}.${b.created.month}.${b.created.year}',
-                  style: const TextStyle(fontSize: 10, color: steel)),
+                  style: const TextStyle(fontSize: 13.5, color: steel)),
               trailing: IconButton(
                 tooltip: 'Sperre aufheben',
                 icon: const Icon(Icons.delete_outline, color: steel),
@@ -1460,4 +1527,14 @@ class _BlockList extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// Alle Einstellungen der App auf einer Seite.
+class SettingsScreen extends StatelessWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      const RoutePlannerScreen(settingsOnly: true);
 }

@@ -1,44 +1,196 @@
+import 'dart:math' as math;
+
 
 import 'package:flutter/material.dart';
 
 /// Zentrale Farb- und Stil-Definitionen.
 /// Alle Screens greifen hierauf zu, damit das Design konsistent bleibt.
 
+/// Schrift der App: schmal und kraeftig (Barlow Semi Condensed) - viel
+/// Text auf wenig Platz, auch mit Helm und in der Sonne gut lesbar.
+const kFont = 'Barlow';
+
+/// Mindestgroesse fuer alles, was man waehrend der Fahrt antippt
+/// (Handschuh). Sonst mindestens 48.
+const double kTouchRide = 60;
+const double kTouch = 48;
+
 const asphalt = Color(0xFF0B0D10);
-const panel = Color(0xFF14181E);
-const line = Color(0xFF232A33);
-const chalk = Color(0xFFEDEFF2);
-const steel = Color(0xFF7E8794);
-const signal = Color(0xFFFF4D00);
+const panel = Color(0xFF151A21);
+const panel2 = Color(0xFF1D242D);
+const line = Color(0xFF2A323D);
+const chalk = Color(0xFFF2F4F6);
+
+/// Nebentext - heller als frueher (Lesbarkeit in der Sonne).
+const steel = Color(0xFF97A1AE);
+const signal = Color(0xFFFF5A0A);
 const amber = Color(0xFFFFB020);
 const redline = Color(0xFFFF3141);
-const cool = Color(0xFF3A9BD9);
+const cool = Color(0xFF45A8E6);
+const go = Color(0xFF7FBF4F);
+
+/// Zahlen gleich breit - springen beim Hochzaehlen nicht hin und her.
+const tabular = [FontFeature.tabularFigures()];
+
+/// Sportliche Ecken: schraeg abgeschnitten statt rund.
+const OutlinedBorder kShape =
+    BeveledRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(7)));
 
 /// Farbe fuer einen Schraeglagenwert (Betrag in Grad).
 Color leanColor(double absDeg) {
   if (absDeg >= 48) return redline;
   if (absDeg >= 35) return amber;
   if (absDeg >= 20) return signal;
-  if (absDeg >= 8) return const Color(0xFF7FBF4F);
+  if (absDeg >= 8) return go;
   return cool;
 }
 
 ThemeData buildTheme() {
+  const text = TextTheme(
+    displayLarge: TextStyle(fontSize: 56, fontWeight: FontWeight.w800),
+    headlineMedium: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
+    titleLarge: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+    titleMedium: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+    bodyLarge: TextStyle(fontSize: 17),
+    bodyMedium: TextStyle(fontSize: 16),
+    bodySmall: TextStyle(fontSize: 14, color: steel),
+    labelLarge: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+  );
+  const btnText = TextStyle(
+      fontFamily: kFont,
+      fontSize: 16,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.8);
   return ThemeData(
     brightness: Brightness.dark,
     scaffoldBackgroundColor: asphalt,
-    colorScheme: const ColorScheme.dark(primary: signal, surface: panel),
-    fontFamily: 'monospace',
+    colorScheme: const ColorScheme.dark(
+      primary: signal,
+      onPrimary: asphalt,
+      secondary: cool,
+      surface: panel,
+      onSurface: chalk,
+      error: redline,
+    ),
+    fontFamily: kFont,
+    textTheme: text.apply(bodyColor: chalk, displayColor: chalk),
+    materialTapTargetSize: MaterialTapTargetSize.padded,
     appBarTheme: const AppBarTheme(
       backgroundColor: asphalt,
       elevation: 0,
+      toolbarHeight: 60,
+      iconTheme: IconThemeData(size: 28, color: chalk),
       titleTextStyle: TextStyle(
-        fontFamily: 'monospace',
-        fontSize: 14,
-        letterSpacing: 4,
-        fontWeight: FontWeight.w700,
+        fontFamily: kFont,
+        fontSize: 21,
+        letterSpacing: 1.2,
+        fontWeight: FontWeight.w800,
+        fontStyle: FontStyle.italic,
         color: chalk,
       ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        minimumSize: const Size(kTouch, 52),
+        shape: kShape,
+        textStyle: btnText,
+        backgroundColor: signal,
+        foregroundColor: asphalt,
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(kTouch, 52),
+        shape: kShape,
+        textStyle: btnText,
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        minimumSize: const Size(kTouch, kTouch),
+        textStyle: btnText,
+        foregroundColor: signal,
+      ),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(minimumSize: const Size(kTouch, kTouch)),
+    ),
+    listTileTheme: const ListTileThemeData(
+      minVerticalPadding: 10,
+      minTileHeight: 56,
+      iconColor: steel,
+      titleTextStyle: TextStyle(fontFamily: kFont, fontSize: 17, color: chalk),
+      subtitleTextStyle:
+          TextStyle(fontFamily: kFont, fontSize: 14, color: steel, height: 1.3),
+    ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected) ? asphalt : steel),
+      trackColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected) ? signal : line),
+      trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+    ),
+    sliderTheme: const SliderThemeData(
+      trackHeight: 6,
+      activeTrackColor: signal,
+      inactiveTrackColor: line,
+      thumbColor: signal,
+      thumbShape: RoundSliderThumbShape(enabledThumbRadius: 13),
+      overlayShape: RoundSliderOverlayShape(overlayRadius: 26),
+    ),
+    chipTheme: const ChipThemeData(
+      backgroundColor: panel,
+      selectedColor: signal,
+      side: BorderSide(color: line),
+      shape: kShape,
+      labelStyle: TextStyle(fontFamily: kFont, fontSize: 15, color: chalk),
+      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    ),
+    inputDecorationTheme: const InputDecorationTheme(
+      filled: true,
+      fillColor: panel,
+      contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      hintStyle: TextStyle(fontFamily: kFont, fontSize: 16, color: steel),
+      labelStyle: TextStyle(fontFamily: kFont, fontSize: 16, color: steel),
+      enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.zero, borderSide: BorderSide(color: line)),
+      focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.zero,
+          borderSide: BorderSide(color: signal, width: 2)),
+      border: OutlineInputBorder(borderRadius: BorderRadius.zero),
+    ),
+    tabBarTheme: const TabBarThemeData(
+      labelStyle: TextStyle(
+          fontFamily: kFont, fontSize: 16, fontWeight: FontWeight.w800),
+      unselectedLabelStyle: TextStyle(
+          fontFamily: kFont, fontSize: 16, fontWeight: FontWeight.w600),
+      labelColor: chalk,
+      unselectedLabelColor: steel,
+      indicatorColor: signal,
+    ),
+    dialogTheme: const DialogThemeData(
+      backgroundColor: panel,
+      shape: kShape,
+      titleTextStyle: TextStyle(
+          fontFamily: kFont,
+          fontSize: 20,
+          fontWeight: FontWeight.w800,
+          color: chalk),
+      contentTextStyle: TextStyle(
+          fontFamily: kFont, fontSize: 16, color: steel, height: 1.4),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: panel,
+      shape: RoundedRectangleBorder(),
+      showDragHandle: true,
+      dragHandleColor: steel,
+    ),
+    snackBarTheme: const SnackBarThemeData(
+      contentTextStyle: TextStyle(fontFamily: kFont, fontSize: 16, color: chalk),
+    ),
+    expansionTileTheme: const ExpansionTileThemeData(
+      iconColor: signal,
+      collapsedIconColor: steel,
     ),
   );
 }
@@ -52,7 +204,11 @@ class TinyLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
         text,
-        style: TextStyle(fontSize: 8.5, letterSpacing: 2.2, color: color),
+        style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.3,
+            color: color),
       );
 }
 
@@ -98,17 +254,17 @@ class StatCard extends StatelessWidget {
               Text(
                 value,
                 style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  fontFeatures: [FontFeature.tabularFigures()],
+                  fontSize: 32,
+                  fontWeight: FontWeight.w800,
+                  fontFeatures: tabular,
                   color: chalk,
                 ),
               ),
               if (unit.isNotEmpty)
-                Text(unit, style: const TextStyle(fontSize: 14, color: steel)),
+                Text(unit, style: const TextStyle(fontSize: 17, color: steel)),
               if (sub != null) ...[
                 const Spacer(),
-                Text(sub!, style: const TextStyle(fontSize: 9, color: steel)),
+                Text(sub!, style: const TextStyle(fontSize: 13, color: steel)),
               ],
             ],
           ),
@@ -152,17 +308,18 @@ class FlatButton2 extends StatelessWidget {
       style: OutlinedButton.styleFrom(
         backgroundColor: fill,
         foregroundColor: color,
-        side: BorderSide(color: color, width: strong ? 1.4 : 1),
-        padding: EdgeInsets.symmetric(vertical: tall ? 18 : (strong ? 13 : 11)),
-        shape: const RoundedRectangleBorder(),
+        side: BorderSide(color: color, width: strong ? 2 : 1.4),
+        minimumSize: Size(kTouch, tall ? kTouchRide : 52),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        shape: kShape,
       ),
       child: Text(
         label,
         textAlign: TextAlign.center,
         style: TextStyle(
-          fontSize: strong ? 11.5 : 9.5,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 1.4,
+          fontSize: tall || strong ? 17 : 15,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.8,
           color: fill == color ? asphalt : (strong ? color : chalk),
         ),
       ),
@@ -170,21 +327,30 @@ class FlatButton2 extends StatelessWidget {
   }
 }
 
+/// Kurze Meldung - in der oberen Bildschirmhaelfte: verdeckt weder die
+/// grossen Knoepfe unten noch die Abbiegeanzeige oben.
 void toast(BuildContext context, String msg) {
+  final mq = MediaQuery.of(context);
+  final bottom = math.max(16.0, mq.size.height * 0.52);
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(
       content: Text(
         msg,
         textAlign: TextAlign.center,
-        style: const TextStyle(letterSpacing: 1.4, color: chalk),
+        style: const TextStyle(
+            fontSize: 16, fontWeight: FontWeight.w600, color: chalk),
       ),
-      backgroundColor: panel,
+      backgroundColor: panel2,
       behavior: SnackBarBehavior.floating,
-      shape: const RoundedRectangleBorder(
-        side: BorderSide(color: signal),
+      margin: EdgeInsets.fromLTRB(16, 0, 16, bottom),
+      dismissDirection: DismissDirection.up,
+      shape: const BeveledRectangleBorder(
+        side: BorderSide(color: signal, width: 1.5),
+        borderRadius: BorderRadius.all(Radius.circular(7)),
       ),
-      duration: const Duration(milliseconds: 1500),
+      // Lang genug, um es auch waehrend der Fahrt lesen zu koennen.
+      duration: const Duration(milliseconds: 3000),
     ));
 }
 

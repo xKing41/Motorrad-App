@@ -169,8 +169,8 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
             SizedBox(width: 8),
             Text('IM NOTFALL',
                 style: TextStyle(
-                    fontSize: 12,
-                    letterSpacing: 3,
+                    fontSize: 15.5,
+                    letterSpacing: 1.4,
                     fontWeight: FontWeight.w700,
                     color: redline)),
           ]),
@@ -198,12 +198,12 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
           SizedBox(
             width: 96,
             child: Text(k,
-                style: const TextStyle(fontSize: 10.5, color: steel)),
+                style: const TextStyle(fontSize: 14, color: steel)),
           ),
           Expanded(
             child: Text(v,
                 style: const TextStyle(
-                    fontSize: 12, color: chalk, height: 1.35)),
+                    fontSize: 15.5, color: chalk, height: 1.35)),
           ),
         ]),
       );
@@ -218,16 +218,16 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 10, color: steel)),
+        Text(label, style: const TextStyle(fontSize: 13.5, color: steel)),
         const SizedBox(height: 4),
         TextField(
           controller: c,
           maxLines: lines,
           keyboardType: keyboard,
-          style: const TextStyle(fontSize: 12.5, color: chalk),
+          style: const TextStyle(fontSize: 16, color: chalk),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: const TextStyle(fontSize: 11, color: steel),
+            hintStyle: const TextStyle(fontSize: 14.5, color: steel),
             isDense: true,
             filled: true,
             fillColor: asphalt,
@@ -264,7 +264,7 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
           const SizedBox(width: 10),
           const Expanded(
             child: Text('Sturz automatisch erkennen',
-                style: TextStyle(fontSize: 12, color: chalk)),
+                style: TextStyle(fontSize: 15.5, color: chalk)),
           ),
         ]),
       ),
@@ -302,7 +302,7 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
               'SMS nach dem Countdown automatisch senden (empfohlen). '
               'Sonst öffnet sich nur die SMS-App - wer bewusstlos ist, '
               'kann dort nicht auf Senden tippen.',
-              style: TextStyle(fontSize: 11.5, color: chalk, height: 1.35),
+              style: TextStyle(fontSize: 15, color: chalk, height: 1.35),
             ),
           ),
         ]),
@@ -343,7 +343,7 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
               'unterwegs mit Kartenlink zur Position und am Ende "Fahrt '
               'beendet". Ohne Server, ohne Konto - der Kontakt braucht '
               'keine App. SMS braucht nur Netz, kein Internet.',
-              style: TextStyle(fontSize: 11.5, color: chalk, height: 1.35),
+              style: TextStyle(fontSize: 15, color: chalk, height: 1.35),
             ),
           ),
         ]),
@@ -357,7 +357,7 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
       const Padding(
         padding: EdgeInsets.only(top: 8, right: 4),
         child: Text('Position alle',
-            style: TextStyle(fontSize: 11, color: steel)),
+            style: TextStyle(fontSize: 14.5, color: steel)),
       ),
       for (final m in [0, 30, 60, 120])
         InkWell(
@@ -374,7 +374,7 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
             ),
             child: Text(label(m),
                 style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 14.5,
                     fontWeight: FontWeight.w600,
                     color: em.companionEveryMin == m ? chalk : steel)),
           ),
@@ -386,7 +386,7 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
     return Row(children: [
       const Expanded(
         child: Text('Countdown vor dem Senden',
-            style: TextStyle(fontSize: 11, color: steel)),
+            style: TextStyle(fontSize: 14.5, color: steel)),
       ),
       for (final s in [20, 30, 45])
         Padding(
@@ -406,7 +406,7 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
               ),
               child: Text('$s s',
                   style: TextStyle(
-                      fontSize: 11,
+                      fontSize: 14.5,
                       fontWeight: FontWeight.w600,
                       color: em.countdownSec == s ? chalk : steel)),
             ),
@@ -434,7 +434,7 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
               'deutlich anders als vorher (Motorrad liegt, Handy '
               'weggeflogen). Damit lösen Schlaglöcher, ein Schlag vor der '
               'Ampel und ein umgefallenes Handy im Stand keinen Alarm aus.',
-              style: TextStyle(fontSize: 10.5, color: steel, height: 1.55),
+              style: TextStyle(fontSize: 14, color: steel, height: 1.55),
             ),
             SizedBox(height: 8),
             Text(
@@ -442,7 +442,7 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
               'sanftes Wegrutschen ohne harten Aufprall kann übersehen '
               'werden. Verlass dich nicht darauf – wenn du kannst, ruf '
               'immer selbst 112.',
-              style: TextStyle(fontSize: 10.5, color: steel, height: 1.55),
+              style: TextStyle(fontSize: 14, color: steel, height: 1.55),
             ),
             SizedBox(height: 8),
             Text(
@@ -452,7 +452,7 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
               'statt Internet, weil im Funkloch oft noch Netz für SMS '
               'reicht. Ein Fehlalarm kostet eine Entwarnung per Anruf - '
               'ein übersehener Sturz womöglich viel mehr.',
-              style: TextStyle(fontSize: 10.5, color: steel, height: 1.55),
+              style: TextStyle(fontSize: 14, color: steel, height: 1.55),
             ),
           ],
         ),

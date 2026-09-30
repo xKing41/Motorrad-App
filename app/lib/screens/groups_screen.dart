@@ -21,7 +21,7 @@ import 'map_pick_screen.dart';
 //  kann funken.
 // ---------------------------------------------------------------------------
 
-const _small = TextStyle(fontSize: 10.5, color: steel, height: 1.4);
+const _small = TextStyle(fontSize: 14, color: steel, height: 1.4);
 
 const _weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
@@ -140,7 +140,7 @@ class GroupsScreen extends StatelessWidget {
                     'oder tritt mit einem Code bei. Gruppen bleiben, bis du '
                     'austrittst - auch wenn die App zu ist. Du kannst in '
                     'mehreren Gruppen sein.',
-                    style: TextStyle(fontSize: 12.5, color: chalk, height: 1.45),
+                    style: TextStyle(fontSize: 16, color: chalk, height: 1.45),
                   ),
                 ),
               const SizedBox(height: 14),
@@ -197,14 +197,14 @@ class GroupsScreen extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        fontSize: 15,
+                        fontSize: 18,
                         fontWeight: FontWeight.w700,
                         color: chalk)),
               ),
               if (live > 0) ...[
                 const Icon(Icons.two_wheeler, size: 14, color: cool),
                 const SizedBox(width: 3),
-                Text('$live', style: const TextStyle(fontSize: 11, color: cool)),
+                Text('$live', style: const TextStyle(fontSize: 14.5, color: cool)),
                 const SizedBox(width: 8),
               ],
               if (s.unread > 0)
@@ -214,7 +214,7 @@ class GroupsScreen extends StatelessWidget {
                   color: signal,
                   child: Text('${s.unread}',
                       style: const TextStyle(
-                          fontSize: 11,
+                          fontSize: 14.5,
                           fontWeight: FontWeight.w800,
                           color: asphalt)),
                 ),
@@ -224,7 +224,7 @@ class GroupsScreen extends StatelessWidget {
               Text('${fmtWhen(next.when)} · ${next.title}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, color: amber)),
+                  style: const TextStyle(fontSize: 15.5, color: amber)),
             ],
             if (last != null) ...[
               const SizedBox(height: 3),
@@ -235,7 +235,7 @@ class GroupsScreen extends StatelessWidget {
             ],
             if (s.error != null) ...[
               const SizedBox(height: 3),
-              Text(s.error!, style: const TextStyle(fontSize: 10, color: amber)),
+              Text(s.error!, style: const TextStyle(fontSize: 13.5, color: amber)),
             ],
           ],
         ),
@@ -324,7 +324,7 @@ class _GroupScreenState extends State<GroupScreen>
           indicatorColor: signal,
           labelColor: chalk,
           unselectedLabelColor: steel,
-          labelStyle: const TextStyle(fontSize: 11, letterSpacing: 1.6),
+          labelStyle: const TextStyle(fontSize: 14.5, letterSpacing: 1),
           tabs: [
             const Tab(text: 'CHAT'),
             Tab(text: 'AUSFAHRTEN (${s.upcoming.length})'),
@@ -355,7 +355,7 @@ class _GroupScreenState extends State<GroupScreen>
               s.pending > 0
                   ? 'Offline - ${s.pending} Nachricht(en) warten und gehen raus, sobald Netz da ist.'
                   : 'Offline - neue Nachrichten kommen, sobald Netz da ist.',
-              style: const TextStyle(fontSize: 10.5, color: amber)),
+              style: const TextStyle(fontSize: 14, color: amber)),
         ),
       Expanded(
         child: msgs.isEmpty
@@ -393,7 +393,7 @@ class _GroupScreenState extends State<GroupScreen>
                 maxLines: 4,
                 maxLength: 1000,
                 textCapitalization: TextCapitalization.sentences,
-                style: const TextStyle(color: chalk, fontSize: 14),
+                style: const TextStyle(color: chalk, fontSize: 17.5),
                 decoration: const InputDecoration(
                   hintText: 'Nachricht',
                   counterText: '',
@@ -433,14 +433,14 @@ class _GroupScreenState extends State<GroupScreen>
               if (showName && !mine)
                 Text(m.from,
                     style: const TextStyle(
-                        fontSize: 10.5,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                         color: cool)),
               SelectableText(m.text,
-                  style: const TextStyle(fontSize: 14, color: chalk, height: 1.3)),
+                  style: const TextStyle(fontSize: 17.5, color: chalk, height: 1.3)),
               const SizedBox(height: 2),
               Text(fmtWhen(m.at),
-                  style: const TextStyle(fontSize: 9, color: steel)),
+                  style: const TextStyle(fontSize: 12.5, color: steel)),
             ],
           ),
         ),
@@ -495,11 +495,11 @@ class _GroupScreenState extends State<GroupScreen>
         children: [
           Text(fmtWhen(r.when),
               style: const TextStyle(
-                  fontSize: 12, letterSpacing: 1, color: amber)),
+                  fontSize: 15.5, letterSpacing: 1, color: amber)),
           const SizedBox(height: 2),
           Text(r.title,
               style: const TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.w700, color: chalk)),
+                  fontSize: 19, fontWeight: FontWeight.w700, color: chalk)),
           if (r.meetName != null || r.meet != null) ...[
             const SizedBox(height: 4),
             Row(children: [
@@ -512,7 +512,7 @@ class _GroupScreenState extends State<GroupScreen>
                       if (me != null && r.meet != null)
                         _fmtDist(dist(me, r.meet!)),
                     ].join(' · '),
-                    style: const TextStyle(fontSize: 12, color: chalk)),
+                    style: const TextStyle(fontSize: 15.5, color: chalk)),
               ),
             ]),
           ],
@@ -522,7 +522,7 @@ class _GroupScreenState extends State<GroupScreen>
               const Icon(Icons.route, size: 14, color: steel),
               const SizedBox(width: 4),
               Text('Tour ${km.round()} km',
-                  style: const TextStyle(fontSize: 12, color: chalk)),
+                  style: const TextStyle(fontSize: 15.5, color: chalk)),
             ]),
           ],
           const SizedBox(height: 6),
@@ -555,7 +555,7 @@ class _GroupScreenState extends State<GroupScreen>
               TextButton.icon(
                 icon: const Icon(Icons.navigation, size: 16, color: cool),
                 label: const Text('ZUM TREFFPUNKT',
-                    style: TextStyle(fontSize: 11, color: cool)),
+                    style: TextStyle(fontSize: 14.5, color: cool)),
                 onPressed: () => _backToMap(() => widget.onGoTo(Place(
                       name: r.meetName ?? 'Treffpunkt ${r.title}',
                       lat: r.meet!.lat,
@@ -567,7 +567,7 @@ class _GroupScreenState extends State<GroupScreen>
               TextButton.icon(
                 icon: const Icon(Icons.download, size: 16, color: cool),
                 label: const Text('TOUR LADEN',
-                    style: TextStyle(fontSize: 11, color: cool)),
+                    style: TextStyle(fontSize: 14.5, color: cool)),
                 onPressed: () => _backToMap(() => widget.onLoadTour(tour)),
               )
             else if (km != null)
@@ -579,7 +579,7 @@ class _GroupScreenState extends State<GroupScreen>
               TextButton.icon(
                 icon: const Icon(Icons.delete_outline, size: 16, color: steel),
                 label: const Text('ABSAGEN',
-                    style: TextStyle(fontSize: 11, color: steel)),
+                    style: TextStyle(fontSize: 14.5, color: steel)),
                 onPressed: () async {
                   final ok = await _confirm('Ausfahrt "${r.title}" absagen?',
                       'Sie verschwindet für alle.');
@@ -627,8 +627,8 @@ class _GroupScreenState extends State<GroupScreen>
           Expanded(
             child: SelectableText(s.code,
                 style: const TextStyle(
-                    fontSize: 22,
-                    letterSpacing: 3,
+                    fontSize: 25,
+                    letterSpacing: 1.4,
                     fontWeight: FontWeight.w700,
                     color: cool)),
           ),
@@ -659,7 +659,7 @@ class _GroupScreenState extends State<GroupScreen>
           activeTrackColor: signal,
           inactiveTrackColor: line,
           title: const Text('Beim Fahren live sichtbar und Funk',
-              style: TextStyle(fontSize: 12.5, color: chalk)),
+              style: TextStyle(fontSize: 16, color: chalk)),
           subtitle: const Text(
               'Position (während Aufzeichnung/Navi) und Sprachnachrichten '
               'gehen an diese Gruppe. Aus: nur Chat und Ausfahrten.',
@@ -672,7 +672,7 @@ class _GroupScreenState extends State<GroupScreen>
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.edit, color: steel, size: 20),
           title: const Text('Gruppe umbenennen',
-              style: TextStyle(fontSize: 12.5, color: chalk)),
+              style: TextStyle(fontSize: 16, color: chalk)),
           onTap: () async {
             final n = await _askText(context,
                 title: 'NAME DER GRUPPE', initial: s.name ?? '');
@@ -687,7 +687,7 @@ class _GroupScreenState extends State<GroupScreen>
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.send, color: cool, size: 20),
             title: const Text('Meine Tour an die Gruppe schicken',
-                style: TextStyle(fontSize: 12.5, color: chalk)),
+                style: TextStyle(fontSize: 16, color: chalk)),
             onTap: () async {
               await s.shareTour(widget.route!);
               if (mounted) toast(context, 'Tour an die Gruppe geschickt');
@@ -701,7 +701,7 @@ class _GroupScreenState extends State<GroupScreen>
             title: Text(
                 'Tour von ${s.tourFrom ?? 'der Gruppe'} laden '
                 '(${(s.groupTour!.distanceM / 1000).round()} km)',
-                style: const TextStyle(fontSize: 12.5, color: chalk)),
+                style: const TextStyle(fontSize: 16, color: chalk)),
             onTap: () => _backToMap(() => widget.onLoadTour(s.groupTour!)),
           ),
         const SizedBox(height: 10),
@@ -719,7 +719,7 @@ class _GroupScreenState extends State<GroupScreen>
               const SizedBox(width: 8),
               Expanded(
                 child: Text(m.name,
-                    style: const TextStyle(fontSize: 12.5, color: chalk)),
+                    style: const TextStyle(fontSize: 16, color: chalk)),
               ),
               Text(
                 [
@@ -729,7 +729,7 @@ class _GroupScreenState extends State<GroupScreen>
                   else
                     '${(m.speedMs * 3.6).round()} km/h',
                 ].join(' · '),
-                style: const TextStyle(fontSize: 10.5, color: steel),
+                style: const TextStyle(fontSize: 14, color: steel),
               ),
             ]),
           ),
@@ -743,7 +743,7 @@ class _GroupScreenState extends State<GroupScreen>
               leading: const Icon(Icons.play_arrow, color: cool, size: 20),
               title: Text(
                   '${v.from} · ${v.duration.inSeconds} s · ${fmtClock(v.at)}',
-                  style: const TextStyle(fontSize: 12, color: chalk)),
+                  style: const TextStyle(fontSize: 15.5, color: chalk)),
               onTap: () => Headset.instance.play(v.audio),
             ),
         ],
@@ -776,8 +776,8 @@ class _GroupScreenState extends State<GroupScreen>
       builder: (ctx) => AlertDialog(
         backgroundColor: panel,
         shape: const RoundedRectangleBorder(),
-        title: Text(title, style: const TextStyle(fontSize: 15, color: chalk)),
-        content: Text(text, style: const TextStyle(fontSize: 12.5, color: steel)),
+        title: Text(title, style: const TextStyle(fontSize: 18, color: chalk)),
+        content: Text(text, style: const TextStyle(fontSize: 16, color: steel)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -925,7 +925,7 @@ class _RideEditScreenState extends State<RideEditScreen> {
             controller: _title,
             maxLength: 80,
             textCapitalization: TextCapitalization.sentences,
-            style: const TextStyle(color: chalk, fontSize: 15),
+            style: const TextStyle(color: chalk, fontSize: 18),
             decoration: const InputDecoration(
                 hintText: 'z. B. Sauerland-Runde, Eis am Möhnesee'),
           ),
@@ -948,7 +948,7 @@ class _RideEditScreenState extends State<RideEditScreen> {
                                 ? 'Morgen'
                                 : '${_weekdays[d.weekday - 1]} ${d.day}.${d.month}.',
                         style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 15.5,
                             color: d == _day ? asphalt : chalk),
                       ),
                       selected: d == _day,
@@ -972,9 +972,9 @@ class _RideEditScreenState extends State<RideEditScreen> {
                 const Icon(Icons.schedule, color: steel, size: 20),
                 const SizedBox(width: 10),
                 Text('${_two(_time.hour)}:${_two(_time.minute)} Uhr',
-                    style: const TextStyle(fontSize: 16, color: chalk)),
+                    style: const TextStyle(fontSize: 19, color: chalk)),
                 const Spacer(),
-                const Text('ÄNDERN', style: TextStyle(fontSize: 10.5, color: cool)),
+                const Text('ÄNDERN', style: TextStyle(fontSize: 14, color: cool)),
               ]),
             ),
           ),
@@ -990,7 +990,7 @@ class _RideEditScreenState extends State<RideEditScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(_meet!.name,
-                      style: const TextStyle(fontSize: 13.5, color: chalk)),
+                      style: const TextStyle(fontSize: 17, color: chalk)),
                 ),
                 IconButton(
                   icon: const Icon(Icons.close, color: steel, size: 18),
@@ -1026,7 +1026,7 @@ class _RideEditScreenState extends State<RideEditScreen> {
               title: Text(
                   'Aktuelle Tour anhängen '
                   '(${(widget.route!.distanceM / 1000).round()} km)',
-                  style: const TextStyle(fontSize: 12.5, color: chalk)),
+                  style: const TextStyle(fontSize: 16, color: chalk)),
               subtitle: const Text(
                   'Alle können sie mit einem Tipp laden und nachfahren.',
                   style: _small),
@@ -1062,7 +1062,7 @@ Future<String?> _askText(BuildContext context,
       backgroundColor: panel,
       shape: const RoundedRectangleBorder(),
       title: Text(title,
-          style: const TextStyle(fontSize: 13, letterSpacing: 2, color: chalk)),
+          style: const TextStyle(fontSize: 16.5, letterSpacing: 1.2, color: chalk)),
       content: TextField(
         controller: c,
         autofocus: true,

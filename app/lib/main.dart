@@ -7,6 +7,7 @@ import 'screens/dashboard_screen.dart';
 import 'screens/map_screen.dart';
 import 'screens/rides_screen.dart';
 import 'screens/crash_alarm_screen.dart';
+import 'screens/intro_screen.dart';
 import 'services/companion.dart';
 import 'services/emergency.dart';
 import 'services/group_ride.dart';
@@ -90,6 +91,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       }
     });
     _recover();
+    // Beim allerersten Start: kurzer Einstieg.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) IntroScreen.showOnce(context);
+    });
   }
 
   Timer? _backupTimer;
@@ -199,25 +204,25 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         backgroundColor: panel,
         shape: const RoundedRectangleBorder(side: BorderSide(color: line)),
         title: const Text('AUFZEICHNUNG IM HINTERGRUND',
-            style: TextStyle(fontSize: 12, letterSpacing: 2, color: chalk)),
+            style: TextStyle(fontSize: 15.5, letterSpacing: 1.2, color: chalk)),
         content: const Text(
           'Die Fahrt läuft auch bei ausgeschaltetem Bildschirm weiter. '
           'Manche Handys beenden Apps im Hintergrund trotzdem, um Akku zu '
           'sparen. Wenn du "Akku-Optimierung" für Schräglage ausschaltest, '
           'passiert das nicht.\n\nDas kostet selbst keinen Akku - '
           'Schräglage misst nur während einer Fahrt.',
-          style: TextStyle(fontSize: 11.5, color: steel, height: 1.45),
+          style: TextStyle(fontSize: 15, color: steel, height: 1.45),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('SPÄTER',
-                style: TextStyle(fontSize: 11, color: steel)),
+                style: TextStyle(fontSize: 14.5, color: steel)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('EINSTELLUNG ÖFFNEN',
-                style: TextStyle(fontSize: 11, color: signal)),
+                style: TextStyle(fontSize: 14.5, color: signal)),
           ),
         ],
       ),
@@ -254,25 +259,28 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           type: BottomNavigationBarType.fixed,
           selectedItemColor: signal,
           unselectedItemColor: steel,
-          selectedLabelStyle:
-              const TextStyle(fontSize: 9, letterSpacing: 2),
-          unselectedLabelStyle:
-              const TextStyle(fontSize: 9, letterSpacing: 2),
+          iconSize: 28,
+          selectedFontSize: 14,
+          unselectedFontSize: 14,
+          selectedLabelStyle: const TextStyle(
+              fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 1),
+          unselectedLabelStyle: const TextStyle(
+              fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 1),
           items: [
             const BottomNavigationBarItem(
-              icon: Icon(Icons.speed, size: 20),
+              icon: Icon(Icons.speed, size: 28),
               label: 'COCKPIT',
             ),
             BottomNavigationBarItem(
               icon: Stack(clipBehavior: Clip.none, children: [
-                const Icon(Icons.map, size: 20),
+                const Icon(Icons.map, size: 28),
                 if (t.recording)
                   Positioned(
                     right: -3,
                     top: -2,
                     child: Container(
-                      width: 7,
-                      height: 7,
+                      width: 10,
+                      height: 10,
                       decoration: const BoxDecoration(
                           color: signal, shape: BoxShape.circle),
                     ),
@@ -281,7 +289,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               label: 'KARTE',
             ),
             const BottomNavigationBarItem(
-              icon: Icon(Icons.list_alt, size: 20),
+              icon: Icon(Icons.list_alt, size: 28),
               label: 'FAHRTEN',
             ),
           ],

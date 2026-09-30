@@ -71,7 +71,7 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
                     'paar kurvigen Fahrten steht hier, wie du links und '
                     'rechts, in engen und weiten Kurven fährst - und wo '
                     'noch Luft ist.',
-                    style: TextStyle(fontSize: 12, color: steel, height: 1.5),
+                    style: TextStyle(fontSize: 15.5, color: steel, height: 1.5),
                   ),
                 )
               : ListView(
@@ -80,7 +80,7 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
                     Text(
                         '${p.corners} Kurven aus ${p.rides} '
                         '${p.rides == 1 ? 'Fahrt' : 'Fahrten'}',
-                        style: const TextStyle(fontSize: 11, color: steel)),
+                        style: const TextStyle(fontSize: 14.5, color: steel)),
                     const SizedBox(height: 12),
                     const TinyLabel('HINWEISE'),
                     const SizedBox(height: 6),
@@ -88,7 +88,7 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
                       const Text(
                           'Für Hinweise braucht es mehr Kurven je Richtung '
                           'und Kurvenart.',
-                          style: TextStyle(fontSize: 11.5, color: steel)),
+                          style: TextStyle(fontSize: 15, color: steel)),
                     for (final i in p.insights)
                       Container(
                         margin: const EdgeInsets.only(bottom: 8),
@@ -97,7 +97,7 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
                             color: panel, border: Border.all(color: line)),
                         child: Text(i,
                             style: const TextStyle(
-                                fontSize: 12, color: chalk, height: 1.45)),
+                                fontSize: 15.5, color: chalk, height: 1.45)),
                       ),
                     const SizedBox(height: 12),
                     const TinyLabel('LINKS / RECHTS NACH KURVENART'),
@@ -110,7 +110,7 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
                       const Text(
                         'Kurven, die du in mindestens drei Fahrten gefahren '
                         'bist. Deine eigene Bestenliste - ohne Stoppuhr.',
-                        style: TextStyle(fontSize: 10, color: steel),
+                        style: TextStyle(fontSize: 13.5, color: steel),
                       ),
                       const SizedBox(height: 6),
                       for (final h in _home) _homeTile(h),
@@ -127,7 +127,7 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
                       'Querbeschleunigung gemessen, bei älteren Fahrten aus '
                       'der Schräglage berechnet. Keine Rangliste: '
                       'Gleichmäßigkeit zählt, nicht Tempo.',
-                      style: TextStyle(fontSize: 10, color: steel, height: 1.5),
+                      style: TextStyle(fontSize: 13.5, color: steel, height: 1.5),
                     ),
                   ],
                 ),
@@ -163,11 +163,11 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
                 Text(
                     '${h.right ? 'Rechtskurve' : 'Linkskurve'} · '
                     '${h.count}× gefahren',
-                    style: const TextStyle(fontSize: 12, color: chalk)),
+                    style: const TextStyle(fontSize: 15.5, color: chalk)),
                 Text(
                     'Beste ${h.best.round()}° · zuletzt ${h.last.round()}° · '
                     '$trend · Streuung ±${h.spread.round()}°',
-                    style: const TextStyle(fontSize: 10, color: steel)),
+                    style: const TextStyle(fontSize: 13.5, color: steel)),
               ],
             ),
           ),
@@ -178,13 +178,13 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
   }
 
   Widget _table(RiderProfile p) {
-    const h = TextStyle(fontSize: 9, letterSpacing: 1, color: steel);
-    const v = TextStyle(fontSize: 12, color: chalk);
+    const h = TextStyle(fontSize: 12.5, letterSpacing: 1, color: steel);
+    const v = TextStyle(fontSize: 15.5, color: chalk);
     TableRow row(String label, CornerStats? l, CornerStats? r) => TableRow(
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Text(label, style: const TextStyle(fontSize: 11, color: chalk)),
+              child: Text(label, style: const TextStyle(fontSize: 14.5, color: chalk)),
             ),
             Text('${_deg(l)} / ${_deg(r)}', style: v),
             Text('${_g(l)} / ${_g(r)}', style: v),
@@ -251,7 +251,7 @@ class _TrendPainter extends CustomPainter {
     final tp = TextPainter(
       text: TextSpan(
           text: '${hi.round() - 2}° max · ${lo.round() + 2}° min',
-          style: const TextStyle(fontSize: 9, color: steel)),
+          style: const TextStyle(fontSize: 12.5, color: steel)),
       textDirection: TextDirection.ltr,
     )..layout();
     tp.paint(canvas, const Offset(0, 0));

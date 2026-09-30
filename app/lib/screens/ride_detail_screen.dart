@@ -92,7 +92,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
               children: [
                 Text(fmtDate(r.start),
                     style: const TextStyle(
-                        fontSize: 11, letterSpacing: 1.5, color: steel)),
+                        fontSize: 14.5, letterSpacing: 0.9, color: steel)),
                 const SizedBox(height: 10),
                 if (_track.isEmpty)
                   Container(
@@ -102,7 +102,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                     child: const Text(
                       'Für diese Fahrt wurde keine Strecke aufgezeichnet '
                       '(vermutlich ohne GPS gestartet).',
-                      style: TextStyle(fontSize: 11.5, color: steel),
+                      style: TextStyle(fontSize: 15, color: steel),
                     ),
                   )
                 else
@@ -212,7 +212,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     Widget dot(Color c, String s) => Row(mainAxisSize: MainAxisSize.min, children: [
           Container(width: 9, height: 4, color: c),
           const SizedBox(width: 4),
-          Text(s, style: const TextStyle(fontSize: 8.5, color: steel)),
+          Text(s, style: const TextStyle(fontSize: 12, color: steel)),
         ]);
 
     return Wrap(
@@ -329,9 +329,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
               const SizedBox(height: 3),
               Text('${left.length}',
                   style: const TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.w700, color: chalk)),
+                      fontSize: 23, fontWeight: FontWeight.w700, color: chalk)),
               Text('Ø ${avg(left).round()}°',
-                  style: const TextStyle(fontSize: 10, color: steel)),
+                  style: const TextStyle(fontSize: 13.5, color: steel)),
             ]),
           ),
           Container(width: 1, height: 42, color: line),
@@ -341,9 +341,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
               const SizedBox(height: 3),
               Text('${right.length}',
                   style: const TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.w700, color: chalk)),
+                      fontSize: 23, fontWeight: FontWeight.w700, color: chalk)),
               Text('Ø ${avg(right).round()}°',
-                  style: const TextStyle(fontSize: 10, color: steel)),
+                  style: const TextStyle(fontSize: 13.5, color: steel)),
             ]),
           ),
         ]),
@@ -355,7 +355,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                 : avg(left) > avg(right)
                     ? 'Linkskurven liegen dir im Schnitt besser.'
                     : 'Rechtskurven liegen dir im Schnitt besser.',
-            style: const TextStyle(fontSize: 10.5, color: cool),
+            style: const TextStyle(fontSize: 14, color: cool),
           ),
         ],
       ]),
@@ -382,7 +382,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
           const SizedBox(width: 10),
           Text('${c.maxLean.round()}°',
               style: TextStyle(
-                fontSize: 15,
+                fontSize: 18,
                 fontWeight: FontWeight.w700,
                 color: leanColor(c.maxLean),
               )),
@@ -391,7 +391,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
             'rein ${c.entrySpeedKmh.round()} · '
             'min ${c.minSpeedKmh.round()} · '
             'raus ${c.exitSpeedKmh.round()} km/h',
-            style: const TextStyle(fontSize: 9.5, color: steel),
+            style: const TextStyle(fontSize: 13, color: steel),
           ),
         ]),
       ),
