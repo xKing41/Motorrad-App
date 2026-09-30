@@ -116,6 +116,57 @@ jobs:
           mkdir -p ../out
           cp build/app/outputs/flutter-apk/app-release.apk ../out/Schraeglage.apk
 
+      # Paket fuer den Google Play Store (AAB). Nur, wenn der
+      # Upload-Schluessel als Secret hinterlegt ist (siehe PLAYSTORE.md).
+      # Eigene App-Kennung (com.example... nimmt Google nicht an) und ohne
+      # die Berechtigung "SMS senden" (braucht Sondergenehmigung).
+      - name: Store-Paket (AAB) bauen
+        working-directory: proj
+        env:
+          UPLOAD_KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+          UPLOAD_STORE_PASSWORD: ${{ secrets.UPLOAD_STORE_PASSWORD }}
+          UPLOAD_KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
+          UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
+          STORE_APP_ID: ${{ vars.STORE_APP_ID }}
+        run: |
+          set -e
+          if [ -z "$UPLOAD_KEYSTORE_BASE64" ]; then
+            echo "Kein Upload-Schluessel hinterlegt - Store-Paket uebersprungen."
+            exit 0
+          fi
+          APP_ID="${STORE_APP_ID:-de.schraeglage.app}"
+          cp android/gradle.properties "$RUNNER_TEMP/gradle.properties.bak"
+          cp android/app/src/main/AndroidManifest.xml "$RUNNER_TEMP/Manifest.bak"
+          for f in android/app/build.gradle.kts android/app/build.gradle; do
+            [ -f "$f" ] && cp "$f" "$RUNNER_TEMP/$(basename $f).bak"
+          done
+          echo "$UPLOAD_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          sed -i '/android.injected.signing/d' android/gradle.properties
+          {
+            echo ""
+            echo "android.injected.signing.store.file=$RUNNER_TEMP/upload.jks"
+            echo "android.injected.signing.store.password=$UPLOAD_STORE_PASSWORD"
+            echo "android.injected.signing.key.alias=$UPLOAD_KEY_ALIAS"
+            echo "android.injected.signing.key.password=$UPLOAD_KEY_PASSWORD"
+          } >> android/gradle.properties
+          for f in android/app/build.gradle.kts android/app/build.gradle; do
+            if [ -f "$f" ]; then
+              sed -i -E "s/(applicationId[ =]+\")[^\"]+\"/\1$APP_ID\"/" "$f"
+              grep -n "applicationId" "$f"
+            fi
+          done
+          sed -i -E '/android.permission.(SEND_SMS|RECORD_AUDIO|MODIFY_AUDIO_SETTINGS|BLUETOOTH|BLUETOOTH_CONNECT)"/d' android/app/src/main/AndroidManifest.xml
+          grep -n "uses-permission" android/app/src/main/AndroidManifest.xml
+          flutter build appbundle --release --dart-define=SCHRAEGLAGE_STORE=true
+          cp build/app/outputs/bundle/release/app-release.aab ../out/Schraeglage-Store.aab
+          # Zurueck fuer die Test-App
+          cp "$RUNNER_TEMP/gradle.properties.bak" android/gradle.properties
+          cp "$RUNNER_TEMP/Manifest.bak" android/app/src/main/AndroidManifest.xml
+          for f in android/app/build.gradle.kts android/app/build.gradle; do
+            [ -f "$RUNNER_TEMP/$(basename $f).bak" ] && cp "$RUNNER_TEMP/$(basename $f).bak" "$f"
+          done
+          rm -f "$RUNNER_TEMP/upload.jks"
+
       # Test-App: dieselbe App plus Test-Werkzeuge (Probefahrt ...), mit
       # eigener App-Kennung und eigenem Namen - liegt NEBEN der normalen
       # App auf dem Handy und hat eigene Daten.
@@ -131,6 +182,11 @@ jobs:
           done
           sed -i 's/android:label="Schräglage"/android:label="Schräglage Testing"/' android/app/src/main/AndroidManifest.xml
           grep -n 'android:label' android/app/src/main/AndroidManifest.xml
+          # Eigenes Symbol (blauer Streifen) - auf dem Handy unterscheidbar.
+          if [ -d android/testing-res ]; then
+            cp -r android/testing-res/. android/app/src/main/res/
+            rm -rf android/app/src/main/res/mipmap-anydpi-v26
+          fi
           flutter build apk --release --dart-define=SCHRAEGLAGE_TEST=true
           cp build/app/outputs/flutter-apk/app-release.apk ../out/Schraeglage-Testing.apk
 
@@ -147,6 +203,14 @@ jobs:
           name: Schraeglage-APK
           path: out/Schraeglage.apk
           if-no-files-found: error
+          retention-days: 30
+
+      - name: Store-Paket bereitstellen
+        uses: actions/upload-artifact@v4
+        with:
+          name: Schraeglage-Store-AAB
+          path: out/Schraeglage-Store.aab
+          if-no-files-found: ignore
           retention-days: 30
 
       - name: Test-APK bereitstellen

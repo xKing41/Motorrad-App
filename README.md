@@ -29,6 +29,11 @@ Sturzerkennung mit Notfallkontakt und eine Regenwarnung.
 - **Wetter entlang der Route** zur jeweiligen Ankunftszeit („Regen ab km 140
   gegen 15:30“), Vorschlag für eine trockenere Abfahrtszeit
 
+**Store und Pflege**
+- Fehlerprotokoll mit Bericht auf Wunsch, Akkuverbrauch je Fahrt,
+  Datenschutzerklärung/Impressum in der App, Store-Paket (AAB) per CI,
+  Freemium-Grundlage (Pro noch aus) – siehe `docs/PLAYSTORE.md`
+
 **Bedienung**
 - Sportliches, aufgeräumtes Design (Schrift Barlow Semi Condensed, SIL OFL),
   große Knöpfe für die Bedienung mit Handschuhen, während der Navigation

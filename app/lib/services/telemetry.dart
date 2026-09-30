@@ -763,6 +763,9 @@ class Telemetry extends ChangeNotifier {
   }
 
   void startRecording() {
+    rideBatteryStart = null;
+    rideBatteryNow = null;
+    rideCharged = false;
     recording = true;
     unawaited(_applyPowerMode());
     rideStart = DateTime.now();
@@ -797,7 +800,22 @@ class Telemetry extends ChangeNotifier {
         maxLatG: maxLatG,
         pointCount: track.length,
         movingSec: rideMovingSec.round(),
+        batteryStart: rideBatteryStart,
+        batteryEnd: rideBatteryNow,
+        charged: rideCharged,
       );
+
+  /// Akku der laufenden Fahrt (vom Hauptbildschirm gemeldet).
+  int? rideBatteryStart;
+  int? rideBatteryNow;
+  bool rideCharged = false;
+
+  void noteBattery(int level, bool charging) {
+    if (!recording) return;
+    rideBatteryStart ??= level;
+    rideBatteryNow = level;
+    if (charging) rideCharged = true;
+  }
 
   /// Beendet die Aufzeichnung und liefert die Zusammenfassung.
   /// Das Speichern uebernimmt der RideStore.

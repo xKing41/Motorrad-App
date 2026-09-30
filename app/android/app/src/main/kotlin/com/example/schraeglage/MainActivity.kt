@@ -5,6 +5,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.content.Context
+import android.content.IntentFilter
+import android.os.BatteryManager
 import android.os.PowerManager
 import android.provider.Settings
 import android.telephony.SmsManager
@@ -88,6 +91,18 @@ class MainActivity : FlutterActivity() {
                                 REQUEST_NOTIFY
                             )
                             result.success(false)
+                        }
+                    }
+                    // Akkustand und Ladezustand (Akkuverbrauch je Fahrt).
+                    "battery" -> {
+                        try {
+                            val bm = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+                            val level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                            val st = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                            val plugged = (st?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
+                            result.success(mapOf("level" to level, "charging" to plugged))
+                        } catch (e: Exception) {
+                            result.success(null)
                         }
                     }
                     // Einstellungen der Sprachausgabe (weitere/bessere

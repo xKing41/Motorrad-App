@@ -14,6 +14,39 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.35 - Bereit fuer den Play Store
+-----------------------------------------
+
+FEHLER MELDEN
+- Stuerzt die App ab, fragt sie beim naechsten Start, ob ein Bericht
+  verschickt werden soll (ueber Mail/Messenger, du siehst ihn vorher).
+  Er enthaelt nur technische Angaben - keinen Standort, keine Namen.
+- EINSTELLUNGEN -> "Fehler melden / Rueckmeldung": eigene Beschreibung
+  plus Fehlerprotokoll und letzte Rechenzeiten.
+
+AKKU
+- Jede Fahrt merkt sich den Akkustand bei Start und Ende. In der Fahrt
+  steht der Verbrauch in % je Stunde (ab 15 Minuten, nicht wenn
+  unterwegs geladen wurde).
+
+RECHTLICHES UND STORE
+- Datenschutzerklaerung und Impressum in der App (EINSTELLUNGEN ->
+  Hilfe & Rechtliches) und als Datei fuer die Webseite
+  (docs/datenschutz.md). Platzhalter fuer Name/Anschrift ausfuellen!
+- Lizenzen (Karten, Schrift, Bibliotheken) einsehbar.
+- Neues App-Symbol (Schraeglagen-Skala); die Test-App hat einen blauen
+  Streifen und ist so auf dem Handy unterscheidbar.
+- Der Standort wird erst nach dem Einstieg abgefragt, mit Erklaerung.
+- Store-Paket (AAB) mit eigener Kennung, sobald der Upload-Schluessel
+  hinterlegt ist - Anleitung in docs/PLAYSTORE.md.
+- Store-Ausgabe ohne selbststaendige SMS (braucht bei Google eine
+  Sondergenehmigung): die Notfall-SMS oeffnet dort die SMS-App mit
+  fertigem Text.
+
+KOSTENLOS UND PRO
+- EINSTELLUNGEN -> "Kostenlos und Pro": was immer frei bleibt und was
+  spaeter Pro wird. In der Testphase ist alles kostenlos.
+
 VERSION 4.34 - Routenplanung schneller
 --------------------------------------
 

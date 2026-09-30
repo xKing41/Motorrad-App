@@ -1,14 +1,18 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'build_flavor.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/map_screen.dart';
 import 'screens/rides_screen.dart';
 import 'screens/crash_alarm_screen.dart';
+import 'screens/feedback_screen.dart';
 import 'screens/intro_screen.dart';
 import 'services/companion.dart';
+import 'services/crash_log.dart';
 import 'services/emergency.dart';
 import 'services/group_ride.dart';
 import 'services/power.dart';
@@ -20,6 +24,13 @@ import 'theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // Fehler festhalten (nur auf dem Handy, verschickt nur mit Zustimmung).
+  CrashLog.instance.install();
+  // Lizenz der Schrift in der Lizenzseite zeigen.
+  LicenseRegistry.addLicense(() async* {
+    final text = await rootBundle.loadString('assets/fonts/OFL-Barlow.txt');
+    yield LicenseEntryWithLineBreaks(['Barlow (Schrift)'], text);
+  });
   runApp(const LeanApp());
 }
 
@@ -77,13 +88,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     VectorMap.instance.init();
     // Eigene Sperrliste: gilt fuer jede Routenberechnung.
     UserBlocks.instance.load();
-    t.start();
     t.addListener(_onTick);
     t.crashAlarm.addListener(_onCrashAlarm);
     // Laufende Fahrt jede Minute sichern.
     _backupTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       final s = t.currentSummary();
       if (s != null) RideStore.instance.saveActive(s, List.of(t.track));
+      if (t.recording) unawaited(_readBattery());
       // Begleit-SMS: Position in festen Abstaenden.
       if (t.recording) {
         _companion.tick(DateTime.now(), t.rideDistanceM / 1000,
@@ -91,9 +102,17 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       }
     });
     _recover();
-    // Beim allerersten Start: kurzer Einstieg.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) IntroScreen.showOnce(context);
+    // Beim allerersten Start: kurzer Einstieg. Sonst: gab es beim
+    // letzten Mal einen Absturz? Dann fragen, ob der Bericht raus soll.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await IntroScreen.showOnce(context);
+      // Erst nach dem Einstieg starten: dann kommt die Frage nach dem
+      // Standort mit Erklaerung statt unvermittelt beim ersten Start.
+      unawaited(t.start());
+      if (mounted && await CrashLog.instance.takePending() && mounted) {
+        await FeedbackScreen.offerCrashReport(context);
+      }
     });
   }
 
@@ -166,12 +185,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   Future<void> _toggleRide() async {
     if (!t.recording) {
       t.startRecording();
+      unawaited(_readBattery());
       if (mounted) toast(context, 'Fahrt gestartet – gute Fahrt!');
       unawaited(_companion.rideStarted(DateTime.now(), lat: t.lat, lon: t.lon));
       await _firstRideSetup();
       return;
     }
 
+    await _readBattery();
     final summary = t.stopRecording();
     if (summary == null) return;
     unawaited(_companion.rideEnded(DateTime.now(), summary.distanceKm));
@@ -190,6 +211,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       toast(context,
           'Fahrt gespeichert · ${summary.distanceKm.toStringAsFixed(1)} km');
     }
+  }
+
+  Future<void> _readBattery() async {
+    final b = await PowerPolicy.battery();
+    if (b != null) t.noteBattery(b.$1, b.$2);
   }
 
   /// Vor der ersten Fahrt einmal: Benachrichtigung erlauben und auf die

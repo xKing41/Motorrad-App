@@ -16,11 +16,16 @@ import '../services/route_patch.dart';
 import '../services/routing_engine.dart';
 import '../services/routing_settings.dart';
 import '../services/traffic_service.dart';
+import '../services/crash_log.dart';
 import '../services/user_blocks.dart';
 import '../services/voice.dart';
 import '../theme.dart';
 import 'ai_connect_screen.dart';
+import 'feedback_screen.dart';
+import 'intro_screen.dart';
+import 'legal_screen.dart';
 import 'map_pick_screen.dart';
+import 'pro_screen.dart';
 
 /// Routenplanung: entweder per Reglern oder per Freitext an die KI.
 ///
@@ -280,14 +285,15 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
 
       // Test-App: wo die Zeit bleibt (fuer Rueckmeldungen).
       final tm = planner.lastTimings;
-      if (kTestBuild && tm != null) {
+      if (tm != null) {
         String sec(Duration d) => '${(d.inMilliseconds / 1000).toStringAsFixed(1).replaceAll('.', ',')} s';
-        plan = plan.copyWith(notes: [
-          ...plan.notes,
-          'Rechenzeit ${sec(watch.elapsed)}: Varianten ${sec(tm.$1)}, '
-              'Stopps ${sec(tm.$2)}, Prüfung ${sec(tm.$3)}, '
-              'Verkehr und Rest ${sec(watch.elapsed - tm.$1 - tm.$2 - tm.$3)}.',
-        ]);
+        final line = 'Rechenzeit ${sec(watch.elapsed)}: Varianten ${sec(tm.$1)}, '
+            'Stopps ${sec(tm.$2)}, Prüfung ${sec(tm.$3)}, '
+            'Verkehr und Rest ${sec(watch.elapsed - tm.$1 - tm.$2 - tm.$3)}.';
+        // Fuer Fehlerberichte merken (ohne Orte).
+        CrashLog.instance.context['Letzte Planung'] =
+            '${req.roundTrip ? 'Rundtour' : 'A-B'} ${(plan.distanceM / 1000).round()} km · $line';
+        if (kTestBuild) plan = plan.copyWith(notes: [...plan.notes, line]);
       }
 
       if (_preferKnown && (heatmap == null || heatmap.isEmpty)) {
@@ -1106,6 +1112,51 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
             strong: true,
             onTap: _saveRouting,
           ),
+        ),
+        _settingsHeader('HILFE & RECHTLICHES'),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.workspace_premium_outlined, color: signal),
+          title: const Text('Kostenlos und Pro'),
+          subtitle: const Text('Testphase: alles frei'),
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const ProScreen())),
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.bug_report_outlined, color: signal),
+          title: const Text('Fehler melden / Rückmeldung'),
+          subtitle: const Text('Mit Fehlerprotokoll, ohne persönliche Daten'),
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const FeedbackScreen())),
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.privacy_tip_outlined, color: steel),
+          title: const Text('Datenschutz & Impressum'),
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const LegalScreen())),
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.description_outlined, color: steel),
+          title: const Text('Lizenzen (Karten, Schrift, Bibliotheken)'),
+          onTap: () => showLicensePage(
+              context: context,
+              applicationName: kAppName,
+              applicationVersion: kAppVersion),
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.school_outlined, color: steel),
+          title: const Text('Einstieg noch einmal zeigen'),
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const IntroScreen())),
+        ),
+        const Padding(
+          padding: EdgeInsets.only(top: 4),
+          child: Text('$kAppName $kAppVersion',
+              style: TextStyle(fontSize: 13.5, color: steel)),
         ),
         const Padding(
           padding: EdgeInsets.only(top: 8),

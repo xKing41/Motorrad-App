@@ -309,6 +309,20 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
             child: StatCard(
                 label: 'KURVEN-G', value: r.maxLatG.toStringAsFixed(2))),
       ]),
+      if (r.batteryStart != null && r.batteryEnd != null) ...[
+        const SizedBox(height: 8),
+        StatCard(
+          label: 'HANDY-AKKU',
+          value: r.batteryPerHour != null
+              ? r.batteryPerHour!.toStringAsFixed(1).replaceAll('.', ',')
+              : '${r.batteryStart} → ${r.batteryEnd}',
+          unit: r.batteryPerHour != null ? ' % je Stunde' : ' %',
+          sub: r.charged
+              ? 'unterwegs geladen'
+              : '${r.batteryStart} % → ${r.batteryEnd} %',
+          accent: (r.batteryPerHour ?? 0) > 15 ? amber : go,
+        ),
+      ],
     ]);
   }
 

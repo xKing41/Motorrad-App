@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../build_flavor.dart';
+
 import '../services/emergency.dart';
 import '../theme.dart';
 
@@ -108,14 +110,16 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
           const SizedBox(height: 10),
           _countdownRow(),
           const SizedBox(height: 10),
-          _autoSendToggle(),
-          const SizedBox(height: 18),
-          const TinyLabel('BEGLEIT-SMS (ICH BIN UNTERWEGS)'),
-          const SizedBox(height: 8),
-          _companionToggle(),
-          if (em.companion) ...[
-            const SizedBox(height: 10),
-            _companionInterval(),
+          if (kStoreBuild) _storeSmsNote() else _autoSendToggle(),
+          if (!kStoreBuild) ...[
+            const SizedBox(height: 18),
+            const TinyLabel('BEGLEIT-SMS (ICH BIN UNTERWEGS)'),
+            const SizedBox(height: 8),
+            _companionToggle(),
+            if (em.companion) ...[
+              const SizedBox(height: 10),
+              _companionInterval(),
+            ],
           ],
           const SizedBox(height: 18),
           SizedBox(
@@ -270,6 +274,23 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
       ),
     );
   }
+
+  /// Play-Store-Ausgabe: SMS selbst senden ist dort nicht erlaubt.
+  Widget _storeSmsNote() => Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: panel,
+          border: Border.all(color: amber),
+        ),
+        child: const Text(
+          'Nach dem Countdown öffnet sich deine SMS-App mit fertigem Text '
+          'und Position - ein Tipp auf Senden genügt. Selbstständig SMS '
+          'senden dürfen Apps aus dem Play Store nur mit Sondergenehmigung '
+          'von Google; ein automatischer Notruf über unseren Server ist in '
+          'Planung.',
+          style: TextStyle(fontSize: 15, color: chalk, height: 1.35),
+        ),
+      );
 
   Widget _autoSendToggle() {
     return InkWell(

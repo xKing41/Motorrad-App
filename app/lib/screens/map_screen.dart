@@ -13,7 +13,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../build_flavor.dart';
 import '../models/route_plan.dart';
-import '../services/curve_warning.dart';
 import '../services/drive_sim.dart';
 import '../services/external_nav.dart';
 import '../services/geo.dart';
@@ -28,12 +27,12 @@ import '../services/navigation.dart';
 import '../services/offline_maps.dart';
 import '../services/offline_router.dart';
 import '../services/poi_service.dart';
+import '../services/pro.dart';
 import '../services/route_follow.dart';
 import '../services/route_patch.dart';
 import '../services/route_weather.dart';
 import '../services/smooth_position.dart';
 import '../services/speed_cameras.dart';
-import '../services/speed_limits.dart';
 import '../services/routing_engine.dart';
 import '../services/routing_settings.dart';
 import '../services/telemetry.dart';
@@ -46,9 +45,12 @@ import '../services/voice.dart';
 import '../theme.dart';
 import '../widgets/base_map.dart';
 import '../widgets/map_attribution.dart';
+import '../widgets/nav_widgets.dart';
 import 'groups_screen.dart';
 import 'route_planner_screen.dart';
 import 'tours_screen.dart';
+
+part 'map_sheets.dart';
 
 /// Karte mit Live-Position, aufgezeichneter Spur, geladener Route
 /// und Zwischenstopps.
@@ -134,6 +136,9 @@ class _MapScreenState extends State<MapScreen>
       });
     }
   }
+
+  /// Fuer die ausgelagerten Menues (map_sheets.dart).
+  void _update(VoidCallback f) => setState(f);
 
   void _onOffline() {
     if (mounted) setState(() {});
@@ -1391,80 +1396,6 @@ class _MapScreenState extends State<MapScreen>
     if (!ok && mounted) toast(context, 'Keine passende App gefunden');
   }
 
-  /// Route an eine andere Navi-App uebergeben.
-  void _showExport() {
-    final r = _route;
-    if (r == null) return;
-    final from = _nav?.alongM ?? 0;
-    final google = ExternalNav.googleMaps(r, fromM: from);
-    final (target, targetName) = ExternalNav.nextTarget(r, fromM: from);
-
-    Widget tile(IconData icon, String title, String sub, VoidCallback onTap) =>
-        ListTile(
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(icon, color: cool, size: 20),
-          title: Text(title,
-              style: const TextStyle(fontSize: 16, color: chalk)),
-          subtitle: Text(sub,
-              style: const TextStyle(fontSize: 13.5, color: steel, height: 1.3)),
-          onTap: onTap,
-        );
-
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: panel,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(),
-      builder: (ctx) => SafeArea(
-        child: ConstrainedBox(
-          constraints:
-              BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
-          child: ListView(
-            shrinkWrap: true,
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-            children: [
-              const Text('IN NAVI-APP ÖFFNEN',
-                  style: TextStyle(
-                      fontSize: 15.5, letterSpacing: 1.2, color: chalk)),
-              const SizedBox(height: 4),
-              const Text(
-                'Die exakte Tour überträgt nur die GPX-Datei. Links an '
-                'Google & Co. geben Zwischenpunkte auf der Tour vor - die '
-                'App rechnet dazwischen selbst.',
-                style: TextStyle(fontSize: 13.5, color: steel, height: 1.4),
-              ),
-              const SizedBox(height: 8),
-              tile(
-                Icons.route,
-                'GPX-Datei (exakte Tour)',
-                'TomTom GO, Garmin, Kurviger, Calimoto, OsmAnd, '
-                    'MyRoute-app ... - im Teilen-Menü die App wählen',
-                () {
-                  Navigator.pop(ctx);
-                  _shareGpx();
-                },
-              ),
-              for (final g in google)
-                tile(Icons.map, g.label, g.detail ?? '', () => _open(g.uri)),
-              tile(Icons.navigation, 'Waze',
-                  'Nur ein Ziel möglich: $targetName',
-                  () => _open(ExternalNav.waze(target))),
-              if (Platform.isIOS)
-                tile(Icons.map_outlined, 'Apple Karten',
-                    'Nur ein Ziel möglich: $targetName',
-                    () => _open(ExternalNav.appleMaps(target))),
-              if (Platform.isAndroid)
-                tile(Icons.open_in_new, 'Andere Navi-App',
-                    'TomTom GO, Sygic, HERE, Magic Earth ... - Ziel: $targetName',
-                    () => _open(ExternalNav.geo(target, targetName))),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   // ------------------------------------------------------------------
   // Aufbau
   // ------------------------------------------------------------------
@@ -1643,7 +1574,7 @@ class _MapScreenState extends State<MapScreen>
     final now = DateTime.now();
     final riders = _hub.members.where((m) => !m.staleAt(now)).length;
     return Column(mainAxisSize: MainAxisSize.min, children: [
-      _railBtn(
+      RailButton(
         icon: _night && VectorMap.instance.useVector
             ? Icons.dark_mode
             : Icons.layers,
@@ -1654,7 +1585,7 @@ class _MapScreenState extends State<MapScreen>
       ),
       if (kTestBuild) ...[
         const SizedBox(height: 10),
-        _railBtn(
+        RailButton(
           icon: Icons.groups,
           tooltip: 'Gruppen',
           onTap: _openGroups,
@@ -1666,267 +1597,12 @@ class _MapScreenState extends State<MapScreen>
     ]);
   }
 
-  /// Runder Kartenknopf, gross genug fuer Handschuhe.
-  Widget _railBtn({
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback onTap,
-    Color color = chalk,
-    Color? dot,
-    String? label,
-    double? progress,
-  }) {
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: panel.withValues(alpha: 0.95),
-        shape: const CircleBorder(side: BorderSide(color: line, width: 1.5)),
-        elevation: 3,
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: onTap,
-          child: SizedBox(
-            width: 58,
-            height: 58,
-            child: Stack(alignment: Alignment.center, children: [
-              if (progress != null)
-                SizedBox(
-                  width: 52,
-                  height: 52,
-                  child: CircularProgressIndicator(
-                      value: progress, strokeWidth: 3, color: cool),
-                ),
-              Icon(icon, size: 30, color: color),
-              if (label != null)
-                Positioned(
-                  bottom: 5,
-                  child: Text(label,
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: color)),
-                ),
-              if (dot != null)
-                Positioned(
-                  top: 7,
-                  right: 7,
-                  child: Container(
-                    width: 13,
-                    height: 13,
-                    decoration: BoxDecoration(
-                      color: dot,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: panel, width: 2),
-                    ),
-                  ),
-                ),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Alles rund um die Karte an einer Stelle - grosse Kacheln.
-  void _showMapMenu() {
-    final vm = VectorMap.instance;
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) {
-        Widget tile(IconData icon, String title, String sub, VoidCallback onTap,
-                {Color color = chalk, bool active = false}) =>
-            _menuTile(icon, title, sub, () {
-              Navigator.pop(ctx);
-              onTap();
-            }, color: color, active: active);
-        final off = _offline.offline.value;
-        final job = _offline.job;
-        final hs = Headset.instance.status;
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text('KARTE',
-                    style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        fontStyle: FontStyle.italic,
-                        color: chalk)),
-              ),
-              const SizedBox(height: 12),
-              _tileGrid([
-                tile(
-                  _night && vm.useVector ? Icons.dark_mode : Icons.layers,
-                  'Kartenstil',
-                  vm.style.label,
-                  _showStyles,
-                ),
-                tile(
-                  off ? Icons.cloud_off : Icons.download_for_offline,
-                  'Offline-Karten',
-                  job?.running == true
-                      ? 'Lädt ... ${((job!.progress) * 100).round()} %'
-                      : off
-                          ? 'Offline-Modus an'
-                          : 'Gebiet speichern',
-                  _showOffline,
-                  color: off ? amber : chalk,
-                  active: off,
-                ),
-                if (_tomtomKey.isNotEmpty)
-                  tile(Icons.traffic, 'Verkehr',
-                      _showFlow ? 'Anzeige an' : 'Anzeige aus', () {
-                    setState(() => _showFlow = !_showFlow);
-                  }, color: _showFlow ? signal : chalk, active: _showFlow),
-                if (kTestBuild)
-                  tile(
-                    hs.connected ? Icons.headset_mic : Icons.headset_off,
-                    'Headset',
-                    hs.connected
-                        ? '${hs.label}${hs.battery >= 0 ? ' · ${hs.battery} %' : ''}'
-                        : 'Nicht verbunden',
-                    _showHeadset,
-                    color: hs.connected
-                        ? (hs.batteryLow ? amber : signal)
-                        : chalk,
-                  ),
-                tile(
-                  Icons.block,
-                  'Eigene Sperren',
-                  '${UserBlocks.instance.blocks.length} · lange auf die Karte drücken',
-                  () => toast(context,
-                      'Lange auf eine Straße drücken -> "Straße hier dauerhaft sperren"'),
-                  color: redline,
-                ),
-              ]),
-            ]),
-          ),
-        );
-      },
-    );
-  }
-
-  /// Zwei Kacheln je Reihe.
-  Widget _tileGrid(List<Widget> tiles) {
-    final rows = <Widget>[];
-    for (var i = 0; i < tiles.length; i += 2) {
-      rows.add(Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: IntrinsicHeight(
-          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Expanded(child: tiles[i]),
-            const SizedBox(width: 10),
-            Expanded(
-                child: i + 1 < tiles.length ? tiles[i + 1] : const SizedBox()),
-          ]),
-        ),
-      ));
-    }
-    return Column(mainAxisSize: MainAxisSize.min, children: rows);
-  }
-
-  /// Grosse Kachel fuer Menues (auch mit Handschuh gut zu treffen).
-  Widget _menuTile(IconData icon, String title, String sub, VoidCallback onTap,
-      {Color color = chalk,
-      bool active = false,
-      VoidCallback? onLongPress}) {
-    return Material(
-      color: active ? color.withValues(alpha: 0.14) : panel2,
-      shape: BeveledRectangleBorder(
-        borderRadius: const BorderRadius.all(Radius.circular(8)),
-        side: BorderSide(color: active ? color : line, width: 1.5),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 84),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(icon, size: 30, color: color),
-                const SizedBox(height: 6),
-                Text(title,
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w800, color: chalk)),
-                if (sub.isNotEmpty)
-                  Text(sub,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 14, color: steel)),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   // ------------------------------------------------------------------
   // Offline-Karten
   // ------------------------------------------------------------------
   // ------------------------------------------------------------------
   // Kartendarstellung (Vektor hell/dunkel, klassisch)
   // ------------------------------------------------------------------
-  void _showStyles() {
-    final vm = VectorMap.instance;
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: panel,
-      shape: const RoundedRectangleBorder(),
-      builder: (ctx) => SafeArea(
-        child: ListenableBuilder(
-          listenable: vm,
-          builder: (ctx, _) => Column(mainAxisSize: MainAxisSize.min, children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 14, 16, 4),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text('KARTE',
-                    style: TextStyle(
-                        fontSize: 15.5, letterSpacing: 1.2, color: chalk)),
-              ),
-            ),
-            for (final m in MapStyle.values)
-              ListTile(
-                dense: true,
-                leading: Icon(
-                    vm.style == m
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_unchecked,
-                    color: vm.style == m ? signal : steel,
-                    size: 20),
-                title: Text(m.label,
-                    style: const TextStyle(fontSize: 16, color: chalk)),
-                onTap: () => vm.setStyle(m),
-              ),
-            if (!vm.ready && vm.style != MapStyle.classic)
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Text(
-                  'Die Vektorkarte braucht einmal Internet, bis dahin '
-                  'zeigt die App die klassische Karte.',
-                  style: TextStyle(fontSize: 13.5, color: amber, height: 1.4),
-                ),
-              ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Text(
-                'Vektorkarte: scharf in jeder Zoomstufe, nachts dunkel '
-                '(blendet nicht im Helm), offline deutlich kleiner.',
-                style: TextStyle(fontSize: 13.5, color: steel, height: 1.4),
-              ),
-            ),
-          ]),
-        ),
-      ),
-    );
-  }
-
   // ------------------------------------------------------------------
   // Gruppenfahrt (Test-App)
   // ------------------------------------------------------------------
@@ -1994,7 +1670,7 @@ class _MapScreenState extends State<MapScreen>
     if (nav != null) {
       final km = nav.remainingM / 1000;
       parts.add('Noch ${km < 10 ? km.toStringAsFixed(1).replaceAll('.', ',') : km.round()} Kilometer');
-      parts.add('Ankunft ${_fmtClock(nav.eta)}');
+      parts.add('Ankunft ${clockText(nav.eta)}');
       final l = nav.speedLimit;
       if (l != null && !l.isUnlimited) parts.add('Tempolimit ${l.kmh}');
     } else {
@@ -2067,79 +1743,10 @@ class _MapScreenState extends State<MapScreen>
     );
   }
 
-  void _showHeadset() {
-    final h = Headset.instance;
-    h.refresh();
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: panel,
-      shape: const RoundedRectangleBorder(),
-      builder: (ctx) => SafeArea(
-        child: ListenableBuilder(
-          listenable: h,
-          builder: (ctx, _) {
-            final st = h.status;
-            const small = TextStyle(fontSize: 13.5, color: steel, height: 1.4);
-            return ListView(
-              shrinkWrap: true,
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-              children: [
-                const Text('HELM-HEADSET',
-                    style: TextStyle(
-                        fontSize: 15.5, letterSpacing: 1.2, color: chalk)),
-                const SizedBox(height: 8),
-                Row(children: [
-                  Icon(st.connected ? Icons.headset_mic : Icons.headset_off,
-                      color: st.connected ? signal : steel),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                        st.connected
-                            ? '${st.label}${st.brand.isNotEmpty && !st.name.toLowerCase().contains(st.brand.toLowerCase()) ? ' (${st.brand})' : ''}'
-                            : 'Kein Headset verbunden',
-                        style: const TextStyle(fontSize: 16.5, color: chalk)),
-                  ),
-                ]),
-                if (st.connected && st.battery < 0 && !st.btPermission)
-                  TextButton(
-                    onPressed: h.requestPermissions,
-                    child: const Text('AKKUSTAND ANZEIGEN (ERLAUBEN)',
-                        style: TextStyle(fontSize: 13.5, color: cool)),
-                  ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Sena, Cardo, Interphone, Midland ... jedes Bluetooth-'
-                  'Headset. Navi-Ansagen und Sprachnachrichten der Gruppe '
-                  'kommen im Helm, Musik wird dabei leiser. Mit '
-                  'Audio-Multitasking am Headset auch während des Intercoms.',
-                  style: small,
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  activeTrackColor: signal,
-                  inactiveTrackColor: line,
-                  title: const Text('Headset-Tasten steuern die App',
-                      style: TextStyle(fontSize: 16, color: chalk)),
-                  subtitle: const Text(
-                      'Play/Pause: Ansage wiederholen · Weiter: Sprechen an '
-                      'die Gruppe (nochmal: senden) · Zurück: Restweg, '
-                      'Ankunft, Tempolimit. Solange an, steuern die Tasten '
-                      'keine Musik.',
-                      style: small),
-                  value: h.buttonsOn,
-                  onChanged: (v) => h.setButtons(v),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
   Future<void> _openGroups() async {
+    if (!await Pro.instance.gate(context, ProFeature.groups) || !mounted) {
+      return;
+    }
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -2155,157 +1762,6 @@ class _MapScreenState extends State<MapScreen>
           },
         ),
       ),
-    );
-  }
-
-  void _showOffline() {
-    final visible = _mapReady ? _map.camera.visibleBounds : null;
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: panel,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(),
-      builder: (ctx) => SafeArea(
-        child: ListenableBuilder(
-          listenable: _offline,
-          builder: (ctx, _) => _offlineSheet(ctx, visible),
-        ),
-      ),
-    );
-  }
-
-  Widget _offlineSheet(BuildContext ctx, LatLngBounds? visible) {
-    final job = _offline.job;
-    const small = TextStyle(fontSize: 13.5, color: steel, height: 1.4);
-    String areaInfo() {
-      if (visible == null) return '';
-      final z = OfflineMaps.areaMaxZoom(visible.south, visible.west,
-          visible.north, visible.east, 8,
-          top: _offline.sourceMaxZoom);
-      final n = countTilesInBox(
-          visible.south, visible.west, visible.north, visible.east,
-          minZoom: 8, maxZoom: z);
-      return 'Bis Zoomstufe $z · ca. ${formatBytes(n * _offline.tileBytes)}';
-    }
-
-    String routeInfo(RoutePlan r) {
-      final n = _offline.routeTiles(r.points).length;
-      return 'Streifen entlang der Tour · ca. ${formatBytes(n * _offline.tileBytes)}';
-    }
-
-    String jobText(OfflineJob j) {
-      final r = j.result;
-      if (r == null) {
-        return '${j.label}: ${j.done} von ${j.total} Kacheln';
-      }
-      if (r.cancelled && r.failed > 0) {
-        return '${j.label}: abgebrochen - kein Netz? '
-            '${r.loaded + r.skipped} von ${j.total} gespeichert.';
-      }
-      if (r.cancelled) return '${j.label}: abgebrochen.';
-      return '${j.label}: fertig, ${r.loaded + r.skipped} Kacheln auf dem Handy'
-          '${r.failed > 0 ? ' (${r.failed} fehlgeschlagen)' : ''}.';
-    }
-
-    return ListView(
-      shrinkWrap: true,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      children: [
-        const Text('OFFLINE-KARTEN',
-            style: TextStyle(fontSize: 15.5, letterSpacing: 1.2, color: chalk)),
-        const SizedBox(height: 4),
-        const Text(
-          'Jede angesehene Karte bleibt auf dem Handy. Vorab geladene '
-          'Strecken und Gebiete funktionieren auch im Funkloch - die '
-          'Navigation läuft mit der gespeicherten Route weiter.',
-          style: small,
-        ),
-        if (_offline.offline.value) ...[
-          const SizedBox(height: 6),
-          const Text('Gerade kein Netz - Karte kommt vom Handy.',
-              style: TextStyle(fontSize: 14, color: amber)),
-        ],
-        if (job != null) ...[
-          const SizedBox(height: 10),
-          LinearProgressIndicator(
-              value: job.progress, color: cool, backgroundColor: line),
-          const SizedBox(height: 4),
-          Row(children: [
-            Expanded(child: Text(jobText(job), style: small)),
-            if (job.running)
-              TextButton(
-                onPressed: _offline.cancel,
-                child: const Text('ABBRECHEN',
-                    style: TextStyle(fontSize: 13.5, color: amber)),
-              ),
-          ]),
-        ],
-        const SizedBox(height: 6),
-        if (_route != null)
-          ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.route, color: cool, size: 20),
-            title: const Text('Route offline speichern',
-                style: TextStyle(fontSize: 16, color: chalk)),
-            subtitle: Text(routeInfo(_route!), style: small),
-            onTap: () => _offline.saveRoute(_route!.points,
-                label: _route!.title ?? 'Route'),
-          ),
-        if (visible != null)
-          ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.crop_free, color: cool, size: 20),
-            title: const Text('Sichtbaren Ausschnitt speichern',
-                style: TextStyle(fontSize: 16, color: chalk)),
-            subtitle: Text(areaInfo(), style: small),
-            onTap: () => _offline.saveArea(
-                visible.south, visible.west, visible.north, visible.east),
-          ),
-        SwitchListTile(
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          activeTrackColor: signal,
-          inactiveTrackColor: line,
-          title: const Text('Geplante Routen automatisch speichern',
-              style: TextStyle(fontSize: 16, color: chalk)),
-          subtitle: const Text(
-              'Lädt die Karte entlang jeder neuen Route gleich mit. '
-              'Braucht mobile Daten - im WLAN planen spart Datenvolumen.',
-              style: small),
-          value: _offline.autoRoute,
-          onChanged: (v) => _offline.setAutoRoute(v),
-        ),
-        FutureBuilder<TileCacheStats>(
-          future: _offline.stats(),
-          builder: (ctx, snap) {
-            final s = snap.data;
-            return ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.sd_storage, color: steel, size: 20),
-              title: Text(
-                  s == null
-                      ? 'Speicher wird gezählt ...'
-                      : 'Belegt: ${formatBytes(s.bytes)} (${s.tiles} Kacheln)',
-                  style: const TextStyle(fontSize: 15.5, color: chalk)),
-              subtitle: const Text(
-                  'Höchstens 600 MB - älteste Kacheln werden automatisch '
-                  'gelöscht.',
-                  style: small),
-              trailing: TextButton(
-                onPressed: () async {
-                  await _offline.clear();
-                  PaintingBinding.instance.imageCache.clear();
-                },
-                child: const Text('LEEREN',
-                    style: TextStyle(fontSize: 13.5, color: amber)),
-              ),
-            );
-          },
-        ),
-      ],
     );
   }
 
@@ -2490,7 +1946,7 @@ class _MapScreenState extends State<MapScreen>
               shape: BoxShape.circle,
               border: Border.all(color: redline, width: 2),
             ),
-            child: Icon(_trafficIcon(inc.category), size: 15, color: redline),
+            child: Icon(trafficIcon(inc.category), size: 15, color: redline),
           ),
         ),
       ));
@@ -2513,10 +1969,10 @@ class _MapScreenState extends State<MapScreen>
             decoration: BoxDecoration(
               color: panel,
               shape: BoxShape.circle,
-              border: Border.all(color: _poiColor(p.kind), width: 2),
+              border: Border.all(color: poiColor(p.kind), width: 2),
             ),
-            child: Icon(p.source == 'gpx' ? Icons.push_pin : _poiIcon(p.kind),
-                size: 15, color: _poiColor(p.kind)),
+            child: Icon(p.source == 'gpx' ? Icons.push_pin : poiIcon(p.kind),
+                size: 15, color: poiColor(p.kind)),
           ),
         ),
       ));
@@ -2548,76 +2004,6 @@ class _MapScreenState extends State<MapScreen>
     return d;
   }
 
-  static IconData _trafficIcon(TrafficCategory c) => switch (c) {
-        TrafficCategory.jam => Icons.traffic,
-        TrafficCategory.closed => Icons.block,
-        TrafficCategory.laneClosed => Icons.merge,
-        TrafficCategory.roadworks => Icons.construction,
-        TrafficCategory.accident => Icons.car_crash,
-        TrafficCategory.weather => Icons.cloud,
-        _ => Icons.warning_amber,
-      };
-
-  static IconData maneuverIcon(int type) => switch (type) {
-        ManeuverType.start => Icons.trip_origin,
-        ManeuverType.slightRight => Icons.turn_slight_right,
-        ManeuverType.right => Icons.turn_right,
-        ManeuverType.sharpRight => Icons.turn_sharp_right,
-        ManeuverType.uturnRight => Icons.u_turn_right,
-        ManeuverType.uturnLeft => Icons.u_turn_left,
-        ManeuverType.sharpLeft => Icons.turn_sharp_left,
-        ManeuverType.left => Icons.turn_left,
-        ManeuverType.slightLeft => Icons.turn_slight_left,
-        ManeuverType.rampRight || ManeuverType.exitRight => Icons.ramp_right,
-        ManeuverType.rampLeft || ManeuverType.exitLeft => Icons.ramp_left,
-        ManeuverType.stayRight => Icons.fork_right,
-        ManeuverType.stayLeft => Icons.fork_left,
-        ManeuverType.merge => Icons.merge,
-        ManeuverType.roundaboutEnter || ManeuverType.roundaboutExit =>
-          Icons.roundabout_right,
-        ManeuverType.ferry => Icons.directions_boat,
-        _ when ManeuverType.isDestination(type) => Icons.flag,
-        _ => Icons.straight,
-      };
-
-  static String _fmtDist(double m) {
-    if (m < 0) m = 0;
-    if (m < 1000) {
-      final r = m < 200 ? (m / 10).round() * 10 : (m / 50).round() * 50;
-      return '$r m';
-    }
-    return _fmtKm(m);
-  }
-
-  static String _fmtClock(DateTime d) =>
-      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-
-  IconData _poiIcon(PoiKind k) => switch (k) {
-        PoiKind.fuel => Icons.local_gas_station,
-        PoiKind.viewpoint => Icons.photo_camera,
-        PoiKind.food => Icons.restaurant,
-        PoiKind.rest => Icons.park,
-        PoiKind.water => Icons.water_drop,
-        PoiKind.workshop => Icons.build,
-      };
-
-  Color _poiColor(PoiKind k) => switch (k) {
-        PoiKind.fuel => amber,
-        PoiKind.viewpoint => cool,
-        PoiKind.food => const Color(0xFF7FBF4F),
-        _ => steel,
-      };
-
-  static String _fmtKm(double m) =>
-      '${(m / 1000).toStringAsFixed(m >= 100000 ? 0 : 1).replaceAll('.', ',')} km';
-
-  static String _fmtDuration(int sec) {
-    final h = sec ~/ 3600;
-    final m = ((sec % 3600) / 60).round();
-    if (h == 0) return '$m min';
-    return '$h h ${m.toString().padLeft(2, '0')} min';
-  }
-
   Widget _topBar() {
     final r = _route;
     final f = _follow;
@@ -2627,14 +2013,14 @@ class _MapScreenState extends State<MapScreen>
       sub = 'GPX laden oder Route planen';
     } else if (f == null) {
       sub = [
-        _fmtKm(r.distanceM),
-        if (r.durationSec > 0) 'ca. ${_fmtDuration(r.durationSec)}',
+        fmtKm(r.distanceM),
+        if (r.durationSec > 0) 'ca. ${fmtDuration(r.durationSec)}',
         if (r.stats != null) 'Kurven ${r.stats!.curvLabel}',
       ].join(' · ');
     } else if (f.isOffRoute) {
-      sub = 'ABSEITS DER ROUTE · ${f.offRouteM >= 1000 ? _fmtKm(f.offRouteM) : '${f.offRouteM.round()} m'}';
+      sub = 'ABSEITS DER ROUTE · ${f.offRouteM >= 1000 ? fmtKm(f.offRouteM) : '${f.offRouteM.round()} m'}';
     } else {
-      sub = 'NOCH ${_fmtKm(f.remainingM)} · ${(f.progress * 100).round()} %';
+      sub = 'NOCH ${fmtKm(f.remainingM)} · ${(f.progress * 100).round()} %';
     }
 
     return Container(
@@ -2731,168 +2117,11 @@ class _MapScreenState extends State<MapScreen>
     );
   }
 
-  /// Alles, was der Planer ueber die Route weiss - auch WARUM er genau
-  /// diese Variante vorschlaegt.
-  void _showRouteInfo() {
-    final r = _route;
-    if (r == null) return;
-    final st = r.stats;
-    Widget row(String k, String v) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
-          child: Row(children: [
-            Expanded(
-                child: Text(k,
-                    style: const TextStyle(fontSize: 14.5, color: steel))),
-            Text(v, style: const TextStyle(fontSize: 15, color: chalk)),
-          ]),
-        );
-
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: panel,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(),
-      builder: (ctx) => SafeArea(
-        child: ConstrainedBox(
-          constraints:
-              BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.7),
-          child: ListView(
-            shrinkWrap: true,
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-            children: [
-              Text((r.title ?? 'ROUTE').toUpperCase(),
-                  style: const TextStyle(
-                      fontSize: 15.5, letterSpacing: 1.2, color: chalk)),
-              if (_variants.length > 1)
-                Text('Variante ${_variantIdx + 1} von ${_variants.length}',
-                    style: const TextStyle(fontSize: 13.5, color: cool)),
-              const SizedBox(height: 10),
-              row('Länge', _fmtKm(r.distanceM)),
-              if (r.durationSec > 0)
-                row('Fahrzeit (Schätzung)', _fmtDuration(r.durationSec)),
-              if (_planEta != null)
-                row(
-                    'Fahrzeit mit Verkehr jetzt',
-                    '${_fmtDuration(_planEta!.travelSec)}'
-                        '${_planEta!.delaySec >= 60 ? ' (+${(_planEta!.delaySec / 60).round()} min Stau)' : ''}'),
-              if (st != null) ...[
-                row('Kurvigkeit', st.curvLabel),
-                row('Kurven je km',
-                    st.bendsPerKm.toStringAsFixed(1).replaceAll('.', ',')),
-                row('Doppelt gefahren', '${(st.overlapShare * 100).round()} %'),
-                if (st.knownShare > 0)
-                  row('Eigene bekannte Strecken',
-                      '${(st.knownShare * 100).round()} %'),
-              ],
-              if (r.engineLabel != null) row('Berechnet mit', r.engineLabel!),
-              const Padding(
-                padding: EdgeInsets.only(top: 6),
-                child: Text(
-                  'Tipp: Lange auf die Karte drücken, um die Tour zu ändern - '
-                  'über einen Punkt führen, Straße meiden, Stopp entfernen.',
-                  style: TextStyle(fontSize: 13.5, color: cool, height: 1.4),
-                ),
-              ),
-              if (r.pois.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                const TinyLabel('STOPPS'),
-                const SizedBox(height: 4),
-                for (final p in r.pois)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 3),
-                    child: Row(children: [
-                      Icon(_poiIcon(p.kind), size: 14, color: _poiColor(p.kind)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          [
-                            p.displayName,
-                            if (_detailOf(p) != null) _detailOf(p)!,
-                            if (_fuelPrices[p.id] != null)
-                              _fuelPrices[p.id]!.text,
-                          ].join(' · '),
-                          style: const TextStyle(fontSize: 14.5, color: chalk),
-                        ),
-                      ),
-                    ]),
-                  ),
-                if (_fuelPrices.isNotEmpty)
-                  const Text(FuelPrices.attribution,
-                      style: TextStyle(fontSize: 12, color: steel)),
-              ],
-              if (_weather != null) ...[
-                const SizedBox(height: 10),
-                const TinyLabel('WETTER UNTERWEGS (ABFAHRT JETZT)'),
-                const SizedBox(height: 4),
-                for (final w in _weather!.warnings().isEmpty
-                    ? [_weather!.summary()]
-                    : _weather!.warnings())
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: Text(w,
-                        style: const TextStyle(fontSize: 14.5, color: chalk)),
-                  ),
-                if (_betterDeparture != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      'Besser um ${RouteWeatherReport.clock(_betterDeparture!.departure)} '
-                      'losfahren: ${_betterDeparture!.summary()}',
-                      style: const TextStyle(fontSize: 14.5, color: signal),
-                    ),
-                  ),
-                const Text(RouteWeather.attribution,
-                    style: TextStyle(fontSize: 12, color: steel)),
-              ],
-              if (r.traffic.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                const TinyLabel('VERKEHRSLAGE AN DER ROUTE'),
-                const SizedBox(height: 4),
-                for (final i in r.traffic)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 3),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(_trafficIcon(i.category), size: 14, color: redline),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            [
-                              'km ${(i.alongM / 1000).round()}: ${i.label}',
-                              if (i.description != null) i.description!,
-                            ].join(' · '),
-                            style: const TextStyle(fontSize: 14.5, color: chalk),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-              if (r.description != null) ...[
-                const SizedBox(height: 10),
-                Text(r.description!,
-                    style: const TextStyle(
-                        fontSize: 15, color: cool, height: 1.45)),
-              ],
-              for (final n in r.notes)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(n,
-                      style: const TextStyle(fontSize: 14, color: amber)),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _bottomBar() {
     return Column(children: [
       Row(children: [
         Expanded(
-          child: _mapBtn(
+          child: MapButton(
             icon: Icons.route,
             label: 'PLANEN',
             onTap: _openPlanner,
@@ -2900,7 +2129,7 @@ class _MapScreenState extends State<MapScreen>
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: _mapBtn(
+          child: MapButton(
             icon: Icons.bookmarks,
             label: 'TOUREN',
             onTap: _importGpx,
@@ -2908,7 +2137,7 @@ class _MapScreenState extends State<MapScreen>
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: _mapBtn(
+          child: MapButton(
             icon: Icons.place,
             label: 'ORTE',
             onTap: _loadPois,
@@ -2916,7 +2145,7 @@ class _MapScreenState extends State<MapScreen>
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: _mapBtn(
+          child: MapButton(
             icon: _autoFollow ? Icons.my_location : Icons.location_searching,
             label: 'FOLGEN',
             active: _autoFollow,
@@ -2992,7 +2221,7 @@ class _MapScreenState extends State<MapScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                  _fmtDist(nav.onRoute && _tracker.shownAlongM != null
+                  fmtDist(nav.onRoute && _tracker.shownAlongM != null
                       ? nav.distanceToNextFrom(_tracker.shownAlongM!)
                       : nav.distanceToNext),
                   style: const TextStyle(
@@ -3026,7 +2255,7 @@ class _MapScreenState extends State<MapScreen>
     if (lanes != null) {
       children.add(Padding(
         padding: const EdgeInsets.only(top: 8),
-        child: _laneRow(lanes),
+        child: LaneRow(lanes),
       ));
     }
 
@@ -3034,7 +2263,7 @@ class _MapScreenState extends State<MapScreen>
       children.add(Padding(
         padding: const EdgeInsets.only(top: 6),
         child: Text(
-          'ABSEITS DER ROUTE · ${_fmtDist(f.offRouteM)}',
+          'ABSEITS DER ROUTE · ${fmtDist(f.offRouteM)}',
           style: const TextStyle(fontSize: 13.5, letterSpacing: 1.2, color: amber),
         ),
       ));
@@ -3055,11 +2284,11 @@ class _MapScreenState extends State<MapScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              Icon(_trafficIcon(offer.category), size: 16, color: redline),
+              Icon(trafficIcon(offer.category), size: 16, color: redline),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  '${offer.label} in ${_fmtDist(offer.alongM - nav.alongM)}',
+                  '${offer.label} in ${fmtDist(offer.alongM - nav.alongM)}',
                   style: const TextStyle(fontSize: 15.5, color: chalk),
                 ),
               ),
@@ -3127,193 +2356,6 @@ class _MapScreenState extends State<MapScreen>
     );
   }
 
-  /// Spuren wie auf dem Schild: empfohlene hell, andere grau.
-  Widget _laneRow(LaneInfo info) {
-    IconData icon(Set<String> ind) {
-      bool has(String x) => ind.contains(x);
-      if (has('reverse')) return Icons.u_turn_left;
-      if (has('left') || has('sharp_left')) return Icons.turn_left;
-      if (has('right') || has('sharp_right')) return Icons.turn_right;
-      if (has('slight_left') || has('merge_to_left')) return Icons.turn_slight_left;
-      if (has('slight_right') || has('merge_to_right')) {
-        return Icons.turn_slight_right;
-      }
-      return Icons.straight;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-      decoration: BoxDecoration(
-        color: asphalt,
-        border: Border.all(color: line),
-      ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        for (var i = 0; i < info.lanes.length; i++) ...[
-          if (i > 0)
-            Container(width: 1, height: 26, color: steel.withValues(alpha: 0.5)),
-          SizedBox(
-            width: 34,
-            child: Icon(icon(info.lanes[i].indications),
-                size: 26,
-                color: info.lanes[i].recommended ? chalk : steel.withValues(alpha: 0.45)),
-          ),
-        ],
-      ]),
-    );
-  }
-
-  /// Alles, was man unterwegs seltener braucht - grosse Kacheln.
-  void _showNavMenu(NavigationSession nav) {
-    final stop = nav.nextStop;
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) {
-        Widget tile(IconData icon, String title, String sub, VoidCallback f,
-                {Color color = chalk}) =>
-            _menuTile(icon, title, sub, () {
-              Navigator.pop(ctx);
-              f();
-            }, color: color);
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              _tileGrid([
-                tile(Icons.refresh, 'Neu berechnen', 'ab hier', nav.rerouteNow),
-                if (stop != null)
-                  tile(Icons.skip_next, 'Stopp auslassen',
-                      stop.poi.displayName, nav.skipNextStop)
-                else
-                  tile(Icons.ios_share, 'Navi-App', 'Tour dort öffnen',
-                      _showExport),
-                if (stop != null)
-                  tile(Icons.ios_share, 'Navi-App', 'Tour dort öffnen',
-                      _showExport),
-                tile(Icons.layers, 'Karte', 'Stil, Offline, Verkehr',
-                    _showMapMenu),
-              ]),
-              const SizedBox(height: 4),
-              Row(children: [
-                Expanded(
-                  child: FlatButton2(
-                    label: 'NAVI BEENDEN\n(halten)',
-                    color: amber,
-                    strong: true,
-                    tall: true,
-                    onTap: _holdHint,
-                    onLongPress: () {
-                      Navigator.pop(ctx);
-                      _stopNav();
-                    },
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FlatButton2(
-                    label: t.recording
-                        ? 'FAHRT BEENDEN\n(halten)'
-                        : 'FAHRT AUFZEICHNEN',
-                    color: t.recording ? amber : signal,
-                    strong: true,
-                    tall: true,
-                    onTap: t.recording
-                        ? _holdHint
-                        : () {
-                            Navigator.pop(ctx);
-                            widget.onToggleRide();
-                          },
-                    onLongPress: () {
-                      Navigator.pop(ctx);
-                      widget.onToggleRide();
-                    },
-                  ),
-                ),
-              ]),
-            ]),
-          ),
-        );
-      },
-    );
-  }
-
-  /// Warnung vor einer engen Kurve: Richtung, Entfernung, Richttempo.
-  Widget _curveChip(RoadCurve c, double distM) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: amber,
-        border: Border.all(color: Colors.black26),
-      ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(
-            c.hairpin
-                ? (c.right ? Icons.u_turn_right : Icons.u_turn_left)
-                : (c.right ? Icons.turn_sharp_right : Icons.turn_sharp_left),
-            size: 26,
-            color: Colors.black),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(c.label.toUpperCase(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.black)),
-              Text(
-                  '${distM < 20 ? 'jetzt' : _fmtDist(distM)} · '
-                  'ca. ${c.adviseKmh} km/h',
-                  style: const TextStyle(fontSize: 14.5, color: Colors.black)),
-            ],
-          ),
-        ),
-      ]),
-    );
-  }
-
-  /// Tempolimit-Schild wie an der Strasse; bei zu hohem Tempo rot
-  /// hinterlegt, daneben das eigene Tempo.
-  Widget _limitSign(SpeedLimit l, bool speeding) {
-    final sign = Container(
-      width: 70,
-      height: 70,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: speeding ? redline : Colors.white,
-        shape: BoxShape.circle,
-        border: Border.all(
-            color: l.isUnlimited ? Colors.black54 : redline, width: 5.5),
-      ),
-      child: l.isUnlimited
-          ? Transform.rotate(
-              angle: -math.pi / 4,
-              child: Container(width: 52, height: 4, color: Colors.black54),
-            )
-          : Text('${l.kmh}',
-              style: TextStyle(
-                  fontSize: l.kmh >= 100 ? 24 : 30,
-                  fontWeight: FontWeight.w800,
-                  color: speeding ? Colors.white : Colors.black)),
-    );
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      sign,
-      if (speeding) ...[
-        const SizedBox(width: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          color: panel.withValues(alpha: 0.94),
-          child: Text('${t.speedKmh.round()}',
-              style: const TextStyle(
-                  fontSize: 32, fontWeight: FontWeight.w800, color: redline)),
-        ),
-      ],
-    ]);
-  }
-
   Widget _navBottom(NavigationSession nav) {
     final stop = nav.nextStop;
     // Mit TomTom-Schluessel: Verzoegerung aus der Fahrzeitberechnung
@@ -3332,9 +2374,9 @@ class _MapScreenState extends State<MapScreen>
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: Row(children: [
-            if (limit != null) _limitSign(limit, nav.speeding),
+            if (limit != null) LimitSign(limit, speeding: nav.speeding, speedKmh: t.speedKmh),
             if (limit != null && curve != null) const SizedBox(width: 8),
-            if (curve != null) Flexible(child: _curveChip(curve.$1, curve.$2)),
+            if (curve != null) Flexible(child: CurveChip(curve.$1, curve.$2)),
           ]),
         ),
       Container(
@@ -3347,14 +2389,14 @@ class _MapScreenState extends State<MapScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              Text(_fmtKm(nav.remainingM),
+              Text(fmtKm(nav.remainingM),
                   style: const TextStyle(
                       fontSize: 26,
                       fontWeight: FontWeight.w800,
                       fontFeatures: tabular,
                       color: chalk)),
               const SizedBox(width: 10),
-              Text(_fmtDuration(nav.remainingTime.inSeconds),
+              Text(fmtDuration(nav.remainingTime.inSeconds),
                   style: const TextStyle(fontSize: 18, color: steel)),
               const Spacer(),
               if (nav.etaWithTraffic)
@@ -3362,7 +2404,7 @@ class _MapScreenState extends State<MapScreen>
                   padding: EdgeInsets.only(right: 6),
                   child: Icon(Icons.traffic, size: 14, color: signal),
                 ),
-              Text('AN ${_fmtClock(nav.eta)}',
+              Text('AN ${clockText(nav.eta)}',
                   style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w800,
@@ -3377,12 +2419,12 @@ class _MapScreenState extends State<MapScreen>
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Row(children: [
-                  Icon(_poiIcon(stop.poi.kind),
-                      size: 14, color: _poiColor(stop.poi.kind)),
+                  Icon(poiIcon(stop.poi.kind),
+                      size: 14, color: poiColor(stop.poi.kind)),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      '${stop.poi.displayName} in ${_fmtDist(stop.distanceM)}'
+                      '${stop.poi.displayName} in ${fmtDist(stop.distanceM)}'
                       '${_fuelPrices[stop.poi.id] != null ? ' · ${_fuelPrices[stop.poi.id]!.text}' : ''}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -3399,7 +2441,7 @@ class _MapScreenState extends State<MapScreen>
       // Menue. Beenden nur durch Gedrueckthalten.
       Row(children: [
         Expanded(
-          child: _mapBtn(
+          child: MapButton(
             big: true,
             icon: Icons.block,
             label: 'SPERRUNG',
@@ -3411,7 +2453,7 @@ class _MapScreenState extends State<MapScreen>
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: _mapBtn(
+          child: MapButton(
             big: true,
             icon: _autoFollow ? Icons.navigation : Icons.center_focus_strong,
             label: _autoFollow ? 'FOLGEN' : 'ZENTRIEREN',
@@ -3421,7 +2463,7 @@ class _MapScreenState extends State<MapScreen>
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: _mapBtn(
+          child: MapButton(
             big: true,
             icon: Icons.menu,
             label: 'MENÜ',
@@ -3430,52 +2472,6 @@ class _MapScreenState extends State<MapScreen>
         ),
       ]),
     ]);
-  }
-
-  /// Kartenknopf. Waehrend der Navigation groesser ([big]) - mit
-  /// Handschuhen trifft man kleine Flaechen schlecht.
-  Widget _mapBtn({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    bool active = false,
-    bool big = false,
-    VoidCallback? onLongPress,
-    Color? color,
-  }) {
-    final c = color ?? (active ? signal : chalk);
-    return Material(
-      color: panel.withValues(alpha: 0.96),
-      shape: BeveledRectangleBorder(
-        borderRadius: const BorderRadius.all(Radius.circular(7)),
-        side: BorderSide(color: active ? signal : line, width: active ? 2 : 1.5),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: big ? kTouchRide + 8 : 62),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: big ? 32 : 27, color: c),
-                const SizedBox(height: 3),
-                Text(label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: big ? 14 : 13,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                        color: c)),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   /// Beenden waehrend der Fahrt nur durch Gedrueckthalten - ein

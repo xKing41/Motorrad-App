@@ -165,6 +165,9 @@ class RideStore {
         pointCount: track.length,
         title: 'Unterbrochene Fahrt',
         movingSec: s.movingSec,
+        batteryStart: s.batteryStart,
+        batteryEnd: s.batteryEnd,
+        charged: s.charged,
       );
       await saveRide(saved, track);
       return saved;

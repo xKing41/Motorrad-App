@@ -27,6 +27,18 @@ class PowerPolicy {
 
   bool? _wakeOn;
 
+  /// Akkustand (%) und ob das Handy gerade laedt. null = unbekannt.
+  static Future<(int, bool)?> battery() async {
+    try {
+      final m = await _system.invokeMapMethod<String, Object?>('battery');
+      final l = m?['level'];
+      if (l is! int || l < 0) return null;
+      return (l, m?['charging'] == true);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> init() async {
     try {
       final sp = await SharedPreferences.getInstance();

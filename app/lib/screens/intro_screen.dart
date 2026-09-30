@@ -44,6 +44,14 @@ class _IntroScreenState extends State<IntroScreen> {
           'versehentlicher Tipp beendet nichts.',
     ),
     (
+      Icons.my_location,
+      'DEIN STANDORT',
+      'Gleich fragt Android nach deinem Standort. Ohne ihn gibt es keine '
+          'Karte, kein Navi und keine Sturzerkennung. Er bleibt auf deinem '
+          'Handy - im Hintergrund nur, solange du eine Fahrt aufzeichnest '
+          'oder navigierst.',
+    ),
+    (
       Icons.emergency_outlined,
       'SICHER UNTERWEGS',
       'Die Sturzerkennung schickt im Ernstfall eine SMS mit deiner '

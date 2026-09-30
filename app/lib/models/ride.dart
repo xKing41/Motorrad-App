@@ -66,6 +66,9 @@ class RideSummary {
     required this.pointCount,
     this.title,
     this.movingSec,
+    this.batteryStart,
+    this.batteryEnd,
+    this.charged = false,
   });
 
   final String id;
@@ -82,6 +85,22 @@ class RideSummary {
 
   /// Reine Fahrzeit ohne Stillstand (null bei alten Fahrten).
   final int? movingSec;
+
+  /// Akkustand des Handys bei Start und Ende (%), null = unbekannt.
+  final int? batteryStart;
+  final int? batteryEnd;
+
+  /// Waehrend der Fahrt geladen - dann sagt der Verbrauch nichts.
+  final bool charged;
+
+  /// Akkuverbrauch in % je Stunde (null: unbekannt, geladen oder zu
+  /// kurz fuer eine Aussage).
+  double? get batteryPerHour {
+    final a = batteryStart, b = batteryEnd;
+    if (a == null || b == null || charged || durationSec < 900) return null;
+    if (b > a) return null;
+    return (a - b) / (durationSec / 3600);
+  }
 
   double get distanceKm => distanceM / 1000;
   double get maxSpeedKmh => maxSpeedMs * 3.6;
@@ -106,6 +125,9 @@ class RideSummary {
         'n': pointCount,
         if (title != null) 'title': title,
         if (movingSec != null) 'mov': movingSec,
+        if (batteryStart != null) 'bat0': batteryStart,
+        if (batteryEnd != null) 'bat1': batteryEnd,
+        if (charged) 'chg': true,
       };
 
   static RideSummary fromJson(Map<String, dynamic> j) => RideSummary(
@@ -121,6 +143,9 @@ class RideSummary {
         pointCount: (j['n'] as num?)?.toInt() ?? 0,
         title: j['title'] as String?,
         movingSec: (j['mov'] as num?)?.toInt(),
+        batteryStart: (j['bat0'] as num?)?.toInt(),
+        batteryEnd: (j['bat1'] as num?)?.toInt(),
+        charged: j['chg'] == true,
       );
 }
 
