@@ -54,20 +54,45 @@ class MotorcycleBans extends RoadCheck {
       'no|private|agricultural|forestry|agricultural;forestry|delivery|destination|permit|customers';
   static const _allowed = 'yes|designated|permissive';
 
-  static String query(List<RoutePoint> route, {double corridorM = 120}) {
-    final area = PoiService.corridor(route, corridorM);
-    return '[out:json][timeout:25];('
-        'way["highway"]["motorcycle"~"^($_restricted)\$"]$area;'
-        'way["highway"]["motorcycle:conditional"~"^ *($_restricted) *@"]$area;'
-        'way["highway"]["motor_vehicle"~"^($_restricted)\$"]'
-        '["motorcycle"!~"^($_allowed)\$"]$area;'
-        'way["highway"]["motor_vehicle:conditional"~"^ *($_restricted) *@"]'
-        '["motorcycle"!~"^($_allowed)\$"]$area;'
-        'way["highway"]["vehicle"~"^($_restricted)\$"]'
-        '["motor_vehicle"!~"^($_allowed)\$"]["motorcycle"!~"^($_allowed)\$"]$area;'
-        'way["highway"]["access"~"^($_restricted)\$"]["vehicle"!~"^($_allowed)\$"]'
-        '["motor_vehicle"!~"^($_allowed)\$"]["motorcycle"!~"^($_allowed)\$"]$area;'
-        ');out tags geom 2000;';
+  /// Suchkorridor entlang einer Linie. Die Linie wird nur so weit
+  /// vereinfacht, dass sie hoechstens 30 m neben der Strasse liegt -
+  /// eine grob vereinfachte Linie schneidet in Kurven ab, und der
+  /// gesperrte Weg laege ausserhalb.
+  static String area(List<RoutePoint> line, double corridorM) {
+    final simple = corridorM >= 1000
+        ? PoiService.corridor(line, corridorM)
+        : null;
+    if (simple != null) return simple;
+    final pts = simplifyPath(line, 30);
+    String f(double v) => v.toStringAsFixed(5);
+    return '(around:${corridorM.round()},'
+        '${pts.map((p) => '${f(p.lat)},${f(p.lon)}').join(',')})';
+  }
+
+  static String query(List<RoutePoint> route, {double corridorM = 120}) =>
+      queryAll([route], corridorM: corridorM);
+
+  /// Eine Abfrage fuer mehrere Linienstuecke.
+  static String queryAll(List<List<RoutePoint>> lines,
+      {double corridorM = 120}) {
+    final b = StringBuffer('[out:json][timeout:40];(');
+    for (final l in lines) {
+      if (l.length < 2) continue;
+      final a = area(l, corridorM);
+      b
+        ..write('way["highway"]["motorcycle"~"^($_restricted)\$"]$a;')
+        ..write('way["highway"]["motorcycle:conditional"~"^ *($_restricted) *@"]$a;')
+        ..write('way["highway"]["motor_vehicle"~"^($_restricted)\$"]'
+            '["motorcycle"!~"^($_allowed)\$"]$a;')
+        ..write('way["highway"]["motor_vehicle:conditional"~"^ *($_restricted) *@"]'
+            '["motorcycle"!~"^($_allowed)\$"]$a;')
+        ..write('way["highway"]["vehicle"~"^($_restricted)\$"]'
+            '["motor_vehicle"!~"^($_allowed)\$"]["motorcycle"!~"^($_allowed)\$"]$a;')
+        ..write('way["highway"]["access"~"^($_restricted)\$"]["vehicle"!~"^($_allowed)\$"]'
+            '["motor_vehicle"!~"^($_allowed)\$"]["motorcycle"!~"^($_allowed)\$"]$a;');
+    }
+    b.write(');out tags geom 3000;');
+    return b.toString();
   }
 
   static List<BannedWay> parse(Map<String, dynamic> data) {
@@ -134,14 +159,89 @@ class MotorcycleBans extends RoadCheck {
     return null;
   }
 
+  /// Gemeinsamer Speicher fuer die App: Planen, Navistart und
+  /// Neuberechnung unterwegs fragen dieselbe Gegend nur einmal ab.
+  static final MotorcycleBans shared = MotorcycleBans();
+
+  // Schon abgefragte Gegend (Rasterzellen ~110 x 70 m entlang der
+  // abgefragten Linien) und die dort gefundenen Wege.
+  final Set<(int, int)> _covered = {};
+  final Map<int, BannedWay> _ways = {};
+  static const double _cell = 0.001;
+
+  (int, int) _cellOf(RoutePoint p) =>
+      ((p.lat / _cell).floor(), (p.lon / _cell).floor());
+
+  /// Stuecke der Route, fuer die noch nicht abgefragt wurde.
+  List<List<RoutePoint>> uncovered(List<RoutePoint> pts) {
+    final cum = cumulativeDistances(pts);
+    final out = <List<RoutePoint>>[];
+    List<RoutePoint>? cur;
+    void close() {
+      final c = cur;
+      if (c == null) return;
+      // Einzelner Punkt: kurze Linie daraus (Abfrage braucht zwei).
+      if (c.length == 1) c.add(destinationPoint(c.first, 0, 1));
+      out.add(c);
+      cur = null;
+    }
+
+    for (var a = 0.0; a <= cum.last + 1; a += 80) {
+      final p = pointAlong(pts, cum, math.min(a, cum.last));
+      if (_covered.contains(_cellOf(p))) {
+        close();
+      } else {
+        (cur ??= []).add(p);
+      }
+    }
+    close();
+    return out;
+  }
+
+  void _markCovered(List<RoutePoint> line) {
+    final cum = cumulativeDistances(line);
+    for (var a = 0.0; a <= cum.last + 1; a += 40) {
+      _covered.add(_cellOf(pointAlong(line, cum, math.min(a, cum.last))));
+    }
+  }
+
   @override
   Future<List<RoadIssue>> check(List<RoutePoint> pts,
       {bool unpaved = true}) async {
     if (pts.length < 2) return const [];
-    final f = fetch ?? PoiService.overpass;
-    final data = await f(query(pts));
-    if (data == null) throw StateError('Overpass nicht erreichbar');
-    return match(pts, parse(data));
+    final missing = uncovered(pts);
+    if (missing.isNotEmpty) {
+      final f = fetch ?? PoiService.overpass;
+      final data = await f(queryAll(missing));
+      if (data == null) throw StateError('Overpass nicht erreichbar');
+      if (_ways.length > 20000) {
+        _ways.clear();
+        _covered.clear();
+      }
+      for (final w in parse(data)) {
+        _ways[w.id] = w;
+      }
+      for (final l in missing) {
+        _markCovered(l);
+      }
+    }
+    // Nur Wege in der Gegend der Route vergleichen.
+    var s = 90.0, w = 180.0, n = -90.0, e = -180.0;
+    for (final p in pts) {
+      s = math.min(s, p.lat);
+      n = math.max(n, p.lat);
+      w = math.min(w, p.lon);
+      e = math.max(e, p.lon);
+    }
+    const pad = 0.002;
+    return match(pts, [
+      for (final x in _ways.values)
+        if (x.box.$1 <= n + pad &&
+            x.box.$3 >= s - pad &&
+            x.box.$2 <= e + pad &&
+            x.box.$4 >= w - pad)
+          x,
+    ]);
   }
 
   /// Gesperrte Wege im weiten Umkreis der Tour - fuer die Neuberechnung

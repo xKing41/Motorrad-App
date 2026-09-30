@@ -14,6 +14,23 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.34 - Routenplanung schneller
+--------------------------------------
+
+- Die Strassen-Pruefung (Verbote, Feldwege) lief seit 4.30 fuer jede
+  Variante nacheinander - das hat das Planen stark verlaengert. Jetzt
+  wird die beste Variante geprueft; ist sie sauber, ist sie die Tour.
+  Weitere Varianten prueft der Navistart, falls man eine davon waehlt.
+- Die Pruefungen laufen gleichzeitig statt nacheinander, in groesseren
+  Stuecken und merken sich die Ergebnisse: Navistart und Neuberechnung
+  unterwegs fragen dieselbe Gegend nicht noch einmal ab.
+- Motorradverbote: Der Suchkorridor folgt jetzt genau der Strasse (vorher
+  in Kurven teils abgeschnitten).
+- Autobahn-Meldungen werden gleichzeitig abgerufen.
+- Test-App: In den Hinweisen zur Tour steht die Rechenzeit, aufgeteilt
+  nach Varianten, Stopps, Pruefung und Verkehr - bitte bei langen
+  Wartezeiten mitschicken.
+
 VERSION 4.33 - Neues Design: sportlich, aufgeraeumt, mit Handschuh
 ------------------------------------------------------------------
 

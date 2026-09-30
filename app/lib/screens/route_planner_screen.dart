@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../build_flavor.dart';
 import '../models/route_plan.dart';
 import '../services/ai_config.dart';
 import '../services/ai_planner.dart';
@@ -250,6 +251,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       // KI-Stopps behalten ihre Begruendung und Kilometerangabe.
       if (aiStops != null) req = req.copyWith(stops: aiStops);
 
+      final watch = Stopwatch()..start();
       Map<String, double>? heatmap;
       if (_preferKnown) {
         setState(() => _status = 'Eigene Fahrten werden ausgewertet ...');
@@ -274,6 +276,18 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
             if (mounted) setState(() => _status = m);
           },
         );
+      }
+
+      // Test-App: wo die Zeit bleibt (fuer Rueckmeldungen).
+      final tm = planner.lastTimings;
+      if (kTestBuild && tm != null) {
+        String sec(Duration d) => '${(d.inMilliseconds / 1000).toStringAsFixed(1).replaceAll('.', ',')} s';
+        plan = plan.copyWith(notes: [
+          ...plan.notes,
+          'Rechenzeit ${sec(watch.elapsed)}: Varianten ${sec(tm.$1)}, '
+              'Stopps ${sec(tm.$2)}, Prüfung ${sec(tm.$3)}, '
+              'Verkehr und Rest ${sec(watch.elapsed - tm.$1 - tm.$2 - tm.$3)}.',
+        ]);
       }
 
       if (_preferKnown && (heatmap == null || heatmap.isEmpty)) {

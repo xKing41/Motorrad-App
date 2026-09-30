@@ -122,6 +122,42 @@ void main() {
       expect((await c.check(route)).single.kind, 'Feldweg');
     });
   });
+
+  group('Zwischenspeicher', () {
+    test('dieselbe Gegend nur einmal abfragen, Neues nur fuer das Neue',
+        () async {
+      final queries = <String>[];
+      final b = MotorcycleBans(fetch: (q) async {
+        queries.add(q);
+        return {'elements': []};
+      });
+      const a = RoutePoint(51.30, 7.40);
+      final r1 = straight(a, 0, 20000);
+      await b.check(r1);
+      await b.check(r1); // Navistart: gleiche Tour
+      expect(queries, hasLength(1));
+      // Neue Tour, erste Haelfte gleich: nur der neue Teil wird gefragt.
+      final r2 = [...straight(a, 0, 10000), ...straight(r1[100], 90, 10000)];
+      expect(b.uncovered(r2), hasLength(1));
+      await b.check(r2);
+      expect(queries, hasLength(2));
+      expect(b.uncovered(r2), isEmpty);
+    });
+
+    test('Suchkorridor folgt den Kurven (nicht grob abgeschnitten)', () {
+      // Serpentinen: 30 Kehren auf 3 km.
+      const a = RoutePoint(51.3, 7.4);
+      final pts = <RoutePoint>[a];
+      for (var i = 0; i < 30; i++) {
+        pts.add(destinationPoint(pts.last, i.isEven ? 60 : 300, 200));
+      }
+      final simple = simplifyPath(pts, 30);
+      // Jede Kehre bleibt drin - sonst laege die Strasse ausserhalb.
+      expect(simple.length, pts.length);
+      final straightLine = straight(a, 0, 5000);
+      expect(simplifyPath(straightLine, 30), hasLength(2));
+    });
+  });
 }
 
 class _Fixed extends RoadCheck {

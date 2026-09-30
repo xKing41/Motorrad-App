@@ -592,3 +592,46 @@ bool _isOutAndBack(List<RoutePoint> pts, int i, int j, double tolM) {
   }
   return near / second.length >= 0.7;
 }
+
+
+/// Linie vereinfachen (Douglas-Peucker): weniger Punkte, hoechstens
+/// [toleranceM] Abweichung. Fuer Abfragen "entlang der Route", deren
+/// Korridor der echten Strasse folgen muss.
+List<RoutePoint> simplifyPath(List<RoutePoint> pts, double toleranceM) {
+  if (pts.length < 3) return pts;
+  final keep = List<bool>.filled(pts.length, false);
+  keep[0] = keep[pts.length - 1] = true;
+  final stack = <(int, int)>[(0, pts.length - 1)];
+  while (stack.isNotEmpty) {
+    final (a, b) = stack.removeLast();
+    if (b <= a + 1) continue;
+    final pa = pts[a], pb = pts[b];
+    final kx = 111320 * math.cos(pa.lat * math.pi / 180);
+    const ky = 110540.0;
+    final dx = (pb.lon - pa.lon) * kx, dy = (pb.lat - pa.lat) * ky;
+    final l2 = dx * dx + dy * dy;
+    var worst = -1.0;
+    var at = -1;
+    for (var i = a + 1; i < b; i++) {
+      final px = (pts[i].lon - pa.lon) * kx, py = (pts[i].lat - pa.lat) * ky;
+      var t = l2 > 0 ? (px * dx + py * dy) / l2 : 0.0;
+      t = t.clamp(0.0, 1.0);
+      final ex = px - t * dx, ey = py - t * dy;
+      final d = ex * ex + ey * ey;
+      if (d > worst) {
+        worst = d;
+        at = i;
+      }
+    }
+    if (at >= 0 && worst > toleranceM * toleranceM) {
+      keep[at] = true;
+      stack
+        ..add((a, at))
+        ..add((at, b));
+    }
+  }
+  return [
+    for (var i = 0; i < pts.length; i++)
+      if (keep[i]) pts[i],
+  ];
+}

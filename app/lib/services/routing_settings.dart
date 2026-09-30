@@ -86,15 +86,22 @@ class RoutingSettings {
   /// und Schotter
   /// (Valhalla - auch wenn mit GraphHopper geplant wird).
   RoadCheck roadCheck() {
-    final base = ValhallaEngine.normalizeUrl(valhallaUrl);
-    return CombinedRoadCheck([
-      ValhallaRoadCheck(base: base.isEmpty ? ValhallaEngine.publicUrl : base),
-      // Motorradverbote, auch zeitweise (Overpass).
-      MotorcycleBans(),
-      // Selbst gesperrte Stellen.
-      UserBlockCheck(),
-    ]);
+    var base = ValhallaEngine.normalizeUrl(valhallaUrl);
+    if (base.isEmpty) base = ValhallaEngine.publicUrl;
+    // Eine Instanz je Server: ihr Zwischenspeicher gilt fuer Planen,
+    // Navistart und Neuberechnung gleichermassen.
+    return _checks.putIfAbsent(
+        base,
+        () => CombinedRoadCheck([
+              ValhallaRoadCheck(base: base),
+              // Motorradverbote, auch zeitweise (Overpass).
+              MotorcycleBans.shared,
+              // Selbst gesperrte Stellen.
+              UserBlockCheck(),
+            ]));
   }
+
+  static final Map<String, CombinedRoadCheck> _checks = {};
 
   /// Schluessel fuer HERE Traffic (optional, zweite Quelle).
   final String hereKey;

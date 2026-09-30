@@ -144,6 +144,16 @@ void main() {
       expect(check.calls, 2);
     });
 
+    test('beste Variante sauber: die anderen werden nicht geprueft',
+        () async {
+      final check = FakeRoadCheck(badCalls: 0);
+      final plan = await TourPlanner(FakeEngine(),
+              random: math.Random(4), maxVariants: 3, roadCheck: check)
+          .plan(loop());
+      expect(check.calls, 1);
+      expect(plan.alternatives, isNotEmpty);
+    });
+
     test('ohne Netz fuer die Pruefung: Tour trotzdem', () async {
       final plan = await TourPlanner(FakeEngine(),
               random: math.Random(4), maxVariants: 1, roadCheck: _Failing())

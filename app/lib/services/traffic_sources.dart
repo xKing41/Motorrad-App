@@ -188,8 +188,8 @@ class AutobahnTraffic implements TrafficFeed {
     final end = math.min(toM ?? cum.last, cum.last);
     final raw = <TrafficIncident>[];
     var failed = 0;
-    for (final road in roads) {
-      final list = await _road(road);
+    final lists = await Future.wait([for (final road in roads) _road(road)]);
+    for (final list in lists) {
       if (list == null) {
         failed++;
         continue;
@@ -207,7 +207,8 @@ class AutobahnTraffic implements TrafficFeed {
     }
     final out = <TrafficIncident>[];
     var ok = false;
-    for (final service in const ['closure', 'roadworks', 'warning']) {
+    // Die drei Meldungsarten gleichzeitig abrufen statt nacheinander.
+    Future<void> fetch(String service) async {
       final uri = Uri.https(_host, '/o/autobahn/$road/services/$service');
       try {
         final c = _client;
@@ -215,15 +216,20 @@ class AutobahnTraffic implements TrafficFeed {
             await (c != null ? c.get(uri) : http.get(uri)).timeout(timeout);
         if (res.statusCode == 404) {
           ok = true; // Diese Autobahn gibt es nicht (z. B. im Ausland).
-          continue;
+          return;
         }
-        if (res.statusCode != 200) continue;
+        if (res.statusCode != 200) return;
         ok = true;
         out.addAll(parse(jsonDecode(utf8.decode(res.bodyBytes)), service, road));
       } catch (_) {
         // naechster Dienst
       }
     }
+
+    await Future.wait([
+      for (final service in const ['closure', 'roadworks', 'warning'])
+        fetch(service),
+    ]);
     if (!ok) return null;
     _cache[road] = (DateTime.now(), out);
     return out;

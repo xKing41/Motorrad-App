@@ -107,20 +107,36 @@ class ValhallaRoadCheck extends RoadCheck {
       {bool unpaved = true}) async {
     if (pts.length < 2) return const [];
     final cum = cumulativeDistances(pts);
+    // Dieselbe Tour (Planen, dann Navistart) nur einmal abfragen.
+    final key = '$unpaved|${pts.length}|${pts.first.lat},${pts.first.lon}|'
+        '${pts.last.lat},${pts.last.lon}|${cum.last.round()}';
+    final hit = _cache[key];
+    if (hit != null) return hit;
     final out = <RoadIssue>[];
-    for (final (a, b) in ValhallaSpeedLimits.chunks(cum)) {
+    // Grosse Stuecke: weniger Anfragen (jede wartet auf ihren Takt).
+    for (final (a, b) in ValhallaSpeedLimits.chunks(cum,
+        maxM: chunkM, maxPoints: chunkMaxPoints)) {
       final part = pts.sublist(a, b + 1);
       final j = await _post(part);
       out.addAll(parse(j, cum[a], cum[b] - cum[a], unpaved: unpaved));
     }
-    return merge(out);
+    final res = merge(out);
+    _cache[key] = res;
+    if (_cache.length > 12) _cache.remove(_cache.keys.first);
+    return res;
   }
+
+  /// Stueckgroesse je Anfrage (Valhalla erlaubt standardmaessig bis
+  /// 200 km und 16000 Punkte - mit Abstand darunter).
+  static const double chunkM = 100000;
+  static const int chunkMaxPoints = 4000;
+  final Map<String, List<RoadIssue>> _cache = {};
 
   Future<Map<String, dynamic>> _post(List<RoutePoint> part) async {
     final uri = Uri.parse('$base/trace_attributes');
     const headers = {
       'Content-Type': 'application/json',
-      'User-Agent': 'Schraeglage/4.33 (Motorrad-App)',
+      'User-Agent': 'Schraeglage/4.34 (Motorrad-App)',
     };
     Future<http.Response> send(String costing) async {
       final body = jsonEncode({
@@ -268,8 +284,10 @@ class CombinedRoadCheck extends RoadCheck {
       {bool unpaved = true}) async {
     final issues = <RoadIssue>[];
     final unchecked = <String>[];
-    for (final c in checks) {
-      final r = await c.run(pts, unpaved: unpaved);
+    // Gleichzeitig - die Pruefungen fragen verschiedene Dienste.
+    final results = await Future.wait(
+        [for (final c in checks) c.run(pts, unpaved: unpaved)]);
+    for (final r in results) {
       issues.addAll(r.issues);
       unchecked.addAll(r.unchecked);
     }

@@ -141,14 +141,15 @@ class ValhallaSpeedLimits implements SpeedLimitSource {
   }
 
   /// Teilt die Route in Stuecke (Index von/bis, ueberlappend am Rand).
-  static List<(int, int)> chunks(List<double> cum) {
+  static List<(int, int)> chunks(List<double> cum,
+      {double maxM = chunkM, int maxPoints = chunkMaxPoints}) {
     final out = <(int, int)>[];
     var a = 0;
     while (a < cum.length - 1) {
       var b = a + 1;
       while (b < cum.length - 1 &&
-          cum[b + 1] - cum[a] <= chunkM &&
-          b + 1 - a < chunkMaxPoints) {
+          cum[b + 1] - cum[a] <= maxM &&
+          b + 1 - a < maxPoints) {
         b++;
       }
       out.add((a, b));
@@ -176,7 +177,7 @@ class ValhallaSpeedLimits implements SpeedLimitSource {
     final uri = Uri.parse('$base/trace_attributes');
     const headers = {
       'Content-Type': 'application/json',
-      'User-Agent': 'Schraeglage/4.33 (Motorrad-App)',
+      'User-Agent': 'Schraeglage/4.34 (Motorrad-App)',
     };
     final c = _client;
     final res = await (c != null

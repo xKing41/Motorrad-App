@@ -331,12 +331,18 @@ class TourPlanner {
 
   final math.Random _rnd;
 
+  /// Rechenzeit der letzten Planung: Varianten, Stopps, Pruefung.
+  (Duration, Duration, Duration)? lastTimings;
+
   Future<RoutePlan> plan(RouteRequest req, {PlanProgress? onProgress}) async {
     void say(String m) => onProgress?.call(m);
+    final watch = Stopwatch()..start();
+    var tStops = Duration.zero, tCheck = Duration.zero;
 
     var cands = req.roundTrip
         ? await _roundTrip(req, say)
         : await _aToB(req, say);
+    final tRoutes = watch.elapsed;
 
     cands.sort((a, b) => b.quality.score.compareTo(a.quality.score));
     cands = _distinct(cands);
@@ -362,22 +368,37 @@ class TourPlanner {
         ..sort((a, b) => b.quality.score.compareTo(a.quality.score));
     }
 
+    tStops = watch.elapsed - tRoutes;
     if (roadCheck != null && cands.isNotEmpty) {
-      say('Straßen werden geprüft ...');
-      final checked = await _pool<(_Candidate, double)>(
-        [for (final c in cands) () => _verifyRoads(c, req)],
-        engine.parallelRequests,
-      );
-      final list = [
-        for (var i = 0; i < cands.length; i++) checked[i] ?? (cands[i], 0.0),
-      ];
-      // Saubere Touren zuerst, dann nach Bewertung.
-      list.sort((a, b) {
+      // Nur so viele pruefen wie noetig: die beste Variante zuerst -
+      // ist sie sauber, ist sie die Tour. Die anderen Varianten prueft
+      // der Navistart, falls man eine davon waehlt. Vorher wurden alle
+      // nacheinander geprueft - das hat das Planen stark verlaengert.
+      final checked = <(_Candidate, double)>[];
+      var i = 0;
+      for (; i < cands.length; i++) {
+        say(i == 0
+            ? 'Straßen werden geprüft ...'
+            : 'Variante ${i + 1} wird geprüft ...');
+        final r = await _verifyRoads(cands[i], req);
+        checked.add(r);
+        if (r.$2 == 0) {
+          i++;
+          break;
+        }
+      }
+      final rest = cands.skip(i);
+      // Saubere zuerst (Reihenfolge der Bewertung bleibt sonst erhalten).
+      checked.sort((a, b) {
         final bad = (a.$2 > 0 ? 1 : 0).compareTo(b.$2 > 0 ? 1 : 0);
         return bad != 0 ? bad : b.$1.quality.score.compareTo(a.$1.quality.score);
       });
-      cands = [for (final e in list) e.$1];
+      final clean = checked.where((e) => e.$2 == 0).map((e) => e.$1);
+      final dirty = checked.where((e) => e.$2 > 0).map((e) => e.$1);
+      cands = [...clean, ...rest, ...dirty];
     }
+    tCheck = watch.elapsed - tRoutes - tStops;
+    lastTimings = (tRoutes, tStops, tCheck);
 
     final plans = [for (final c in cands) _toPlan(c, req)];
     return plans.first.copyWith(alternatives: plans.skip(1).toList());
