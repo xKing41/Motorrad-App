@@ -475,6 +475,10 @@ class _MapScreenState extends State<MapScreen>
       _map.move(LatLng(t.lat!, t.lon!), _zoom);
     }
     nav.start();
+    if (!settings.voice && mounted) {
+      toast(context,
+          'Sprachansagen sind ausgeschaltet (Einstellungen → Navigation & Ansagen)');
+    }
     // Test-App: ohne Headset hoert man die Ansagen unter dem Helm nicht.
     if (kTestBuild && settings.voice && mounted) {
       await Headset.instance.refresh();

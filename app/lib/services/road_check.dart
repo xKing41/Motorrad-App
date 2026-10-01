@@ -136,7 +136,7 @@ class ValhallaRoadCheck extends RoadCheck {
     final uri = Uri.parse('$base/trace_attributes');
     const headers = {
       'Content-Type': 'application/json',
-      'User-Agent': 'Schraeglage/4.35 (Motorrad-App)',
+      'User-Agent': 'Schraeglage/4.36 (Motorrad-App)',
     };
     Future<http.Response> send(String costing) async {
       final body = jsonEncode({

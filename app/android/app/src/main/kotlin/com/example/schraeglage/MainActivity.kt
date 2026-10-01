@@ -26,12 +26,16 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private var pendingPermission: MethodChannel.Result? = null
     private var headset: HeadsetBridge? = null
+    private var callVoice: CallVoice? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         // Helm-Headset: erkennen, Akku, Sprachnachrichten, Tasten.
         headset?.dispose()
         headset = HeadsetBridge(this, flutterEngine.dartExecutor.binaryMessenger)
+        // Navi-Ansagen wie ein Anruf (Autoradio, Intercom).
+        callVoice?.dispose()
+        callVoice = CallVoice(this, flutterEngine.dartExecutor.binaryMessenger)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "schraeglage/sms")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -169,6 +173,8 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         headset?.dispose()
         headset = null
+        callVoice?.dispose()
+        callVoice = null
         super.onDestroy()
     }
 

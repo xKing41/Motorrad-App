@@ -14,6 +14,26 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.36 - Navi-Ansagen: zuverlaessiger, auch im Auto
+--------------------------------------------------------
+
+- NEU: Ausgabe "Wie ein Anruf (Bluetooth)". Viele Autoradios spielen
+  Bluetooth-Ton nur, wenn die Quelle "Bluetooth-Audio" gewaehlt ist -
+  bei Radio/DAB hoert man sonst NICHTS, auch nicht aus dem Handy. Als
+  Anruf unterbricht die Ansage jede Quelle. Hilft auch bei Headsets, die
+  waehrend des Intercoms keine Musik durchlassen.
+  EINSTELLUNGEN -> Navigation & Ansagen -> Stimme -> AUSGABE.
+- NEU: TESTANSAGE (Einstellungen und Navi-Menue) mit Diagnose: welche
+  Sprachausgabe, ob Deutsch verfuegbar ist, welche Stimme, letzter
+  Fehler.
+- Automatische Stimmenwahl nur noch mit Stimmen, die ohne Internet
+  sprechen. Nimmt die Sprachausgabe die gewaehlte Stimme nicht an,
+  spricht die App mit der Standardstimme weiter statt zu schweigen.
+- Die Sprachausgabe wird schon beim App-Start eingerichtet - die erste
+  Ansage geht nicht mehr verloren.
+- Beim Navistart mit ausgeschalteten Ansagen kommt ein Hinweis.
+- Fehlerberichte enthalten den Zustand der Sprachausgabe.
+
 VERSION 4.35 - Bereit fuer den Play Store
 -----------------------------------------
 

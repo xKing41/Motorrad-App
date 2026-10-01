@@ -626,6 +626,13 @@ extension _MapSheets on _MapScreenState {
                       _showExport),
                 tile(Icons.layers, 'Karte', 'Stil, Offline, Verkehr',
                     _showMapMenu),
+                tile(Icons.record_voice_over, 'Ansage testen',
+                    'Lautstärke und Ausgabe prüfen', () async {
+                  await Voice.instance.test();
+                  await Future<void>.delayed(const Duration(seconds: 3));
+                  final err = Voice.instance.lastError;
+                  if (mounted && err != null) toast(context, err);
+                }),
               ]),
               const SizedBox(height: 4),
               Row(children: [

@@ -20,6 +20,7 @@ import 'services/ride_store.dart';
 import 'services/telemetry.dart';
 import 'services/user_blocks.dart';
 import 'services/vector_map.dart';
+import 'services/voice.dart';
 import 'theme.dart';
 
 void main() {
@@ -110,6 +111,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       // Erst nach dem Einstieg starten: dann kommt die Frage nach dem
       // Standort mit Erklaerung statt unvermittelt beim ersten Start.
       unawaited(t.start());
+      unawaited(Voice.instance.warmUp());
       if (mounted && await CrashLog.instance.takePending() && mounted) {
         await FeedbackScreen.offerCrashReport(context);
       }

@@ -155,7 +155,7 @@ jobs:
               grep -n "applicationId" "$f"
             fi
           done
-          sed -i -E '/android.permission.(SEND_SMS|RECORD_AUDIO|MODIFY_AUDIO_SETTINGS|BLUETOOTH|BLUETOOTH_CONNECT)"/d' android/app/src/main/AndroidManifest.xml
+          sed -i -E '/android.permission.(SEND_SMS|RECORD_AUDIO|BLUETOOTH_CONNECT)"/d' android/app/src/main/AndroidManifest.xml
           grep -n "uses-permission" android/app/src/main/AndroidManifest.xml
           flutter build appbundle --release --dart-define=SCHRAEGLAGE_STORE=true
           cp build/app/outputs/bundle/release/app-release.aab ../out/Schraeglage-Store.aab

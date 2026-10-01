@@ -16,7 +16,7 @@ const String kAppName = kTestBuild ? 'Schräglage Testing' : 'Schräglage';
 
 /// Versionsnummer (gleich wie in pubspec.yaml - wird zusammen gepflegt).
 /// Steht in Fehlerberichten, damit klar ist, welcher Stand gemeint ist.
-const String kAppVersion = '4.35.0';
+const String kAppVersion = '4.36.0';
 
 /// Ausgabe fuer den Google Play Store (App-Bundle): ohne die Berechtigung
 /// "SMS senden" - die erlaubt Google nur mit Sondergenehmigung. Die

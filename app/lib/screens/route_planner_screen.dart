@@ -1449,6 +1449,7 @@ class _VoicePicker extends StatefulWidget {
 class _VoicePickerState extends State<_VoicePicker> {
   List<TtsVoice> _voices = const [];
   bool _loaded = false;
+  String? _diag;
 
   @override
   void initState() {
@@ -1509,6 +1510,64 @@ class _VoicePickerState extends State<_VoicePicker> {
                   ]),
                 ),
               ),
+          const SizedBox(height: 10),
+          const TinyLabel('AUSGABE'),
+          const SizedBox(height: 6),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final o in VoiceOutput.values)
+              ChoiceChip(
+                label: Text(o.label,
+                    style: TextStyle(
+                        fontSize: 15,
+                        color: Voice.instance.output == o ? asphalt : chalk)),
+                selected: Voice.instance.output == o,
+                showCheckmark: false,
+                onSelected: (_) async {
+                  await Voice.instance.setOutput(o);
+                  if (mounted) setState(() {});
+                },
+              ),
+          ]),
+          const SizedBox(height: 4),
+          const Text(
+              'Im Auto über Bluetooth nichts zu hören? Dann "Wie ein Anruf" '
+              'wählen - das unterbricht auch das Radio. Hilft auch bei '
+              'Headsets, die während des Intercoms keine Musik durchlassen.',
+              style: small),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: FlatButton2(
+              label: 'TESTANSAGE',
+              color: signal,
+              strong: true,
+              onTap: () async {
+                await Voice.instance.test();
+                // Kurz warten, damit Fehler der Ausgabe ankommen.
+                await Future<void>.delayed(const Duration(seconds: 3));
+                final d = await Voice.instance.diagnose();
+                if (mounted) setState(() => _diag = d);
+              },
+            ),
+          ),
+          if (_diag != null)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(top: 8),
+              padding: const EdgeInsets.all(10),
+              color: panel2,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Nichts gehört? Lautstärke (Medien), '
+                      'Bluetooth-Quelle im Auto und "Ausgabe" prüfen.',
+                      style: TextStyle(fontSize: 14, color: amber, height: 1.35)),
+                  const SizedBox(height: 6),
+                  SelectableText(_diag!,
+                      style: const TextStyle(fontSize: 13.5, color: steel)),
+                ],
+              ),
+            ),
           const SizedBox(height: 6),
           Row(children: [
             const Text('Tempo', style: TextStyle(fontSize: 14.5, color: steel)),

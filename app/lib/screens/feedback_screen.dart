@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../services/crash_log.dart';
+import '../services/voice.dart';
 import '../theme.dart';
 
 /// Fehler melden / Rueckmeldung geben. Der Bericht geht ueber den
@@ -64,7 +65,13 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   }
 
   Future<String> _build() async {
-    if (_withLog) return CrashLog.instance.report(userText: _text.text);
+    if (_withLog) {
+      try {
+        CrashLog.instance.context['Sprachausgabe'] =
+            (await Voice.instance.diagnose()).replaceAll('\n', ' · ');
+      } catch (_) {}
+      return CrashLog.instance.report(userText: _text.text);
+    }
     return 'SCHRÄGLAGE - RÜCKMELDUNG\n\n${CrashLog.header()}\n'
         '${_text.text.trim()}';
   }

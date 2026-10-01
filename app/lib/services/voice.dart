@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -78,7 +80,10 @@ class TtsVoice {
 
 /// Die beste Stimme aus einer Liste (null = keine deutsche).
 TtsVoice? bestVoice(List<TtsVoice> voices) {
-  final de = voices.where((v) => v.german && v.installed).toList()
+  // Automatisch nur Stimmen, die ohne Internet sprechen - eine
+  // Online-Stimme schweigt im Funkloch oder bei schwachem Netz.
+  // (Selbst waehlen kann man sie trotzdem.)
+  final de = voices.where((v) => v.german && v.installed && !v.network).toList()
     ..sort((a, b) => b.score.compareTo(a.score));
   return de.isEmpty ? null : de.first;
 }
@@ -92,6 +97,20 @@ String speakable(String t) => t
     .replaceAll(RegExp(r' km/h\b'), ' Kilometer pro Stunde')
     .replaceAll(RegExp(r' km\b'), ' Kilometer')
     .replaceAll(RegExp(r' min\b'), ' Minuten');
+
+/// Wie die Ansagen ausgegeben werden.
+enum VoiceOutput {
+  /// Als Navigationsansage (Medienton, Musik wird leiser).
+  auto('Normal (Navigation)'),
+
+  /// Wie ein Anruf ueber die Bluetooth-Freisprechverbindung: unterbricht
+  /// auch das Autoradio (Quelle Radio/DAB) und kommt bei manchen
+  /// Headsets waehrend Intercom durch.
+  call('Wie ein Anruf (Bluetooth)');
+
+  const VoiceOutput(this.label);
+  final String label;
+}
 
 /// Sprachansagen fuer die Navigation.
 ///
@@ -107,6 +126,14 @@ class Voice {
 
   static const _kVoice = 'tts_voice';
   static const _kRate = 'tts_rate';
+  static const _kOutput = 'tts_output';
+  static const _call = MethodChannel('schraeglage/callvoice');
+
+  VoiceOutput output = VoiceOutput.auto;
+
+  /// Letzter Fehler der Sprachausgabe (fuer die Diagnose).
+  String? lastError;
+  Future<void>? _initing;
 
   /// Sprechtempo (0,4 langsam ... 0,6 schnell; 0,5 = normal).
   double rate = 0.5;
@@ -115,13 +142,23 @@ class Voice {
   String? _last;
   DateTime _lastAt = DateTime.fromMillisecondsSinceEpoch(0);
 
-  Future<void> _init() async {
-    if (_ready) return;
+  Future<void> _init() {
+    if (_ready) return Future.value();
+    // Gleichzeitige Aufrufe (Navistart: mehrere Ansagen) warten auf
+    // dieselbe Einrichtung statt zwei Sprachausgaben anzulegen.
+    return _initing ??= _doInit();
+  }
+
+  Future<void> _doInit() async {
     try {
       final t = FlutterTts();
       await t.setLanguage('de-DE');
       final sp = await SharedPreferences.getInstance();
       rate = sp.getDouble(_kRate) ?? 0.5;
+      output = VoiceOutput.values.firstWhere(
+          (o) => o.name == sp.getString(_kOutput),
+          orElse: () => VoiceOutput.auto);
+      t.setErrorHandler((m) => lastError = '$m');
       await t.setSpeechRate(rate);
       await t.setVolume(1.0);
       await t.setPitch(1.0);
@@ -134,8 +171,9 @@ class Voice {
         final pick = all.where((v) => v.name == saved).firstOrNull ??
             bestVoice(all);
         if (pick != null) {
-          await t.setVoice({'name': pick.name, 'locale': pick.locale});
-          current = pick;
+          final r = await t.setVoice({'name': pick.name, 'locale': pick.locale});
+          // Nicht angenommen: Standardstimme behalten.
+          current = r == 1 ? pick : null;
         }
       } catch (_) {
         // Keine Stimmenliste: Standardstimme.
@@ -165,7 +203,8 @@ class Voice {
         if (Platform.isAndroid) await t.setQueueMode(1);
       } catch (_) {}
       _tts = t;
-    } catch (_) {
+    } catch (e) {
+      lastError = 'Sprachausgabe nicht verfügbar: $e';
       _tts = null;
     }
     _ready = true;
@@ -183,13 +222,76 @@ class Voice {
     _last = text;
     _lastAt = now;
     await _init();
+    final spoken = speakable(text);
+    if (output == VoiceOutput.call && Platform.isAndroid) {
+      try {
+        await _call.invokeMethod('speak',
+            {'text': spoken, 'rate': rate, 'voice': current?.name});
+        return;
+      } catch (e) {
+        lastError = 'Anruf-Ausgabe: $e';
+        // weiter mit der normalen Ausgabe
+      }
+    }
     try {
       // focus: Audiofokus "kurz, andere leiser" anfordern (Ducking).
-      await _tts?.speak(speakable(text), focus: true);
-    } catch (_) {
-      // Keine Sprachausgabe verfuegbar - Anzeige reicht.
+      final r = await _tts?.speak(spoken, focus: true);
+      if (r != null && r != 1) {
+        // Nicht gesprochen (z. B. gewaehlte Stimme nicht nutzbar):
+        // einmal mit der Standardstimme versuchen.
+        lastError = 'Ansage nicht gesprochen ($r) - Standardstimme';
+        await _tts?.clearVoice();
+        current = null;
+        await _tts?.speak(spoken, focus: true);
+      }
+    } catch (e) {
+      lastError = 'Ansage fehlgeschlagen: $e';
     }
   }
+
+  /// Schon beim App-Start einrichten: sonst geht die erste Ansage
+  /// ("Los geht's") verloren, waehrend die Sprachausgabe noch laedt.
+  Future<void> warmUp() => _init();
+
+  Future<void> setOutput(VoiceOutput o) async {
+    output = o;
+    final sp = await SharedPreferences.getInstance();
+    await sp.setString(_kOutput, o.name);
+  }
+
+  /// Zustand der Sprachausgabe in Worten (Testansage, Fehlerbericht).
+  Future<String> diagnose() async {
+    await _init();
+    final t = _tts;
+    final b = StringBuffer();
+    if (t == null) {
+      b.writeln('Sprachausgabe: nicht verfügbar');
+    } else {
+      try {
+        b.writeln('Sprachausgabe: ${await t.getDefaultEngine ?? '?'}');
+        final de = await t.isLanguageAvailable('de-DE');
+        b.writeln('Deutsch verfügbar: ${de == true ? 'ja' : 'nein'}');
+      } catch (_) {}
+    }
+    b
+      ..writeln('Stimme: ${current?.name ?? 'Standard'}')
+      ..writeln('Ausgabe: ${output.label}')
+      ..writeln('Ansagen eingeschaltet: ${enabled ? 'ja' : 'nein'}');
+    var err = lastError;
+    if (output == VoiceOutput.call && Platform.isAndroid) {
+      try {
+        err ??= await _call.invokeMethod<String>('lastError');
+      } catch (_) {}
+    }
+    if (err != null) b.writeln('Letzter Fehler: $err');
+    return b.toString().trim();
+  }
+
+  /// Testansage (auch bei abgeschalteten Ansagen).
+  Future<void> test() => say(
+      'Testansage. In 300 Metern rechts abbiegen.',
+      force: true,
+      repeat: true);
 
   static Future<List<TtsVoice>> _voicesOf(FlutterTts t) async {
     final raw = await t.getVoices;
@@ -216,8 +318,8 @@ class Voice {
   Future<void> setVoice(TtsVoice v) async {
     await _init();
     try {
-      await _tts?.setVoice({'name': v.name, 'locale': v.locale});
-      current = v;
+      final r = await _tts?.setVoice({'name': v.name, 'locale': v.locale});
+      if (r == 1) current = v;
     } catch (_) {}
     final sp = await SharedPreferences.getInstance();
     await sp.setString(_kVoice, v.name);
@@ -241,5 +343,10 @@ class Voice {
     try {
       await _tts?.stop();
     } catch (_) {}
+    if (output == VoiceOutput.call && Platform.isAndroid) {
+      try {
+        await _call.invokeMethod('stop');
+      } catch (_) {}
+    }
   }
 }
