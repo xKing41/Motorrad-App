@@ -273,6 +273,28 @@ class Voice {
         b.writeln('Deutsch verfügbar: ${de == true ? 'ja' : 'nein'}');
       } catch (_) {}
     }
+    if (Platform.isAndroid) {
+      try {
+        final m = await const MethodChannel('schraeglage/system')
+            .invokeMapMethod<String, Object?>('audioRoute');
+        if (m != null) {
+          final nav = '${m['nav'] ?? ''}';
+          if (nav.isNotEmpty) b.writeln('Ansagen gehen an: $nav');
+          final bt = '${m['bluetooth'] ?? ''}';
+          b.writeln('Bluetooth: ${bt.isEmpty ? 'nicht verbunden' : bt}');
+          b.writeln('Medienlautstärke: ${m['volume']} von ${m['max']}'
+              '${m['volume'] == 0 ? ' - STUMM!' : ''}');
+          if (bt.contains('Medien') &&
+              nav.isNotEmpty &&
+              !nav.contains('Bluetooth')) {
+            b.writeln('ACHTUNG: Musik läuft über Bluetooth, die Ansagen '
+                'aber nicht. Samsung: Einstellungen → Töne → "Separater '
+                'App-Sound" ausschalten - oder Ausgabe "Wie ein Anruf" '
+                'wählen.');
+          }
+        }
+      } catch (_) {}
+    }
     b
       ..writeln('Stimme: ${current?.name ?? 'Standard'}')
       ..writeln('Ausgabe: ${output.label}')

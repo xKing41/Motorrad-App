@@ -14,6 +14,16 @@ SCHRÄGLAGE – Schnellstart (Windows)
    → Aufs Handy übertragen (USB, E-Mail, Messenger …) und antippen.
    → Beim Installieren einmalig „Unbekannte Apps" erlauben.
 
+VERSION 4.37 - Testansage zeigt, wohin der Ton geht
+---------------------------------------------------
+
+- Die Diagnose unter TESTANSAGE zeigt jetzt: an welches Geraet die
+  Ansagen gehen (Handy-Lautsprecher, Bluetooth ...), welches Bluetooth-
+  Geraet verbunden ist und wie laut die Medienlautstaerke steht.
+- Laeuft Musik ueber Bluetooth, die Ansagen aber nicht, sagt die App das
+  und nennt die Abhilfe (Samsung: "Separater App-Sound" ausschalten oder
+  Ausgabe "Wie ein Anruf").
+
 VERSION 4.36 - Navi-Ansagen: zuverlaessiger, auch im Auto
 --------------------------------------------------------
 

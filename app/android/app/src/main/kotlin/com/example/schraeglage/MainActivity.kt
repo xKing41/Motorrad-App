@@ -8,6 +8,9 @@ import android.os.Build
 import android.content.Context
 import android.content.IntentFilter
 import android.os.BatteryManager
+import android.media.AudioManager
+import android.media.AudioDeviceInfo
+import android.media.AudioAttributes
 import android.os.PowerManager
 import android.provider.Settings
 import android.telephony.SmsManager
@@ -95,6 +98,51 @@ class MainActivity : FlutterActivity() {
                                 REQUEST_NOTIFY
                             )
                             result.success(false)
+                        }
+                    }
+                    // Wohin gehen Navi-Ansagen gerade, wie laut ist es?
+                    "audioRoute" -> {
+                        try {
+                            val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                            fun name(d: AudioDeviceInfo): String {
+                                val t = when (d.type) {
+                                    AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "Bluetooth (Medien)"
+                                    AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "Bluetooth (Freisprechen)"
+                                    AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "Handy-Lautsprecher"
+                                    AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "Hoerer"
+                                    AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                                    AudioDeviceInfo.TYPE_WIRED_HEADSET -> "Kabel-Kopfhoerer"
+                                    AudioDeviceInfo.TYPE_USB_DEVICE,
+                                    AudioDeviceInfo.TYPE_USB_HEADSET -> "USB"
+                                    else -> "Typ ${d.type}"
+                                }
+                                val n = d.productName?.toString() ?: ""
+                                return if (n.isNotBlank()) "$t: $n" else t
+                            }
+                            val nav = if (Build.VERSION.SDK_INT >= 33) {
+                                am.getAudioDevicesForAttributes(
+                                    AudioAttributes.Builder()
+                                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                                        .build()
+                                ).joinToString(", ") { name(it) }
+                            } else ""
+                            val outs = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                                .filter {
+                                    it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                                        it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                                }
+                                .joinToString(", ") { name(it) }
+                            val vol = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+                            val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                            result.success(mapOf(
+                                "nav" to nav,
+                                "bluetooth" to outs,
+                                "volume" to vol,
+                                "max" to max,
+                                "music" to am.isMusicActive
+                            ))
+                        } catch (e: Exception) {
+                            result.success(null)
                         }
                     }
                     // Akkustand und Ladezustand (Akkuverbrauch je Fahrt).
